@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>2NA ERP — Maintenance & Carburant</title>
+<meta name="theme-color" content="#14171A" />
+<link rel="manifest" href="manifest.json" />
+<link rel="icon" href="icon.svg" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="icon.svg" />
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+:root{
+  --bg:#14171A; --panel:#1B1F23; --panelR:#22272C; --border:#2E353B; --borderL:#3A424A;
+  --text:#ECEAE5; --muted:#8B939A; --accent:#F2A63C; --steel:#5B8CB3; --success:#4CAF6D; --danger:#E5533C;
+}
+*{box-sizing:border-box;}
+body{margin:0;background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased;}
+.mono{font-family:'IBM Plex Mono',monospace;}
+.oswald{font-family:'Oswald',sans-serif;}
+#app{display:flex;min-height:100vh;}
+/* Sidebar */
+#sidebar{width:220px;flex-shrink:0;background:#101315;border-right:1px solid var(--border);display:flex;flex-direction:column;}
+.brand{padding:20px 16px;border-bottom:1px solid var(--border);}
+.brand-row{display:flex;align-items:center;gap:8px;}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent);}
+.brand-title{font-family:'Oswald',sans-serif;letter-spacing:.05em;font-weight:600;font-size:14px;text-transform:uppercase;}
+.brand-sub{font-size:11px;color:var(--muted);margin-top:4px;}
+nav{flex:1;padding:12px 8px;display:flex;flex-direction:column;gap:2px;}
+.navbtn{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:6px;border:none;background:transparent;color:var(--muted);font-size:14px;text-align:left;cursor:pointer;border-left:2px solid transparent;font-family:'Inter',sans-serif;}
+.navbtn:hover{color:var(--text);}
+.navbtn.active{background:var(--panelR);color:var(--accent);border-left:2px solid var(--accent);}
+.navbtn svg{flex-shrink:0;}
+.sidebar-foot{padding:12px 16px;font-size:10px;color:var(--muted);border-top:1px solid var(--border);}
+/* Main */
+#main{flex:1;min-width:0;overflow-y:auto;height:100vh;}
+.wrap{max-width:1100px;margin:0 auto;padding:24px;}
+h1{font-family:'Oswald',sans-serif;text-transform:uppercase;letter-spacing:.03em;font-size:24px;margin:0 0 2px;}
+.subtitle{color:var(--muted);font-size:14px;margin:0 0 20px;}
+.headrow{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:16px;}
+/* Plate */
+.plate{background:var(--panel);border:1px solid var(--border);border-radius:8px;box-shadow:inset 0 1px 0 rgba(255,255,255,.03);}
+.p16{padding:16px;} .p14{padding:14px;}
+/* Grid */
+.grid{display:grid;gap:12px;}
+.grid-kpi{grid-template-columns:repeat(auto-fit,minmax(190px,1fr));}
+.grid-2{grid-template-columns:1fr 1fr;}
+.grid-fleet{grid-template-columns:repeat(auto-fill,minmax(230px,1fr));}
+.grid-status{grid-template-columns:repeat(auto-fill,minmax(90px,1fr));}
+@media(max-width:800px){.grid-2{grid-template-columns:1fr;}}
+/* KPI card */
+.kpi-label{font-family:'Oswald',sans-serif;text-transform:uppercase;font-size:11px;color:var(--muted);letter-spacing:.03em;}
+.kpi-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
+.kpi-value{font-family:'IBM Plex Mono',monospace;font-size:28px;letter-spacing:-.02em;}
+.kpi-unit{font-size:12px;color:var(--muted);margin-left:4px;}
+.kpi-sub{font-size:11px;color:var(--muted);margin-top:4px;}
+/* Buttons */
+button{font-family:'Inter',sans-serif;}
+.btn{padding:9px 14px;border-radius:6px;font-size:13px;font-weight:500;display:inline-flex;align-items:center;gap:6px;cursor:pointer;border:1px solid var(--borderL);background:var(--panelR);color:var(--text);}
+.btn:hover{opacity:.85;}
+.btn-accent{background:var(--accent);border-color:var(--accent);color:#1A1508;}
+.btn-ghost{background:transparent;border-color:transparent;color:var(--muted);}
+.btn-danger{background:transparent;border-color:var(--danger);color:var(--danger);}
+.icon-btn{background:none;border:none;color:var(--muted);cursor:pointer;padding:4px;display:inline-flex;}
+.icon-btn:hover{color:var(--text);}
+/* Inputs */
+input,select,textarea{background:var(--bg);border:1px solid var(--borderL);color:var(--text);border-radius:5px;padding:9px 10px;font-size:13px;font-family:'Inter',sans-serif;outline:none;width:100%;}
+input:focus,select:focus,textarea:focus{border-color:var(--accent);}
+label.field{display:flex;flex-direction:column;gap:4px;font-size:12px;}
+label.field span{color:var(--muted);}
+.formgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.formgrid .span2{grid-column:1/-1;}
+/* Led */
+.led{display:inline-block;width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+/* Table */
+table{width:100%;border-collapse:collapse;font-size:13px;}
+th{text-align:left;padding:9px 12px;color:var(--muted);font-weight:400;border-bottom:1px solid var(--border);}
+td{padding:9px 12px;border-bottom:1px solid var(--border);}
+.right{text-align:right;}
+/* Modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px;z-index:100;}
+.modal{background:var(--panel);border:1px solid var(--borderL);border-radius:10px;width:100%;max-width:520px;max-height:90vh;overflow-y:auto;}
+.modal-head{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--border);}
+.modal-head h3{font-family:'Oswald',sans-serif;text-transform:uppercase;font-size:16px;margin:0;}
+.modal-body{padding:20px;}
+.modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;}
+/* misc */
+.row{display:flex;align-items:center;gap:8px;}
+.between{display:flex;align-items:center;justify-content:space-between;}
+.wrapwrap{flex-wrap:wrap;}
+.card-item{background:var(--panelR);border:1px solid var(--border);border-radius:6px;padding:10px 12px;}
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:56px 0;color:var(--muted);gap:8px;font-size:14px;}
+.toast{position:fixed;bottom:20px;right:20px;background:var(--panelR);border:1px solid var(--accent);color:var(--text);padding:10px 16px;border-radius:6px;font-size:13px;display:flex;align-items:center;gap:8px;z-index:200;}
+.badge{font-size:10px;padding:2px 6px;border-radius:4px;text-transform:uppercase;background:var(--panelR);color:var(--muted);}
+.badge-danger{background:var(--danger);color:#fff;}
+#topbar{display:flex;align-items:center;gap:8px;padding:8px 16px;border-bottom:1px solid var(--border);background:#101315;position:sticky;top:0;z-index:10;}
+#sync-text{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60vw;}
+#refresh-btn{margin-left:auto;padding:5px 10px;font-size:12px;flex-shrink:0;}
+@media(max-width:700px){
+  #sidebar{width:64px;}
+  .brand-sub, .navbtn span.label, .sidebar-foot{display:none;}
+  .brand-title{display:none;}
+  .navbtn{justify-content:center;}
+  .formgrid{grid-template-columns:1fr;}
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="sidebar">
+    <div class="brand">
+      <div class="brand-row"><span class="dot"></span><span class="brand-title">2NA · ERP</span></div>
+      <div class="brand-sub">Maintenance & Carburant — CIGRAC</div>
+    </div>
+    <nav id="nav"></nav>
+    <div class="sidebar-foot">
+      <div id="fleet-count"></div>
+    </div>
+  </aside>
+  <main id="main">
+    <div id="topbar">
+      <span class="led" id="sync-dot" style="background:var(--muted)"></span>
+      <span id="sync-text">Connexion…</span>
+      <button class="btn btn-ghost" id="refresh-btn">Actualiser</button>
+    </div>
+    <div class="wrap" id="content"></div>
+  </main>
+</div>
+<div id="modal-root"></div>
+<div id="toast-root"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>
+/* ============ SUPABASE (multi-device sync) ============ */
+const SUPABASE_URL = "https://hfeggflrcbhzvyyejvqf.supabase.co";
+const SUPABASE_KEY = "sb_publishable_Dh4nBfDMJmnj9WN2KNvdOg_cVwN4vkl";
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+  global: {
+    fetch: (url, options={}) => fetch(url, { ...options, cache: 'no-store' })
+  }
+});
+
+/* ============ ICONS (minimal inline SVG set) ============ */
+const ICONS = {
+  gauge:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="m13.6 13.6 4.9-4.9M4 15a8 8 0 1 1 16 0"/></svg>',
+  truck:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 17h4V5H2v12h3M15 8h4l3 3v6h-2M10 17a2 2 0 1 1-4 0 2 2 0 0 1 4 0ZM21 17a2 2 0 1 1-4 0 2 2 0 0 1 4 0Z"/></svg>',
+  wrench:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a4 4 0 0 1-5.4 5.4L2.4 18.6l3 3 6.9-6.9a4 4 0 0 1 5.4-5.4L14.7 6.3Z"/></svg>',
+  calendar:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>',
+  fuel:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 22V8a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v14M3 22h10M14 9l3 3v6a2 2 0 1 0 4 0v-4l-2-2"/></svg>',
+  package:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7.5 4.27 9 5.15M21 8l-9 5-9-5 9-5 9 5ZM3 8v8l9 5 9-5V8M12 13v9"/></svg>',
+  report:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6Z"/><path d="M14 2v6h6M9 15h6M9 11h6M9 19h3"/></svg>',
+  plus:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>',
+  edit:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3Z"/></svg>',
+  trash:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6"/></svg>',
+  close:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>',
+  alert:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/></svg>',
+  check:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m20 6-11 11-5-5"/></svg>',
+  search:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>',
+};
+
+/* ============ STORAGE (Supabase + cache local hors-ligne) ============ */
+const STORE_KEY = 'cigrac-erp-data';
+
+function loadLocalCache(){
+  try{ const raw = localStorage.getItem(STORE_KEY); if(raw) return JSON.parse(raw); }catch(e){}
+  return null;
+}
+function saveLocalCache(){ try{ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }catch(e){} }
+
+async function loadRemote(){
+  try{
+    const { data, error } = await sb.from('erp_data').select('data, updated_at').eq('id','main').maybeSingle();
+    if(error) return { ok:false, error: error.message || JSON.stringify(error) };
+    if(!data) return { ok:false, error: "Aucune ligne trouvée (id='main') dans la table erp_data" };
+    return { ok:true, payload: data.data, updatedAt: data.updated_at };
+  }catch(e){
+    return { ok:false, error: (e && e.message) ? e.message : String(e) };
+  }
+}
+async function saveRemote(){
+  try{
+    const { error } = await sb.from('erp_data').upsert({ id:'main', data: state, updated_at: new Date().toISOString() });
+    if(error){ setSyncStatus(false, 'écriture: '+error.message); return; }
+    setSyncStatus(true, 'enregistré');
+  }catch(e){ setSyncStatus(false, 'écriture: '+((e&&e.message)||String(e))); }
+}
+function persist(){
+  saveLocalCache();
+  saveRemote();
+}
+function setSyncStatus(ok, detail){
+  const dot = document.getElementById('sync-dot');
+  const txt = document.getElementById('sync-text');
+  const now = new Date().toLocaleTimeString('fr-FR');
+  const full = ok
+    ? `OK ${now}${detail ? ' · '+detail : ''}`
+    : `ERREUR ${now} · ${detail || 'inconnue'}`;
+  if(dot) dot.style.background = ok ? 'var(--success)' : 'var(--danger)';
+  if(txt){ txt.textContent = full; txt.title = full; }
+}
+let pollTimer = null;
+function startPolling(){
+  if(pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(async ()=>{
+    const modalOpen = document.getElementById('modal-root').innerHTML.trim() !== '';
+    if(modalOpen) return;
+    const res = await loadRemote();
+    if(res.ok){
+      const stamp = res.updatedAt ? new Date(res.updatedAt).toLocaleTimeString('fr-FR') : '?';
+      setSyncStatus(true, 'donnée du serveur: '+stamp);
+      const changed = JSON.stringify(res.payload) !== JSON.stringify(state);
+      if(changed){
+        state = res.payload;
+        saveLocalCache();
+        render();
+      }
+    } else {
+      setSyncStatus(false, res.error);
+    }
+  }, 6000);
+}
+
+const uid = () => Math.random().toString(36).slice(2,10);
+const EQUIP_TYPES = ["Pelleteuse","Tombereau","Foreuse","Groupe électrogène"];
+const STATUTS = ["Opérationnel","En maintenance","En panne","À l'arrêt"];
+const WO_STATUTS = ["Ouvert","En cours","Terminé"];
+const WO_PRIORITES = ["Basse","Normale","Haute","Urgente"];
+
+function seedFleet(){
+  const defs = [
+    ...Array.from({length:6},(_,i)=>({p:"PEL",t:"Pelleteuse",n:i+1})),
+    ...Array.from({length:8},(_,i)=>({p:"TOM",t:"Tombereau",n:i+1})),
+    ...Array.from({length:3},(_,i)=>({p:"FOR",t:"Foreuse",n:i+1})),
+    ...Array.from({length:2},(_,i)=>({p:"GRP",t:"Groupe électrogène",n:i+1})),
+  ];
+  return defs.map(d=>({
+    id:uid(), code:`${d.p}-${String(d.n).padStart(2,'0')}`, nom:`${d.t} ${String(d.n).padStart(2,'0')}`,
+    type:d.t, statut:"Opérationnel", heures:Math.floor(800+Math.random()*4000),
+    dernierEntretien:"", prochainEntretien:"", conso100h: d.t==="Groupe électrogène"?18:d.t==="Foreuse"?22:14
+  }));
+}
+
+let state = { fleet: [], workOrders: [], fuelLogs: [], parts: [], pmPlans: [] };
+let currentView = 'dashboard';
+
+/* ============ HELPERS ============ */
+function statutColor(s){
+  if(s==="Opérationnel") return "var(--success)";
+  if(s==="En maintenance") return "var(--accent)";
+  if(s==="En panne") return "var(--danger)";
+  return "var(--muted)";
+}
+function fmt(n){ return Number(n||0).toLocaleString('fr-FR'); }
+function equipMap(){ return Object.fromEntries(state.fleet.map(e=>[e.id,e])); }
+function toast(msg){
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.innerHTML = `${ICONS.check.replace('16','14').replace('16','14')} <span style="color:var(--success)"></span>${msg}`;
+  document.getElementById('toast-root').appendChild(el);
+  setTimeout(()=>el.remove(), 2600);
+}
+function esc(s){ return (s===undefined||s===null)?'':String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+/* ============ NAV ============ */
+const NAV = [
+  {id:'dashboard', label:'Tableau de bord', icon:'gauge'},
+  {id:'fleet', label:'Flotte', icon:'truck'},
+  {id:'wo', label:'Ordres de travail', icon:'wrench'},
+  {id:'pm', label:'Préventif', icon:'calendar'},
+  {id:'fuel', label:'Carburant', icon:'fuel'},
+  {id:'parts', label:'Pièces / Stock', icon:'package'},
+  {id:'reports', label:'Rapports', icon:'report'},
+];
+function renderNav(){
+  const nav = document.getElementById('nav');
+  nav.innerHTML = NAV.map(n=>`
+    <button class="navbtn ${currentView===n.id?'active':''}" data-nav="${n.id}">
+      ${ICONS[n.icon]}<span class="label">${n.label}</span>
+    </button>`).join('');
+  nav.querySelectorAll('[data-nav]').forEach(b=>b.addEventListener('click',()=>{ currentView=b.dataset.nav; render(); }));
+  document.getElementById('fleet-count').textContent = `${state.fleet.length} engins suivis`;
+}
+
+/* ============ KPIs ============ */
+function computeKpis(){
+  const total = state.fleet.length || 1;
+  const dispo = state.fleet.filter(e=>e.statut==="Opérationnel").length;
+  const pannes = state.fleet.filter(e=>e.statut==="En panne").length;
+  const disponibilite = Math.round((dispo/total)*1000)/10;
+  const closed = state.workOrders.filter(w=>w.type==="Correctif" && w.statut==="Terminé" && w.dateCreation && w.dateFin);
+  const mttrH = closed.length ? closed.reduce((a,w)=>a+Math.max(0,(new Date(w.dateFin)-new Date(w.dateCreation))/36e5),0)/closed.length : 0;
+  const coutMaintenance = state.workOrders.reduce((a,w)=>a+Number(w.cout||0),0);
+  const coutCarburant = state.fuelLogs.reduce((a,f)=>a+Number(f.cout||0),0);
+  const litresTotal = state.fuelLogs.reduce((a,f)=>a+Number(f.quantite||0),0);
+  const ouverts = state.workOrders.filter(w=>w.statut!=="Terminé").length;
+  const partsBas = state.parts.filter(p=>Number(p.quantite)<=Number(p.seuil)).length;
+  return {disponibilite, pannes, mttrH, coutMaintenance, coutCarburant, litresTotal, ouverts, partsBas, total};
+}
+
+/* ============ RENDER ROOT ============ */
+function render(){
+  renderNav();
+  const c = document.getElementById('content');
+  if(currentView==='dashboard') c.innerHTML = viewDashboard();
+  else if(currentView==='fleet') c.innerHTML = viewFleet();
+  else if(currentView==='wo') c.innerHTML = viewWO();
+  else if(currentView==='pm') c.innerHTML = viewPM();
+  else if(currentView==='fuel') c.innerHTML = viewFuel();
+  else if(currentView==='parts') c.innerHTML = viewParts();
+  else if(currentView==='reports') c.innerHTML = viewReports();
+  attachHandlers();
+}
+
+/* ============ DASHBOARD ============ */
+function kpiCard(label,value,unit,icon,color,sub){
+  return `<div class="plate p16">
+    <div class="kpi-top"><span class="kpi-label">${label}</span><span style="color:${color}">${ICONS[icon]}</span></div>
+    <div><span class="kpi-value" style="color:${color}">${value}</span><span class="kpi-unit">${unit||''}</span></div>
+    ${sub?`<div class="kpi-sub">${sub}</div>`:''}
+  </div>`;
+}
+function viewDashboard(){
+  const k = computeKpis();
+  const em = equipMap();
+  const alerts = [];
+  state.fleet.filter(e=>e.statut==="En panne").forEach(e=>alerts.push({lvl:'danger',text:`${e.code} — ${e.nom} est en panne`}));
+  state.parts.filter(p=>Number(p.quantite)<=Number(p.seuil)).forEach(p=>alerts.push({lvl:'accent',text:`Stock bas : ${p.nom} (${p.quantite} restant)`}));
+  const now = new Date();
+  state.pmPlans.filter(p=>p.prochaine && (new Date(p.prochaine)-now)/864e5<=7).forEach(p=>alerts.push({lvl:'accent',text:`Entretien à échéance : ${em[p.equipementId]?.code||'?'} — ${p.tache}`}));
+  const recentWO = [...state.workOrders].sort((a,b)=>(b.dateCreation||'').localeCompare(a.dateCreation||'')).slice(0,6);
+
+  return `
+  <h1>Tableau de bord</h1>
+  <p class="subtitle">Vue d'ensemble de la flotte, maintenance et carburant</p>
+  <div class="grid grid-kpi" style="margin-bottom:20px;">
+    ${kpiCard('Disponibilité', k.disponibilite,'%','gauge', k.disponibilite>=80?'var(--success)':'var(--danger)', `${k.total} engins suivis`)}
+    ${kpiCard('MTTR', k.mttrH.toFixed(1),'h','wrench','var(--steel)','Temps moyen de réparation')}
+    ${kpiCard('OT en cours', k.ouverts,'','wrench','var(--accent)','Ordres de travail ouverts')}
+    ${kpiCard('Engins en panne', k.pannes,'','alert', k.pannes?'var(--danger)':'var(--success)','Statut critique')}
+    ${kpiCard('Coût maintenance', fmt(k.coutMaintenance),'FCFA','report','var(--text)','Cumul ordres de travail')}
+    ${kpiCard('Carburant', fmt(k.litresTotal),'L','fuel','var(--steel)','Cumul flotte')}
+    ${kpiCard('Coût carburant', fmt(k.coutCarburant),'FCFA','fuel','var(--text)','Cumul flotte')}
+    ${kpiCard('Stock critique', k.partsBas,'','package', k.partsBas?'var(--accent)':'var(--success)','Pièces sous seuil')}
+  </div>
+  <div class="grid grid-2" style="margin-bottom:16px;">
+    <div class="plate p16">
+      <div class="row" style="margin-bottom:10px;">${ICONS.alert}<h3 class="oswald" style="text-transform:uppercase;font-size:14px;margin:0;">Alertes actives</h3></div>
+      ${alerts.length===0?`<div class="empty">${ICONS.check}<span>Aucune alerte — tout est sous contrôle.</span></div>`:
+        `<div style="display:flex;flex-direction:column;gap:6px;max-height:280px;overflow-y:auto;">
+        ${alerts.map(a=>`<div class="row card-item"><span class="led" style="background:var(--${a.lvl==='danger'?'danger':'accent'})"></span><span>${esc(a.text)}</span></div>`).join('')}
+        </div>`}
+    </div>
+    <div class="plate p16">
+      <div class="between" style="margin-bottom:10px;">
+        <div class="row">${ICONS.wrench}<h3 class="oswald" style="text-transform:uppercase;font-size:14px;margin:0;">Derniers ordres de travail</h3></div>
+        <button class="btn btn-ghost" style="padding:2px 6px;color:var(--accent);font-size:12px;" data-nav="wo">Voir tout →</button>
+      </div>
+      ${recentWO.length===0?`<div class="empty">${ICONS.wrench}<span>Aucun ordre de travail créé.</span></div>`:
+        `<div style="display:flex;flex-direction:column;gap:6px;">
+        ${recentWO.map(w=>`<div class="between card-item">
+          <div class="row"><span class="led" style="background:${w.statut==='Terminé'?'var(--success)':w.statut==='En cours'?'var(--accent)':'var(--muted)'}"></span><span>${esc(w.titre)}</span></div>
+          <span style="color:var(--muted);font-size:12px;">${em[w.equipementId]?.code||'—'}</span>
+        </div>`).join('')}
+        </div>`}
+    </div>
+  </div>
+  <div class="plate p16">
+    <h3 class="oswald" style="text-transform:uppercase;font-size:14px;margin:0 0 10px;">État de la flotte</h3>
+    <div class="grid grid-status">
+      ${state.fleet.map(e=>`<div class="card-item">
+        <div class="row"><span class="led" style="background:${statutColor(e.statut)}"></span><span class="mono" style="font-size:12px;">${e.code}</span></div>
+        <div style="font-size:10px;color:var(--muted);margin-top:2px;">${e.type}</div>
+      </div>`).join('')}
+    </div>
+  </div>`;
+}
+
+/* ============ FLEET ============ */
+let fleetSearch = '';
+function viewFleet(){
+  const filtered = state.fleet.filter(e=>`${e.code} ${e.nom} ${e.type}`.toLowerCase().includes(fleetSearch.toLowerCase()));
+  return `
+  <div class="headrow">
+    <div><h1>Flotte</h1><p class="subtitle" style="margin:0;">${state.fleet.length} engins enregistrés</p></div>
+    <div class="row">
+      <input id="fleet-search" placeholder="Rechercher…" style="width:180px;" value="${esc(fleetSearch)}"/>
+      <button class="btn btn-accent" data-open-modal="fleet-new">${ICONS.plus} Nouvel engin</button>
+    </div>
+  </div>
+  ${filtered.length===0?`<div class="plate p16"><div class="empty">${ICONS.truck}<span>Aucun engin trouvé.</span></div></div>`:
+  `<div class="grid grid-fleet">
+    ${filtered.map(e=>`
+    <div class="plate p16">
+      <div class="between" style="align-items:flex-start;">
+        <div>
+          <div class="row"><span class="led" style="background:${statutColor(e.statut)}"></span><span class="mono" style="font-size:15px;">${e.code}</span></div>
+          <div style="font-size:12px;color:var(--muted);">${e.type}</div>
+        </div>
+        <div class="row">
+          <button class="icon-btn" data-edit-fleet="${e.id}">${ICONS.edit}</button>
+          <button class="icon-btn" data-del-fleet="${e.id}">${ICONS.trash}</button>
+        </div>
+      </div>
+      <div style="font-size:13px;margin:8px 0;">${esc(e.nom)}</div>
+      <div class="between" style="font-size:12px;color:var(--muted);border-top:1px solid var(--border);padding-top:8px;">
+        <span>${fmt(e.heures)} h</span><span style="color:${statutColor(e.statut)}">${e.statut}</span>
+      </div>
+      ${e.prochainEntretien?`<div style="font-size:11px;color:var(--muted);margin-top:6px;">Prochain entretien : ${e.prochainEntretien}</div>`:''}
+    </div>`).join('')}
+  </div>`}`;
+}
+
+function fleetForm(e){
+  return `
+  <div class="formgrid">
+    <label class="field"><span>Code</span><input data-f="code" value="${esc(e.code)}" placeholder="PEL-07"/></label>
+    <label class="field"><span>Type</span><select data-f="type">${EQUIP_TYPES.map(t=>`<option ${e.type===t?'selected':''}>${t}</option>`).join('')}</select></label>
+    <label class="field span2"><span>Nom / désignation</span><input data-f="nom" value="${esc(e.nom)}"/></label>
+    <label class="field"><span>Statut</span><select data-f="statut">${STATUTS.map(s=>`<option ${e.statut===s?'selected':''}>${s}</option>`).join('')}</select></label>
+    <label class="field"><span>Heures compteur</span><input type="number" data-f="heures" value="${e.heures||0}"/></label>
+    <label class="field"><span>Dernier entretien</span><input type="date" data-f="dernierEntretien" value="${e.dernierEntretien||''}"/></label>
+    <label class="field"><span>Prochain entretien</span><input type="date" data-f="prochainEntretien" value="${e.prochainEntretien||''}"/></label>
+    <label class="field"><span>Conso. réf. / 100h (L)</span><input type="number" data-f="conso100h" value="${e.conso100h||0}"/></label>
+  </div>`;
+}
+
+/* ============ WORK ORDERS ============ */
+let woFilter = 'Tous';
+function viewWO(){
+  const em = equipMap();
+  const visible = woFilter==='Tous' ? state.workOrders : state.workOrders.filter(w=>w.statut===woFilter);
+  const sorted = [...visible].sort((a,b)=>(b.dateCreation||'').localeCompare(a.dateCreation||''));
+  return `
+  <div class="headrow">
+    <div><h1>Ordres de travail</h1><p class="subtitle" style="margin:0;">Maintenance corrective et préventive</p></div>
+    <div class="row">
+      <select id="wo-filter">
+        <option ${woFilter==='Tous'?'selected':''}>Tous</option>
+        ${WO_STATUTS.map(s=>`<option ${woFilter===s?'selected':''}>${s}</option>`).join('')}
+      </select>
+      <button class="btn btn-accent" data-open-modal="wo-new">${ICONS.plus} Nouvel OT</button>
+    </div>
+  </div>
+  ${sorted.length===0?`<div class="plate p16"><div class="empty">${ICONS.wrench}<span>Aucun ordre de travail.</span></div></div>`:
+  `<div style="display:flex;flex-direction:column;gap:8px;">
+  ${sorted.map(w=>`
+  <div class="plate p14 between wrapwrap" style="gap:12px;">
+    <div class="row" style="min-width:0;">
+      <span class="led" style="background:${w.statut==='Terminé'?'var(--success)':w.statut==='En cours'?'var(--accent)':'var(--muted)'}"></span>
+      <div>
+        <div class="row" style="flex-wrap:wrap;">
+          <span style="font-size:13px;font-weight:500;">${esc(w.titre)}</span>
+          <span class="badge">${w.type}</span>
+          ${w.priorite==='Urgente'?`<span class="badge badge-danger">URGENT</span>`:''}
+        </div>
+        <div style="font-size:12px;color:var(--muted);">${em[w.equipementId]?.code||'—'} · ${w.dateCreation||''} ${w.technicien?`· ${esc(w.technicien)}`:''}</div>
+      </div>
+    </div>
+    <div class="row">
+      <span style="font-size:12px;color:${w.statut==='Terminé'?'var(--success)':w.statut==='En cours'?'var(--accent)':'var(--muted)'}">${w.statut}</span>
+      ${w.cout>0?`<span class="mono" style="font-size:12px;color:var(--muted);">${fmt(w.cout)} FCFA</span>`:''}
+      <button class="icon-btn" data-edit-wo="${w.id}">${ICONS.edit}</button>
+      <button class="icon-btn" data-del-wo="${w.id}">${ICONS.trash}</button>
+    </div>
+  </div>`).join('')}
+  </div>`}`;
+}
+function woForm(w){
+  const opts = state.fleet.map(e=>`<option value="${e.id}" ${w.equipementId===e.id?'selected':''}>${e.code} — ${e.nom}</option>`).join('');
+  return `
+  <div class="formgrid">
+    <label class="field"><span>Engin</span><select data-f="equipementId">${opts}</select></label>
+    <label class="field"><span>Type</span><select data-f="type"><option ${w.type==='Correctif'?'selected':''}>Correctif</option><option ${w.type==='Préventif'?'selected':''}>Préventif</option></select></label>
+    <label class="field span2"><span>Titre</span><input data-f="titre" value="${esc(w.titre)}" placeholder="Remplacement flexible hydraulique"/></label>
+    <label class="field span2"><span>Description</span><textarea data-f="description" rows="3">${esc(w.description)}</textarea></label>
+    <label class="field"><span>Priorité</span><select data-f="priorite">${WO_PRIORITES.map(p=>`<option ${w.priorite===p?'selected':''}>${p}</option>`).join('')}</select></label>
+    <label class="field"><span>Statut</span><select data-f="statut">${WO_STATUTS.map(s=>`<option ${w.statut===s?'selected':''}>${s}</option>`).join('')}</select></label>
+    <label class="field"><span>Technicien</span><input data-f="technicien" value="${esc(w.technicien)}"/></label>
+    <label class="field"><span>Coût (FCFA)</span><input type="number" data-f="cout" value="${w.cout||0}"/></label>
+    <label class="field"><span>Date de création</span><input type="date" data-f="dateCreation" value="${w.dateCreation||''}"/></label>
+    <label class="field"><span>Date de fin</span><input type="date" data-f="dateFin" value="${w.dateFin||''}"/></label>
+  </div>`;
+}
+
+/* ============ PREVENTIVE ============ */
+function viewPM(){
+  const em = equipMap(); const now = new Date();
+  const sorted = [...state.pmPlans].sort((a,b)=>(a.prochaine||'').localeCompare(b.prochaine||''));
+  return `
+  <div class="headrow">
+    <div><h1>Maintenance préventive</h1><p class="subtitle" style="margin:0;">Planification des entretiens périodiques</p></div>
+    <button class="btn btn-accent" data-open-modal="pm-new">${ICONS.plus} Nouveau plan</button>
+  </div>
+  ${sorted.length===0?`<div class="plate p16"><div class="empty">${ICONS.calendar}<span>Aucun plan préventif défini.</span></div></div>`:
+  `<div style="display:flex;flex-direction:column;gap:8px;">
+  ${sorted.map(p=>{
+    const daysLeft = p.prochaine? Math.round((new Date(p.prochaine)-now)/864e5): null;
+    const urgent = daysLeft!==null && daysLeft<=7;
+    return `<div class="plate p14 between wrapwrap" style="gap:12px;">
+      <div class="row"><span class="led" style="background:${urgent?'var(--danger)':'var(--success)'}"></span>
+        <div><div style="font-size:13px;font-weight:500;">${esc(p.tache)}</div>
+        <div style="font-size:12px;color:var(--muted);">${em[p.equipementId]?.code||'—'} · tous les ${p.frequenceJours} j</div></div>
+      </div>
+      <div class="row">
+        <span style="font-size:12px;color:${urgent?'var(--danger)':'var(--muted)'}">${p.prochaine?`Échéance : ${p.prochaine}${daysLeft!==null?` (${daysLeft}j)`:''}`:'Non planifié'}</span>
+        <button class="icon-btn" data-edit-pm="${p.id}">${ICONS.edit}</button>
+        <button class="icon-btn" data-del-pm="${p.id}">${ICONS.trash}</button>
+      </div>
+    </div>`;
+  }).join('')}
+  </div>`}`;
+}
+function pmForm(p){
+  const opts = state.fleet.map(e=>`<option value="${e.id}" ${p.equipementId===e.id?'selected':''}>${e.code} — ${e.nom}</option>`).join('');
+  return `
+  <div class="formgrid">
+    <label class="field"><span>Engin</span><select data-f="equipementId">${opts}</select></label>
+    <label class="field"><span>Fréquence (jours)</span><input type="number" data-f="frequenceJours" value="${p.frequenceJours||90}"/></label>
+    <label class="field span2"><span>Tâche</span><input data-f="tache" value="${esc(p.tache)}" placeholder="Vidange moteur + filtres"/></label>
+    <label class="field"><span>Dernière réalisation</span><input type="date" data-f="derniere" value="${p.derniere||''}"/></label>
+    <label class="field"><span>Prochaine échéance</span><input type="date" data-f="prochaine" value="${p.prochaine||''}"/></label>
+  </div>`;
+}
+
+/* ============ FUEL ============ */
+function viewFuel(){
+  const em = equipMap();
+  const sorted = [...state.fuelLogs].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const totalL = state.fuelLogs.reduce((a,f)=>a+Number(f.quantite||0),0);
+  const totalCost = state.fuelLogs.reduce((a,f)=>a+Number(f.cout||0),0);
+  const byEquip = {};
+  state.fuelLogs.forEach(f=>{ (byEquip[f.equipementId]=byEquip[f.equipementId]||[]).push(f); });
+  return `
+  <div class="headrow">
+    <div><h1>Carburant</h1><p class="subtitle" style="margin:0;">${fmt(totalL)} L · ${fmt(totalCost)} FCFA cumulés</p></div>
+    <button class="btn btn-accent" data-open-modal="fuel-new">${ICONS.plus} Nouveau plein</button>
+  </div>
+  <div class="grid grid-status" style="margin-bottom:16px;">
+    ${state.fleet.map(e=>{
+      const logs = byEquip[e.id]||[]; const total = logs.reduce((a,f)=>a+Number(f.quantite||0),0);
+      const over = logs.length && (total/logs.length) > (e.conso100h||999);
+      return `<div class="plate p14">
+        <div class="between"><span class="mono" style="font-size:13px;">${e.code}</span>${over?ICONS.alert:''}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px;">${fmt(total)} L · ${logs.length} pleins</div>
+      </div>`;
+    }).join('')}
+  </div>
+  ${sorted.length===0?`<div class="plate p16"><div class="empty">${ICONS.fuel}<span>Aucun plein enregistré.</span></div></div>`:
+  `<div class="plate" style="overflow:hidden;">
+  <table><thead><tr><th>Date</th><th>Engin</th><th class="right">Quantité</th><th class="right">Coût</th><th>Opérateur</th><th></th></tr></thead>
+  <tbody>
+  ${sorted.map(f=>`<tr>
+    <td>${f.date||''}</td><td class="mono">${em[f.equipementId]?.code||'—'}</td>
+    <td class="right mono">${fmt(f.quantite)} L</td><td class="right mono" style="color:var(--muted)">${fmt(f.cout)}</td>
+    <td style="color:var(--muted)">${esc(f.operateur)||'—'}</td>
+    <td><div class="row" style="justify-content:flex-end;"><button class="icon-btn" data-edit-fuel="${f.id}">${ICONS.edit}</button><button class="icon-btn" data-del-fuel="${f.id}">${ICONS.trash}</button></div></td>
+  </tr>`).join('')}
+  </tbody></table></div>`}`;
+}
+function fuelForm(f){
+  const opts = state.fleet.map(e=>`<option value="${e.id}" ${f.equipementId===e.id?'selected':''}>${e.code} — ${e.nom}</option>`).join('');
+  return `
+  <div class="formgrid">
+    <label class="field"><span>Engin</span><select data-f="equipementId">${opts}</select></label>
+    <label class="field"><span>Date</span><input type="date" data-f="date" value="${f.date||''}"/></label>
+    <label class="field"><span>Quantité (L)</span><input type="number" data-f="quantite" value="${f.quantite||0}"/></label>
+    <label class="field"><span>Coût (FCFA)</span><input type="number" data-f="cout" value="${f.cout||0}"/></label>
+    <label class="field"><span>Heures compteur</span><input type="number" data-f="heures" value="${f.heures||0}"/></label>
+    <label class="field"><span>Opérateur</span><input data-f="operateur" value="${esc(f.operateur)}"/></label>
+  </div>`;
+}
+
+/* ============ PARTS ============ */
+function viewParts(){
+  const sorted = [...state.parts].sort((a,b)=> (Number(a.quantite)-Number(a.seuil)) - (Number(b.quantite)-Number(b.seuil)) );
+  return `
+  <div class="headrow">
+    <div><h1>Pièces & stock</h1><p class="subtitle" style="margin:0;">${state.parts.length} références</p></div>
+    <button class="btn btn-accent" data-open-modal="part-new">${ICONS.plus} Nouvelle pièce</button>
+  </div>
+  ${sorted.length===0?`<div class="plate p16"><div class="empty">${ICONS.package}<span>Aucune pièce enregistrée.</span></div></div>`:
+  `<div class="plate" style="overflow:hidden;">
+  <table><thead><tr><th>Référence</th><th>Désignation</th><th class="right">Qté</th><th class="right">Seuil</th><th class="right">Coût unit.</th><th>Fournisseur</th><th></th></tr></thead>
+  <tbody>
+  ${sorted.map(p=>{ const low = Number(p.quantite)<=Number(p.seuil);
+  return `<tr>
+    <td class="mono" style="color:var(--muted)">${esc(p.ref)||'—'}</td><td>${esc(p.nom)}</td>
+    <td class="right mono" style="color:${low?'var(--danger)':'var(--text)'}">${p.quantite}</td>
+    <td class="right mono" style="color:var(--muted)">${p.seuil}</td>
+    <td class="right mono" style="color:var(--muted)">${fmt(p.coutUnitaire)}</td>
+    <td style="color:var(--muted)">${esc(p.fournisseur)||'—'}</td>
+    <td><div class="row" style="justify-content:flex-end;"><button class="icon-btn" data-edit-part="${p.id}">${ICONS.edit}</button><button class="icon-btn" data-del-part="${p.id}">${ICONS.trash}</button></div></td>
+  </tr>`;}).join('')}
+  </tbody></table></div>`}`;
+}
+function partForm(p){
+  return `
+  <div class="formgrid">
+    <label class="field"><span>Référence</span><input data-f="ref" value="${esc(p.ref)}"/></label>
+    <label class="field"><span>Désignation</span><input data-f="nom" value="${esc(p.nom)}"/></label>
+    <label class="field"><span>Quantité en stock</span><input type="number" data-f="quantite" value="${p.quantite||0}"/></label>
+    <label class="field"><span>Seuil d'alerte</span><input type="number" data-f="seuil" value="${p.seuil||0}"/></label>
+    <label class="field"><span>Coût unitaire (FCFA)</span><input type="number" data-f="coutUnitaire" value="${p.coutUnitaire||0}"/></label>
+    <label class="field"><span>Fournisseur</span><input data-f="fournisseur" value="${esc(p.fournisseur)}"/></label>
+  </div>`;
+}
+
+/* ============ REPORTS ============ */
+function viewReports(){
+  const k = computeKpis();
+  const costByEquip = {}; state.workOrders.forEach(w=>{ costByEquip[w.equipementId]=(costByEquip[w.equipementId]||0)+Number(w.cout||0); });
+  const fuelByEquip = {}; state.fuelLogs.forEach(f=>{ const o=fuelByEquip[f.equipementId]=fuelByEquip[f.equipementId]||{l:0,cout:0}; o.l+=Number(f.quantite||0); o.cout+=Number(f.cout||0); });
+  const rows = state.fleet.map(e=>({e, cout:costByEquip[e.id]||0, fuel:fuelByEquip[e.id]||{l:0,cout:0}})).sort((a,b)=>(b.cout+b.fuel.cout)-(a.cout+a.fuel.cout));
+  const totalGeneral = rows.reduce((a,r)=>a+r.cout+r.fuel.cout,0);
+  return `
+  <h1>Rapports</h1>
+  <p class="subtitle">Coûts consolidés par engin — maintenance & carburant</p>
+  <div class="grid grid-kpi" style="margin-bottom:16px;">
+    ${kpiCard('Coût total flotte', fmt(totalGeneral),'FCFA','report','var(--text)')}
+    ${kpiCard('Disponibilité', k.disponibilite,'%','gauge', k.disponibilite>=80?'var(--success)':'var(--danger)')}
+    ${kpiCard('MTTR', k.mttrH.toFixed(1),'h','wrench','var(--steel)')}
+    ${kpiCard('Litres consommés', fmt(k.litresTotal),'L','fuel','var(--steel)')}
+  </div>
+  <div class="plate" style="overflow:hidden;">
+  <table><thead><tr><th>Engin</th><th>Type</th><th class="right">Coût maintenance</th><th class="right">Carburant (L)</th><th class="right">Coût carburant</th><th class="right">Total</th></tr></thead>
+  <tbody>
+  ${rows.map(({e,cout,fuel})=>`<tr>
+    <td class="mono">${e.code}</td><td style="color:var(--muted)">${e.type}</td>
+    <td class="right mono">${fmt(cout)}</td><td class="right mono" style="color:var(--muted)">${fmt(fuel.l)}</td>
+    <td class="right mono">${fmt(fuel.cout)}</td><td class="right mono" style="color:var(--accent)">${fmt(cout+fuel.cout)}</td>
+  </tr>`).join('')}
+  </tbody></table></div>`;
+}
+
+/* ============ MODALS ============ */
+function openModal(title, bodyHtml, onSave){
+  const root = document.getElementById('modal-root');
+  root.innerHTML = `
+  <div class="modal-overlay" id="modal-overlay">
+    <div class="modal">
+      <div class="modal-head"><h3>${title}</h3><button class="icon-btn" id="modal-close">${ICONS.close}</button></div>
+      <div class="modal-body">
+        <div id="modal-form">${bodyHtml}</div>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" id="modal-cancel">Annuler</button>
+          <button class="btn btn-accent" id="modal-save">Enregistrer</button>
+        </div>
+      </div>
+    </div>
+  </div>`;
+  document.getElementById('modal-overlay').addEventListener('click', (e)=>{ if(e.target.id==='modal-overlay') closeModal(); });
+  document.getElementById('modal-close').addEventListener('click', closeModal);
+  document.getElementById('modal-cancel').addEventListener('click', closeModal);
+  document.getElementById('modal-save').addEventListener('click', ()=>{
+    const data = {};
+    document.querySelectorAll('#modal-form [data-f]').forEach(el=>{ data[el.dataset.f] = el.value; });
+    onSave(data);
+  });
+}
+function closeModal(){ document.getElementById('modal-root').innerHTML=''; }
+
+/* ============ CRUD HANDLERS ============ */
+function attachHandlers(){
+  // global nav-from-content
+  document.querySelectorAll('[data-nav]').forEach(b=>b.addEventListener('click',()=>{ currentView=b.dataset.nav; render(); }));
+
+  // Fleet
+  const fs = document.getElementById('fleet-search');
+  if(fs) fs.addEventListener('input', e=>{ fleetSearch=e.target.value; render(); document.getElementById('fleet-search').focus(); document.getElementById('fleet-search').selectionStart = document.getElementById('fleet-search').value.length; });
+  const bo = document.querySelector('[data-open-modal="fleet-new"]');
+  if(bo) bo.addEventListener('click', ()=>{
+    const e = {id:null, code:"", nom:"", type:EQUIP_TYPES[0], statut:"Opérationnel", heures:0, dernierEntretien:"", prochainEntretien:"", conso100h:15};
+    openModal('Nouvel engin', fleetForm(e), (data)=>{
+      if(!data.code||!data.nom){ alert('Code et nom requis'); return; }
+      state.fleet.push({...data, id:uid(), heures:Number(data.heures), conso100h:Number(data.conso100h)});
+      persist(); closeModal(); render(); toast('Engin ajouté à la flotte');
+    });
+  });
+  document.querySelectorAll('[data-edit-fleet]').forEach(b=>b.addEventListener('click',()=>{
+    const e = state.fleet.find(x=>x.id===b.dataset.editFleet);
+    openModal("Modifier l'engin", fleetForm(e), (data)=>{
+      Object.assign(e, data, {heures:Number(data.heures), conso100h:Number(data.conso100h)});
+      persist(); closeModal(); render(); toast('Engin mis à jour');
+    });
+  }));
+  document.querySelectorAll('[data-del-fleet]').forEach(b=>b.addEventListener('click',()=>{
+    if(!confirm('Supprimer cet engin ?')) return;
+    state.fleet = state.fleet.filter(x=>x.id!==b.dataset.delFleet);
+    persist(); render(); toast('Engin supprimé');
+  }));
+
+  // Work orders
+  const wf = document.getElementById('wo-filter');
+  if(wf) wf.addEventListener('change', e=>{ woFilter=e.target.value; render(); });
+  const won = document.querySelector('[data-open-modal="wo-new"]');
+  if(won) won.addEventListener('click', ()=>{
+    const w = {id:null, equipementId: state.fleet[0]?.id||'', type:'Correctif', titre:'', description:'', priorite:'Normale', statut:'Ouvert', dateCreation:new Date().toISOString().slice(0,10), dateFin:'', technicien:'', cout:0};
+    openModal('Nouvel ordre de travail', woForm(w), (data)=>{
+      if(!data.titre||!data.equipementId){ alert('Titre et engin requis'); return; }
+      if(data.statut==='Terminé' && !data.dateFin) data.dateFin = new Date().toISOString().slice(0,10);
+      state.workOrders.push({...data, id:uid(), cout:Number(data.cout)});
+      if(data.statut!=='Terminé'){ const eq = state.fleet.find(x=>x.id===data.equipementId); if(eq) eq.statut='En maintenance'; }
+      persist(); closeModal(); render(); toast('Ordre de travail créé');
+    });
+  });
+  document.querySelectorAll('[data-edit-wo]').forEach(b=>b.addEventListener('click',()=>{
+    const w = state.workOrders.find(x=>x.id===b.dataset.editWo);
+    openModal("Modifier l'ordre de travail", woForm(w), (data)=>{
+      if(data.statut==='Terminé' && !data.dateFin) data.dateFin = new Date().toISOString().slice(0,10);
+      Object.assign(w, data, {cout:Number(data.cout)});
+      persist(); closeModal(); render(); toast('Ordre de travail mis à jour');
+    });
+  }));
+  document.querySelectorAll('[data-del-wo]').forEach(b=>b.addEventListener('click',()=>{
+    if(!confirm('Supprimer cet ordre de travail ?')) return;
+    state.workOrders = state.workOrders.filter(x=>x.id!==b.dataset.delWo);
+    persist(); render(); toast('Ordre de travail supprimé');
+  }));
+
+  // PM
+  const pmn = document.querySelector('[data-open-modal="pm-new"]');
+  if(pmn) pmn.addEventListener('click', ()=>{
+    const p = {id:null, equipementId: state.fleet[0]?.id||'', tache:'', frequenceJours:90, derniere:'', prochaine:''};
+    openModal('Nouveau plan préventif', pmForm(p), (data)=>{
+      if(!data.tache||!data.equipementId){ alert('Tâche et engin requis'); return; }
+      if(data.derniere && data.frequenceJours){ const d=new Date(data.derniere); d.setDate(d.getDate()+Number(data.frequenceJours)); data.prochaine=d.toISOString().slice(0,10); }
+      state.pmPlans.push({...data, id:uid(), frequenceJours:Number(data.frequenceJours)});
+      persist(); closeModal(); render(); toast('Plan préventif ajouté');
+    });
+  });
+  document.querySelectorAll('[data-edit-pm]').forEach(b=>b.addEventListener('click',()=>{
+    const p = state.pmPlans.find(x=>x.id===b.dataset.editPm);
+    openModal('Modifier le plan', pmForm(p), (data)=>{
+      if(data.derniere && data.frequenceJours){ const d=new Date(data.derniere); d.setDate(d.getDate()+Number(data.frequenceJours)); data.prochaine=d.toISOString().slice(0,10); }
+      Object.assign(p, data, {frequenceJours:Number(data.frequenceJours)});
+      persist(); closeModal(); render(); toast('Plan préventif mis à jour');
+    });
+  }));
+  document.querySelectorAll('[data-del-pm]').forEach(b=>b.addEventListener('click',()=>{
+    if(!confirm('Supprimer ce plan ?')) return;
+    state.pmPlans = state.pmPlans.filter(x=>x.id!==b.dataset.delPm);
+    persist(); render(); toast('Plan supprimé');
+  }));
+
+  // Fuel
+  const fn = document.querySelector('[data-open-modal="fuel-new"]');
+  if(fn) fn.addEventListener('click', ()=>{
+    const f = {id:null, equipementId: state.fleet[0]?.id||'', date:new Date().toISOString().slice(0,10), quantite:0, cout:0, heures:0, operateur:''};
+    openModal('Nouveau plein', fuelForm(f), (data)=>{
+      if(!data.equipementId||!data.quantite){ alert('Engin et quantité requis'); return; }
+      state.fuelLogs.push({...data, id:uid(), quantite:Number(data.quantite), cout:Number(data.cout), heures:Number(data.heures)});
+      persist(); closeModal(); render(); toast('Plein enregistré');
+    });
+  });
+  document.querySelectorAll('[data-edit-fuel]').forEach(b=>b.addEventListener('click',()=>{
+    const f = state.fuelLogs.find(x=>x.id===b.dataset.editFuel);
+    openModal('Modifier le plein', fuelForm(f), (data)=>{
+      Object.assign(f, data, {quantite:Number(data.quantite), cout:Number(data.cout), heures:Number(data.heures)});
+      persist(); closeModal(); render(); toast('Plein mis à jour');
+    });
+  }));
+  document.querySelectorAll('[data-del-fuel]').forEach(b=>b.addEventListener('click',()=>{
+    if(!confirm('Supprimer ce plein ?')) return;
+    state.fuelLogs = state.fuelLogs.filter(x=>x.id!==b.dataset.delFuel);
+    persist(); render(); toast('Plein supprimé');
+  }));
+
+  // Parts
+  const pn = document.querySelector('[data-open-modal="part-new"]');
+  if(pn) pn.addEventListener('click', ()=>{
+    const p = {id:null, ref:'', nom:'', quantite:0, seuil:2, coutUnitaire:0, fournisseur:''};
+    openModal('Nouvelle pièce', partForm(p), (data)=>{
+      if(!data.nom){ alert('Nom requis'); return; }
+      state.parts.push({...data, id:uid(), quantite:Number(data.quantite), seuil:Number(data.seuil), coutUnitaire:Number(data.coutUnitaire)});
+      persist(); closeModal(); render(); toast('Pièce ajoutée au stock');
+    });
+  });
+  document.querySelectorAll('[data-edit-part]').forEach(b=>b.addEventListener('click',()=>{
+    const p = state.parts.find(x=>x.id===b.dataset.editPart);
+    openModal('Modifier la pièce', partForm(p), (data)=>{
+      Object.assign(p, data, {quantite:Number(data.quantite), seuil:Number(data.seuil), coutUnitaire:Number(data.coutUnitaire)});
+      persist(); closeModal(); render(); toast('Pièce mise à jour');
+    });
+  }));
+  document.querySelectorAll('[data-del-part]').forEach(b=>b.addEventListener('click',()=>{
+    if(!confirm('Supprimer cette pièce ?')) return;
+    state.parts = state.parts.filter(x=>x.id!==b.dataset.delPart);
+    persist(); render(); toast('Pièce supprimée');
+  }));
+}
+
+/* ============ INIT ============ */
+document.getElementById('refresh-btn').addEventListener('click', async ()=>{
+  const btn = document.getElementById('refresh-btn');
+  btn.disabled = true; btn.textContent = '...';
+  const res = await loadRemote();
+  if(res.ok){
+    state = res.payload;
+    saveLocalCache();
+    render();
+    const stamp = res.updatedAt ? new Date(res.updatedAt).toLocaleTimeString('fr-FR') : '?';
+    setSyncStatus(true, 'donnée du serveur: '+stamp);
+  } else {
+    setSyncStatus(false, res.error);
+  }
+  btn.disabled = false; btn.textContent = 'Actualiser';
+});
+
+async function init(){
+  document.getElementById('content').innerHTML = '<div class="empty">Chargement…</div>';
+  let res = await loadRemote();
+  let data = null;
+  if(res.ok){
+    data = res.payload;
+    const stamp = res.updatedAt ? new Date(res.updatedAt).toLocaleTimeString('fr-FR') : '?';
+    setSyncStatus(true, 'donnée du serveur: '+stamp);
+  } else {
+    setSyncStatus(false, res.error);
+  }
+  if(!data){
+    data = loadLocalCache();
+  }
+  if(!data){
+    data = { fleet: seedFleet(), workOrders: [], fuelLogs: [], parts: [], pmPlans: [] };
+  }
+  state = data;
+  render();
+  persist();
+  startPolling();
+}
+init();
+
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('service-worker.js').catch(()=>{});
+  });
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+{
+  "name": "2NA ERP — Maintenance & Carburant",
+  "short_name": "2NA ERP",
+  "description": "Gestion de flotte, maintenance et carburant — CIGRAC",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#14171A",
+  "theme_color": "#14171A",
+  "orientation": "any",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "icon.svg", "sizes": "512x512", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}
