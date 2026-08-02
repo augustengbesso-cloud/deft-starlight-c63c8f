@@ -240,6 +240,7 @@ const LOCATION_TYPES = ["Site","Atelier","Ligne","Machine"];
 const NOTIF_STATUTS = ["Nouvelle","En traitement","Convertie en OT","Clôturée"];
 const NOTIF_PRIORITES = ["Basse","Normale","Haute","Urgente"];
 const POINT_TYPES = ["Compteur (heures/km)","Température","Vibration","Pression","Autre mesure"];
+const POSTES = ["Électricien","Mécanicien","Soudeur","Hydraulicien","Automaticien","Chaudronnier","Opérateur","Autre"];
 
 function seedLocations(){
   const cigrac = { id: uid(), code:"CIGRAC", nom:"Site CIGRAC", type:"Site", parentId:null };
@@ -285,7 +286,7 @@ function seedFleet(){
   }));
 }
 
-let state = { fleet: [], workOrders: [], fuelLogs: [], parts: [], pmPlans: [], locations: [], plantEquipment: [], notifications: [], measuringPoints: [], costCenters: [], productionLogs: [] };
+let state = { fleet: [], workOrders: [], fuelLogs: [], parts: [], pmPlans: [], locations: [], plantEquipment: [], notifications: [], measuringPoints: [], costCenters: [], productionLogs: [], woCounter: 0 };
 let currentView = 'dashboard';
 
 /* ============ HELPERS ============ */
@@ -547,7 +548,7 @@ function viewWO(){
         <option ${woFilter==='Tous'?'selected':''}>Tous</option>
         ${WO_STATUTS.map(s=>`<option ${woFilter===s?'selected':''}>${s}</option>`).join('')}
       </select>
-      <button class="btn btn-accent" data-open-modal="wo-new">${ICONS.plus} Nouvel OT</button>
+      <button class="btn btn-accent" data-open-wo="new">${ICONS.plus} Nouvel OT</button>
     </div>
   </div>
   ${sorted.length===0?`<div class="plate p16"><div class="empty">${ICONS.wrench}<span>Aucun ordre de travail.</span></div></div>`:
@@ -558,38 +559,164 @@ function viewWO(){
       <span class="led" style="background:${w.statut==='Terminé'?'var(--success)':w.statut==='En cours'?'var(--accent)':'var(--muted)'}"></span>
       <div>
         <div class="row" style="flex-wrap:wrap;">
+          <span class="mono" style="font-size:11px;color:var(--muted);">${w.numero||'—'}</span>
           <span style="font-size:13px;font-weight:500;">${esc(w.titre)}</span>
           <span class="badge">${w.type}</span>
+          ${w.poste?`<span class="badge">${esc(w.poste)}</span>`:''}
           ${w.priorite==='Urgente'?`<span class="badge badge-danger">URGENT</span>`:''}
         </div>
-        <div style="font-size:12px;color:var(--muted);">${em[w.equipementId]?.code||'—'} · ${w.dateCreation||''} ${w.technicien?`· ${esc(w.technicien)}`:''}</div>
+        <div style="font-size:12px;color:var(--muted);">
+          ${em[w.equipementId]?.code||'—'} · Début ${w.dateDebut||w.dateCreation||'—'}${w.dateFin?` · Fin ${w.dateFin}`:''}
+          ${w.operations&&w.operations.length?` · ${w.operations.length} opération(s)`:''}
+          ${w.piecesUtilisees&&w.piecesUtilisees.length?` · ${w.piecesUtilisees.length} pièce(s)`:''}
+        </div>
       </div>
     </div>
     <div class="row">
       <span style="font-size:12px;color:${w.statut==='Terminé'?'var(--success)':w.statut==='En cours'?'var(--accent)':'var(--muted)'}">${w.statut}</span>
       ${w.cout>0?`<span class="mono" style="font-size:12px;color:var(--muted);">${fmt(w.cout)} FCFA</span>`:''}
-      <button class="icon-btn" data-edit-wo="${w.id}">${ICONS.edit}</button>
+      <button class="icon-btn" data-open-wo="${w.id}">${ICONS.edit}</button>
       <button class="icon-btn" data-del-wo="${w.id}">${ICONS.trash}</button>
     </div>
   </div>`).join('')}
   </div>`}`;
 }
-function woForm(w){
-  const opts = state.fleet.map(e=>`<option value="${e.id}" ${w.equipementId===e.id?'selected':''}>${e.code} — ${e.nom}</option>`).join('');
-  return `
-  <div class="formgrid">
-    <label class="field"><span>Engin</span><select data-f="equipementId">${opts}</select></label>
-    <label class="field"><span>Type</span><select data-f="type"><option ${w.type==='Correctif'?'selected':''}>Correctif</option><option ${w.type==='Préventif'?'selected':''}>Préventif</option></select></label>
-    <label class="field span2"><span>Titre</span><input data-f="titre" value="${esc(w.titre)}" placeholder="Remplacement flexible hydraulique"/></label>
-    <label class="field span2"><span>Description</span><textarea data-f="description" rows="3">${esc(w.description)}</textarea></label>
-    <label class="field"><span>Priorité</span><select data-f="priorite">${WO_PRIORITES.map(p=>`<option ${w.priorite===p?'selected':''}>${p}</option>`).join('')}</select></label>
-    <label class="field"><span>Statut</span><select data-f="statut">${WO_STATUTS.map(s=>`<option ${w.statut===s?'selected':''}>${s}</option>`).join('')}</select></label>
-    <label class="field"><span>Technicien</span><input data-f="technicien" value="${esc(w.technicien)}"/></label>
-    <label class="field"><span>Coût (FCFA)</span><input type="number" data-f="cout" value="${w.cout||0}"/></label>
-    <label class="field"><span>Date de création</span><input type="date" data-f="dateCreation" value="${w.dateCreation||''}"/></label>
-    <label class="field"><span>Date de fin</span><input type="date" data-f="dateFin" value="${w.dateFin||''}"/></label>
-  </div>`;
+
+/* ============ Modal Ordre de Travail (dynamique : opérations + pièces) ============ */
+let woDraft = null;
+let woIsNew = false;
+function blankWO(){
+  return { id:null, numero:null, equipementId: state.fleet[0]?.id||state.plantEquipment[0]?.id||'', type:'Correctif',
+    poste: POSTES[0], titre:'', description:'', priorite:'Normale', statut:'Ouvert',
+    dateCreation:new Date().toISOString().slice(0,10), dateDebut:new Date().toISOString().slice(0,10), dateFin:'',
+    technicien:'', cout:0, operations:[], piecesUtilisees:[] };
 }
+function openWOModal(id){
+  woIsNew = (id==='new');
+  woDraft = woIsNew ? blankWO() : JSON.parse(JSON.stringify(state.workOrders.find(x=>x.id===id)));
+  if(!woDraft.operations) woDraft.operations=[];
+  if(!woDraft.piecesUtilisees) woDraft.piecesUtilisees=[];
+  renderWOModal();
+}
+function renderWOModal(){
+  const w = woDraft;
+  const allEquip = [...state.fleet.map(e=>({...e,grp:'Flotte'})), ...state.plantEquipment.map(e=>({...e,grp:'Usine'}))];
+  const equipOpts = allEquip.map(e=>`<option value="${e.id}" ${w.equipementId===e.id?'selected':''}>[${e.grp}] ${e.code} — ${e.nom}</option>`).join('');
+  const partOpts = state.parts.map(p=>`<option value="${p.id}">${esc(p.ref||p.nom)} — ${esc(p.nom)} (stock: ${p.quantite})</option>`).join('');
+
+  const body = `
+  <div class="formgrid">
+    <label class="field"><span>N° d'ordre</span><input value="${w.numero||"Généré à l'enregistrement"}" disabled style="opacity:.6"/></label>
+    <label class="field"><span>Équipement</span><select id="wo-f-equip">${equipOpts}</select></label>
+    <label class="field span2"><span>Libellé</span><input id="wo-f-titre" value="${esc(w.titre)}" placeholder="Remplacement flexible hydraulique"/></label>
+    <label class="field span2"><span>Description</span><textarea id="wo-f-desc" rows="2">${esc(w.description)}</textarea></label>
+    <label class="field"><span>Type</span><select id="wo-f-type"><option ${w.type==='Correctif'?'selected':''}>Correctif</option><option ${w.type==='Préventif'?'selected':''}>Préventif</option></select></label>
+    <label class="field"><span>Poste responsable</span><select id="wo-f-poste">${POSTES.map(p=>`<option ${w.poste===p?'selected':''}>${p}</option>`).join('')}</select></label>
+    <label class="field"><span>Priorité</span><select id="wo-f-priorite">${WO_PRIORITES.map(p=>`<option ${w.priorite===p?'selected':''}>${p}</option>`).join('')}</select></label>
+    <label class="field"><span>Statut</span><select id="wo-f-statut">${WO_STATUTS.map(s=>`<option ${w.statut===s?'selected':''}>${s}</option>`).join('')}</select></label>
+    <label class="field"><span>Date début</span><input type="date" id="wo-f-debut" value="${w.dateDebut||w.dateCreation||''}"/></label>
+    <label class="field"><span>Date fin</span><input type="date" id="wo-f-fin" value="${w.dateFin||''}"/></label>
+    <label class="field"><span>Technicien</span><input id="wo-f-tech" value="${esc(w.technicien)}"/></label>
+    <label class="field"><span>Coût (FCFA)</span><input type="number" id="wo-f-cout" value="${w.cout||0}"/></label>
+  </div>
+
+  <div style="margin-top:16px;">
+    <div class="between" style="margin-bottom:6px;"><span style="font-size:12px;color:var(--muted);">Opérations effectuées</span></div>
+    <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px;">
+      ${w.operations.length===0?`<span style="font-size:12px;color:var(--muted);">Aucune opération ajoutée.</span>`:
+      w.operations.map((op,i)=>`<div class="between card-item" style="padding:6px 10px;"><span style="font-size:13px;">${esc(op)}</span><button class="icon-btn" data-wo-op-del="${i}">${ICONS.trash}</button></div>`).join('')}
+    </div>
+    <div class="row">
+      <input id="wo-op-input" placeholder="Ex: Remplacement du roulement avant" style="flex:1;"/>
+      <button class="btn btn-ghost" id="wo-op-add" type="button">${ICONS.plus} Ajouter</button>
+    </div>
+  </div>
+
+  <div style="margin-top:16px;">
+    <div class="between" style="margin-bottom:6px;"><span style="font-size:12px;color:var(--muted);">Pièces / composants utilisés</span></div>
+    <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px;">
+      ${w.piecesUtilisees.length===0?`<span style="font-size:12px;color:var(--muted);">Aucune pièce ajoutée.</span>`:
+      w.piecesUtilisees.map((pu,i)=>{ const pt=state.parts.find(p=>p.id===pu.partId);
+      return `<div class="between card-item" style="padding:6px 10px;"><span style="font-size:13px;">${pt?esc(pt.nom):'Pièce supprimée'} × ${pu.quantite}</span><button class="icon-btn" data-wo-part-del="${i}">${ICONS.trash}</button></div>`;}).join('')}
+    </div>
+    ${state.parts.length===0?`<span style="font-size:12px;color:var(--muted);">Aucune pièce en stock — ajoute-en dans "Pièces / Stock".</span>`:
+    `<div class="row">
+      <select id="wo-part-select" style="flex:1;">${partOpts}</select>
+      <input id="wo-part-qty" type="number" value="1" min="1" style="width:70px;"/>
+      <button class="btn btn-ghost" id="wo-part-add" type="button">${ICONS.plus} Ajouter</button>
+    </div>`}
+  </div>
+  <div class="modal-actions">
+    <button class="btn btn-ghost" id="wo-cancel">Annuler</button>
+    <button class="btn btn-accent" id="wo-save">Enregistrer</button>
+  </div>`;
+
+  const root = document.getElementById('modal-root');
+  root.innerHTML = `
+  <div class="modal-overlay" id="wo-overlay">
+    <div class="modal">
+      <div class="modal-head"><h3>${woIsNew?"Nouvel ordre de travail":"Modifier l'ordre de travail"}</h3><button class="icon-btn" id="wo-close">${ICONS.close}</button></div>
+      <div class="modal-body">${body}</div>
+    </div>
+  </div>`;
+
+  document.getElementById('wo-overlay').addEventListener('click', e=>{ if(e.target.id==='wo-overlay') closeWOModal(); });
+  document.getElementById('wo-close').addEventListener('click', closeWOModal);
+  document.getElementById('wo-cancel').addEventListener('click', closeWOModal);
+
+  document.getElementById('wo-op-add').addEventListener('click', ()=>{
+    const input = document.getElementById('wo-op-input');
+    if(input.value.trim()){ w.operations.push(input.value.trim()); renderWOModal(); }
+  });
+  document.querySelectorAll('[data-wo-op-del]').forEach(b=>b.addEventListener('click',()=>{
+    w.operations.splice(Number(b.dataset.woOpDel),1); renderWOModal();
+  }));
+  const partAddBtn = document.getElementById('wo-part-add');
+  if(partAddBtn) partAddBtn.addEventListener('click', ()=>{
+    const partId = document.getElementById('wo-part-select').value;
+    const qty = Number(document.getElementById('wo-part-qty').value)||1;
+    if(partId){ w.piecesUtilisees.push({partId, quantite:qty}); renderWOModal(); }
+  });
+  document.querySelectorAll('[data-wo-part-del]').forEach(b=>b.addEventListener('click',()=>{
+    w.piecesUtilisees.splice(Number(b.dataset.woPartDel),1); renderWOModal();
+  }));
+
+  document.getElementById('wo-save').addEventListener('click', ()=>{
+    w.equipementId = document.getElementById('wo-f-equip').value;
+    w.titre = document.getElementById('wo-f-titre').value;
+    w.description = document.getElementById('wo-f-desc').value;
+    w.type = document.getElementById('wo-f-type').value;
+    w.poste = document.getElementById('wo-f-poste').value;
+    w.priorite = document.getElementById('wo-f-priorite').value;
+    w.statut = document.getElementById('wo-f-statut').value;
+    w.dateDebut = document.getElementById('wo-f-debut').value;
+    w.dateFin = document.getElementById('wo-f-fin').value;
+    w.technicien = document.getElementById('wo-f-tech').value;
+    w.cout = Number(document.getElementById('wo-f-cout').value)||0;
+    w.dateCreation = w.dateCreation || w.dateDebut;
+    if(!w.titre || !w.equipementId){ alert('Libellé et équipement requis'); return; }
+    if(w.statut==='Terminé' && !w.dateFin) w.dateFin = new Date().toISOString().slice(0,10);
+
+    if(woIsNew){
+      state.woCounter = (state.woCounter||0)+1;
+      w.numero = 'OT-'+String(state.woCounter).padStart(4,'0');
+      w.id = uid();
+      state.workOrders.push(w);
+      // décrémente le stock des pièces utilisées à la création
+      w.piecesUtilisees.forEach(pu=>{
+        const pt = state.parts.find(p=>p.id===pu.partId);
+        if(pt) pt.quantite = Math.max(0, Number(pt.quantite) - Number(pu.quantite));
+      });
+      if(w.statut!=='Terminé'){ const eq=[...state.fleet,...state.plantEquipment].find(x=>x.id===w.equipementId); if(eq) eq.statut='En maintenance'; }
+      persist(); closeWOModal(); render(); toast('Ordre de travail '+w.numero+' créé');
+    } else {
+      const idx = state.workOrders.findIndex(x=>x.id===w.id);
+      if(idx>-1) state.workOrders[idx] = w;
+      persist(); closeWOModal(); render(); toast('Ordre de travail mis à jour');
+    }
+  });
+}
+function closeWOModal(){ document.getElementById('modal-root').innerHTML=''; woDraft=null; }
 
 /* ============ PREVENTIVE ============ */
 function viewPM(){
@@ -1037,24 +1164,8 @@ function attachHandlers(){
   // Work orders
   const wf = document.getElementById('wo-filter');
   if(wf) wf.addEventListener('change', e=>{ woFilter=e.target.value; render(); });
-  const won = document.querySelector('[data-open-modal="wo-new"]');
-  if(won) won.addEventListener('click', ()=>{
-    const w = {id:null, equipementId: state.fleet[0]?.id||'', type:'Correctif', titre:'', description:'', priorite:'Normale', statut:'Ouvert', dateCreation:new Date().toISOString().slice(0,10), dateFin:'', technicien:'', cout:0};
-    openModal('Nouvel ordre de travail', woForm(w), (data)=>{
-      if(!data.titre||!data.equipementId){ alert('Titre et engin requis'); return; }
-      if(data.statut==='Terminé' && !data.dateFin) data.dateFin = new Date().toISOString().slice(0,10);
-      state.workOrders.push({...data, id:uid(), cout:Number(data.cout)});
-      if(data.statut!=='Terminé'){ const eq = state.fleet.find(x=>x.id===data.equipementId); if(eq) eq.statut='En maintenance'; }
-      persist(); closeModal(); render(); toast('Ordre de travail créé');
-    });
-  });
-  document.querySelectorAll('[data-edit-wo]').forEach(b=>b.addEventListener('click',()=>{
-    const w = state.workOrders.find(x=>x.id===b.dataset.editWo);
-    openModal("Modifier l'ordre de travail", woForm(w), (data)=>{
-      if(data.statut==='Terminé' && !data.dateFin) data.dateFin = new Date().toISOString().slice(0,10);
-      Object.assign(w, data, {cout:Number(data.cout)});
-      persist(); closeModal(); render(); toast('Ordre de travail mis à jour');
-    });
+  document.querySelectorAll('[data-open-wo]').forEach(b=>b.addEventListener('click',()=>{
+    openWOModal(b.dataset.openWo);
   }));
   document.querySelectorAll('[data-del-wo]').forEach(b=>b.addEventListener('click',()=>{
     if(!confirm('Supprimer cet ordre de travail ?')) return;
@@ -1230,15 +1341,19 @@ function attachHandlers(){
   document.querySelectorAll('[data-convert-notif]').forEach(b=>b.addEventListener('click',()=>{
     const n = state.notifications.find(x=>x.id===b.dataset.convertNotif);
     if(!n) return;
+    state.woCounter = (state.woCounter||0)+1;
     const wo = {
-      id:uid(), equipementId:n.equipementId, type:'Correctif', titre:n.description.slice(0,60),
+      id:uid(), numero:'OT-'+String(state.woCounter).padStart(4,'0'), equipementId:n.equipementId, type:'Correctif',
+      poste:POSTES[0], titre:n.description.slice(0,60),
       description:n.description, priorite:n.priorite, statut:'Ouvert',
-      dateCreation:new Date().toISOString().slice(0,10), dateFin:'', technicien:'', cout:0
+      dateCreation:new Date().toISOString().slice(0,10), dateDebut:new Date().toISOString().slice(0,10), dateFin:'',
+      technicien:'', cout:0, operations:[], piecesUtilisees:[]
     };
     state.workOrders.push(wo);
     n.statut = 'Convertie en OT';
     n.workOrderId = wo.id;
-    persist(); render(); toast('Notification convertie en ordre de travail');
+    const eq=[...state.fleet,...state.plantEquipment].find(x=>x.id===n.equipementId); if(eq) eq.statut='En maintenance';
+    persist(); render(); toast('Notification convertie en '+wo.numero);
   }));
 
   // Compteurs / mesures
@@ -1324,7 +1439,7 @@ async function init(){
     const locs = seedLocations();
     data = { fleet: seedFleet(), workOrders: [], fuelLogs: [], parts: [], pmPlans: [],
       locations: locs, plantEquipment: seedPlantEquipment(locs), notifications: [], measuringPoints: [],
-      costCenters: seedCostCenters(), productionLogs: [] };
+      costCenters: seedCostCenters(), productionLogs: [], woCounter: 0 };
   } else {
     // compatibilité ascendante : ajoute le module usine si absent d'un compte existant
     if(!data.locations || data.locations.length===0){
@@ -1338,6 +1453,15 @@ async function init(){
     data.measuringPoints = data.measuringPoints || [];
     data.costCenters = (data.costCenters && data.costCenters.length) ? data.costCenters : seedCostCenters();
     data.productionLogs = data.productionLogs || [];
+    // compatibilité ascendante : numérote les anciens ordres de travail et complète les nouveaux champs
+    data.woCounter = data.woCounter || 0;
+    (data.workOrders||[]).sort((a,b)=>(a.dateCreation||'').localeCompare(b.dateCreation||'')).forEach(w=>{
+      if(!w.numero){ data.woCounter++; w.numero = 'OT-'+String(data.woCounter).padStart(4,'0'); }
+      if(!w.poste) w.poste = POSTES[0];
+      if(!w.dateDebut) w.dateDebut = w.dateCreation || '';
+      if(!w.operations) w.operations = [];
+      if(!w.piecesUtilisees) w.piecesUtilisees = [];
+    });
   }
   state = data;
   render();
