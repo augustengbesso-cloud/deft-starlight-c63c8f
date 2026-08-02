@@ -1,7 +1,7 @@
 {
   "name": "2NA ERP — Maintenance & Carburant",
   "short_name": "2NA ERP",
-  "description": "Gestion de flotte, maintenance et carburant — CIGRAC",
+  "description": "Gestion de flotte, maintenance et carburant",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

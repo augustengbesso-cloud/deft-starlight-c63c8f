@@ -32,6 +32,8 @@ nav{flex:1;padding:12px 8px;display:flex;flex-direction:column;gap:2px;}
 .navbtn:hover{color:var(--text);}
 .navbtn.active{background:var(--panelR);color:var(--accent);border-left:2px solid var(--accent);}
 .navbtn svg{flex-shrink:0;}
+.nav-section{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);padding:14px 12px 4px;font-family:'Oswald',sans-serif;}
+.nav-section:first-child{padding-top:4px;}
 .sidebar-foot{padding:12px 16px;font-size:10px;color:var(--muted);border-top:1px solid var(--border);}
 /* Main */
 #main{flex:1;min-width:0;overflow-y:auto;height:100vh;}
@@ -99,7 +101,7 @@ td{padding:9px 12px;border-bottom:1px solid var(--border);}
 #refresh-btn{margin-left:auto;padding:5px 10px;font-size:12px;flex-shrink:0;}
 @media(max-width:700px){
   #sidebar{width:64px;}
-  .brand-sub, .navbtn span.label, .sidebar-foot{display:none;}
+  .brand-sub, .navbtn span.label, .sidebar-foot, .nav-section{display:none;}
   .brand-title{display:none;}
   .navbtn{justify-content:center;}
   .formgrid{grid-template-columns:1fr;}
@@ -111,7 +113,7 @@ td{padding:9px 12px;border-bottom:1px solid var(--border);}
   <aside id="sidebar">
     <div class="brand">
       <div class="brand-row"><span class="dot"></span><span class="brand-title">2NA · ERP</span></div>
-      <div class="brand-sub">Maintenance & Carburant — CIGRAC</div>
+      <div class="brand-sub">Maintenance & Carburant</div>
     </div>
     <nav id="nav"></nav>
     <div class="sidebar-foot">
@@ -157,6 +159,13 @@ const ICONS = {
   alert:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/></svg>',
   check:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m20 6-11 11-5-5"/></svg>',
   search:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>',
+  layers:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 2 9 5-9 5-9-5 9-5Z"/><path d="m3 12 9 5 9-5M3 17l9 5 9-5"/></svg>',
+  bell:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>',
+  activity:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>',
+  wallet:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>',
+  factory:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 20h20M4 20V10l5 3V10l5 3V10l4 3v7"/><path d="M6 14v.01M10 14v.01M14 14v.01"/></svg>',
+  convert:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 7h10l-3-3m3 13H7l3 3"/></svg>',
+  ruler:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.3 8.7 15.3 2.7a1 1 0 0 0-1.4 0L2.7 13.9a1 1 0 0 0 0 1.4l6 6a1 1 0 0 0 1.4 0L21.3 10a1 1 0 0 0 0-1.3Z"/><path d="m14.5 5.5 2 2M11.5 8.5l2 2M8.5 11.5l2 2M5.5 14.5l2 2"/></svg>',
 };
 
 /* ============ STORAGE (Supabase + cache local hors-ligne) ============ */
@@ -222,10 +231,45 @@ function startPolling(){
 }
 
 const uid = () => Math.random().toString(36).slice(2,10);
-const EQUIP_TYPES = ["Pelleteuse","Tombereau","Foreuse","Groupe électrogène"];
+const EQUIP_TYPES = ["Pelleteuse","Tombereau","Foreuse","Groupe électrogène","Ligne de production","Machine industrielle","Convoyeur","Emballeuse","Autre"];
 const STATUTS = ["Opérationnel","En maintenance","En panne","À l'arrêt"];
 const WO_STATUTS = ["Ouvert","En cours","Terminé"];
 const WO_PRIORITES = ["Basse","Normale","Haute","Urgente"];
+const SITES = ["CIGRAC","Usine"];
+const LOCATION_TYPES = ["Site","Atelier","Ligne","Machine"];
+const NOTIF_STATUTS = ["Nouvelle","En traitement","Convertie en OT","Clôturée"];
+const NOTIF_PRIORITES = ["Basse","Normale","Haute","Urgente"];
+const POINT_TYPES = ["Compteur (heures/km)","Température","Vibration","Pression","Autre mesure"];
+
+function seedLocations(){
+  const cigrac = { id: uid(), code:"CIGRAC", nom:"Site CIGRAC", type:"Site", parentId:null };
+  const usine = { id: uid(), code:"USINE", nom:"Usine de production", type:"Site", parentId:null };
+  const atelier = { id: uid(), code:"USINE-AT1", nom:"Atelier Production", type:"Atelier", parentId: usine.id };
+  const ligne1 = { id: uid(), code:"USINE-L1", nom:"Ligne 1", type:"Ligne", parentId: atelier.id };
+  const ligne2 = { id: uid(), code:"USINE-L2", nom:"Ligne 2", type:"Ligne", parentId: atelier.id };
+  return [cigrac, usine, atelier, ligne1, ligne2];
+}
+
+function seedPlantEquipment(locations){
+  const ligne1 = locations.find(l=>l.code==="USINE-L1");
+  const ligne2 = locations.find(l=>l.code==="USINE-L2");
+  const defs = [
+    { code:"CONV-01", nom:"Convoyeur principal", type:"Convoyeur", loc: ligne1 },
+    { code:"EMB-01", nom:"Emballeuse automatique", type:"Emballeuse", loc: ligne1 },
+    { code:"LIGNE-02", nom:"Ligne de conditionnement 2", type:"Ligne de production", loc: ligne2 },
+  ];
+  return defs.map(d=>({
+    id:uid(), code:d.code, nom:d.nom, type:d.type, statut:"Opérationnel",
+    emplacementId: d.loc ? d.loc.id : null, centreCoutId:null, dateMiseEnService:""
+  }));
+}
+
+function seedCostCenters(){
+  return [
+    { id:uid(), code:"MAINT-FLOTTE", nom:"Maintenance Flotte CIGRAC", budgetAnnuel:0 },
+    { id:uid(), code:"MAINT-USINE", nom:"Maintenance Usine Production", budgetAnnuel:0 },
+  ];
+}
 
 function seedFleet(){
   const defs = [
@@ -241,7 +285,7 @@ function seedFleet(){
   }));
 }
 
-let state = { fleet: [], workOrders: [], fuelLogs: [], parts: [], pmPlans: [] };
+let state = { fleet: [], workOrders: [], fuelLogs: [], parts: [], pmPlans: [], locations: [], plantEquipment: [], notifications: [], measuringPoints: [], costCenters: [], productionLogs: [] };
 let currentView = 'dashboard';
 
 /* ============ HELPERS ============ */
@@ -252,7 +296,13 @@ function statutColor(s){
   return "var(--muted)";
 }
 function fmt(n){ return Number(n||0).toLocaleString('fr-FR'); }
-function equipMap(){ return Object.fromEntries(state.fleet.map(e=>[e.id,e])); }
+function equipMap(){ return Object.fromEntries([...state.fleet, ...state.plantEquipment].map(e=>[e.id,e])); }
+function locMap(){ return Object.fromEntries(state.locations.map(l=>[l.id,l])); }
+function locPath(id){
+  const map = locMap(); const parts=[]; let cur = map[id]; let guard=0;
+  while(cur && guard<10){ parts.unshift(cur.nom); cur = cur.parentId ? map[cur.parentId] : null; guard++; }
+  return parts.join(' › ') || '—';
+}
 function toast(msg){
   const el = document.createElement('div');
   el.className = 'toast';
@@ -264,22 +314,39 @@ function esc(s){ return (s===undefined||s===null)?'':String(s).replace(/[&<>"']/
 
 /* ============ NAV ============ */
 const NAV = [
-  {id:'dashboard', label:'Tableau de bord', icon:'gauge'},
-  {id:'fleet', label:'Flotte', icon:'truck'},
-  {id:'wo', label:'Ordres de travail', icon:'wrench'},
-  {id:'pm', label:'Préventif', icon:'calendar'},
-  {id:'fuel', label:'Carburant', icon:'fuel'},
-  {id:'parts', label:'Pièces / Stock', icon:'package'},
-  {id:'reports', label:'Rapports', icon:'report'},
+  { section:'Vue d\'ensemble', items:[
+    {id:'dashboard', label:'Tableau de bord', icon:'gauge'},
+  ]},
+  { section:'Flotte (CIGRAC)', items:[
+    {id:'fleet', label:'Flotte', icon:'truck'},
+    {id:'wo', label:'Ordres de travail', icon:'wrench'},
+    {id:'pm', label:'Préventif', icon:'calendar'},
+    {id:'fuel', label:'Carburant', icon:'fuel'},
+    {id:'parts', label:'Pièces / Stock', icon:'package'},
+  ]},
+  { section:'Usine (Production)', items:[
+    {id:'floc', label:'Emplacements', icon:'layers'},
+    {id:'plant', label:'Équipements usine', icon:'factory'},
+    {id:'production', label:'Production / OEE', icon:'activity'},
+    {id:'notif', label:'Notifications', icon:'bell'},
+    {id:'measures', label:'Compteurs / mesures', icon:'ruler'},
+  ]},
+  { section:'Pilotage', items:[
+    {id:'costs', label:'Centres de coûts', icon:'wallet'},
+    {id:'reports', label:'Rapports', icon:'report'},
+  ]},
 ];
 function renderNav(){
   const nav = document.getElementById('nav');
-  nav.innerHTML = NAV.map(n=>`
+  nav.innerHTML = NAV.map(group=>`
+    <div class="nav-section">${group.section}</div>
+    ${group.items.map(n=>`
     <button class="navbtn ${currentView===n.id?'active':''}" data-nav="${n.id}">
       ${ICONS[n.icon]}<span class="label">${n.label}</span>
-    </button>`).join('');
+    </button>`).join('')}
+  `).join('');
   nav.querySelectorAll('[data-nav]').forEach(b=>b.addEventListener('click',()=>{ currentView=b.dataset.nav; render(); }));
-  document.getElementById('fleet-count').textContent = `${state.fleet.length} engins suivis`;
+  document.getElementById('fleet-count').textContent = `${state.fleet.length} engins · ${state.plantEquipment.length} machines`;
 }
 
 /* ============ KPIs ============ */
@@ -295,7 +362,24 @@ function computeKpis(){
   const litresTotal = state.fuelLogs.reduce((a,f)=>a+Number(f.quantite||0),0);
   const ouverts = state.workOrders.filter(w=>w.statut!=="Terminé").length;
   const partsBas = state.parts.filter(p=>Number(p.quantite)<=Number(p.seuil)).length;
-  return {disponibilite, pannes, mttrH, coutMaintenance, coutCarburant, litresTotal, ouverts, partsBas, total};
+
+  const totalPlant = state.plantEquipment.length || 1;
+  const dispoPlant = state.plantEquipment.filter(e=>e.statut==="Opérationnel").length;
+  const disponibilitePlant = Math.round((dispoPlant/totalPlant)*1000)/10;
+  const notifOuvertes = state.notifications.filter(n=>n.statut!=="Clôturée" && n.statut!=="Convertie en OT").length;
+  const oeeList = state.productionLogs.map(oeeOf).filter(v=>v!==null);
+  const oeeMoyen = oeeList.length ? Math.round(oeeList.reduce((a,b)=>a+b,0)/oeeList.length*10)/10 : null;
+
+  return {disponibilite, pannes, mttrH, coutMaintenance, coutCarburant, litresTotal, ouverts, partsBas, total,
+    disponibilitePlant, notifOuvertes, oeeMoyen, totalPlant: state.plantEquipment.length};
+}
+function oeeOf(p){
+  const fonct = Number(p.tempsFonctionnementMin||0), arret = Number(p.tempsArretMin||0);
+  const dispo = (fonct+arret)>0 ? fonct/(fonct+arret) : null;
+  const perf = p.quantitePrevue>0 ? Math.min(1, Number(p.quantiteProduite||0)/Number(p.quantitePrevue)) : null;
+  const qual = p.quantiteProduite>0 ? Math.max(0,(Number(p.quantiteProduite)-Number(p.piecesRebut||0))/Number(p.quantiteProduite)) : null;
+  if(dispo===null||perf===null||qual===null) return null;
+  return dispo*perf*qual*100;
 }
 
 /* ============ RENDER ROOT ============ */
@@ -308,6 +392,12 @@ function render(){
   else if(currentView==='pm') c.innerHTML = viewPM();
   else if(currentView==='fuel') c.innerHTML = viewFuel();
   else if(currentView==='parts') c.innerHTML = viewParts();
+  else if(currentView==='floc') c.innerHTML = viewFLoc();
+  else if(currentView==='plant') c.innerHTML = viewPlant();
+  else if(currentView==='production') c.innerHTML = viewProduction();
+  else if(currentView==='notif') c.innerHTML = viewNotif();
+  else if(currentView==='measures') c.innerHTML = viewMeasures();
+  else if(currentView==='costs') c.innerHTML = viewCosts();
   else if(currentView==='reports') c.innerHTML = viewReports();
   attachHandlers();
 }
@@ -325,23 +415,29 @@ function viewDashboard(){
   const em = equipMap();
   const alerts = [];
   state.fleet.filter(e=>e.statut==="En panne").forEach(e=>alerts.push({lvl:'danger',text:`${e.code} — ${e.nom} est en panne`}));
+  state.plantEquipment.filter(e=>e.statut==="En panne").forEach(e=>alerts.push({lvl:'danger',text:`${e.code} — ${e.nom} (usine) est en panne`}));
   state.parts.filter(p=>Number(p.quantite)<=Number(p.seuil)).forEach(p=>alerts.push({lvl:'accent',text:`Stock bas : ${p.nom} (${p.quantite} restant)`}));
   const now = new Date();
   state.pmPlans.filter(p=>p.prochaine && (new Date(p.prochaine)-now)/864e5<=7).forEach(p=>alerts.push({lvl:'accent',text:`Entretien à échéance : ${em[p.equipementId]?.code||'?'} — ${p.tache}`}));
+  state.notifications.filter(n=>n.statut==="Nouvelle" && n.priorite==="Urgente").forEach(n=>alerts.push({lvl:'danger',text:`Notification urgente : ${em[n.equipementId]?.code||'?'} — ${n.description}`}));
+  state.measuringPoints.filter(m=>m.seuilMax!=='' && m.dernierReleve!=='' && Number(m.dernierReleve)>Number(m.seuilMax)).forEach(m=>alerts.push({lvl:'accent',text:`Mesure hors seuil : ${em[m.equipementId]?.code||'?'} — ${m.nom} (${m.dernierReleve})`}));
   const recentWO = [...state.workOrders].sort((a,b)=>(b.dateCreation||'').localeCompare(a.dateCreation||'')).slice(0,6);
 
   return `
   <h1>Tableau de bord</h1>
-  <p class="subtitle">Vue d'ensemble de la flotte, maintenance et carburant</p>
-  <div class="grid grid-kpi" style="margin-bottom:20px;">
-    ${kpiCard('Disponibilité', k.disponibilite,'%','gauge', k.disponibilite>=80?'var(--success)':'var(--danger)', `${k.total} engins suivis`)}
+  <p class="subtitle">Vue d'ensemble flotte CIGRAC & usine de production</p>
+  <div class="grid grid-kpi" style="margin-bottom:12px;">
+    ${kpiCard('Disponibilité flotte', k.disponibilite,'%','gauge', k.disponibilite>=80?'var(--success)':'var(--danger)', `${k.total} engins suivis`)}
     ${kpiCard('MTTR', k.mttrH.toFixed(1),'h','wrench','var(--steel)','Temps moyen de réparation')}
     ${kpiCard('OT en cours', k.ouverts,'','wrench','var(--accent)','Ordres de travail ouverts')}
-    ${kpiCard('Engins en panne', k.pannes,'','alert', k.pannes?'var(--danger)':'var(--success)','Statut critique')}
     ${kpiCard('Coût maintenance', fmt(k.coutMaintenance),'FCFA','report','var(--text)','Cumul ordres de travail')}
     ${kpiCard('Carburant', fmt(k.litresTotal),'L','fuel','var(--steel)','Cumul flotte')}
-    ${kpiCard('Coût carburant', fmt(k.coutCarburant),'FCFA','fuel','var(--text)','Cumul flotte')}
     ${kpiCard('Stock critique', k.partsBas,'','package', k.partsBas?'var(--accent)':'var(--success)','Pièces sous seuil')}
+  </div>
+  <div class="grid grid-kpi" style="margin-bottom:20px;">
+    ${kpiCard('Disponibilité usine', k.disponibilitePlant,'%','factory', k.disponibilitePlant>=80?'var(--success)':'var(--danger)', `${k.totalPlant} machines suivies`)}
+    ${kpiCard('OEE moyen', k.oeeMoyen!==null?k.oeeMoyen.toFixed(1):'—','%','activity', k.oeeMoyen!==null&&k.oeeMoyen>=75?'var(--success)':'var(--accent)','Basé sur relevés production')}
+    ${kpiCard('Notifications ouvertes', k.notifOuvertes,'','bell', k.notifOuvertes?'var(--accent)':'var(--success)','Pannes/anomalies non traitées')}
   </div>
   <div class="grid grid-2" style="margin-bottom:16px;">
     <div class="plate p16">
@@ -365,13 +461,25 @@ function viewDashboard(){
         </div>`}
     </div>
   </div>
-  <div class="plate p16">
-    <h3 class="oswald" style="text-transform:uppercase;font-size:14px;margin:0 0 10px;">État de la flotte</h3>
-    <div class="grid grid-status">
-      ${state.fleet.map(e=>`<div class="card-item">
-        <div class="row"><span class="led" style="background:${statutColor(e.statut)}"></span><span class="mono" style="font-size:12px;">${e.code}</span></div>
-        <div style="font-size:10px;color:var(--muted);margin-top:2px;">${e.type}</div>
-      </div>`).join('')}
+  <div class="grid grid-2">
+    <div class="plate p16">
+      <h3 class="oswald" style="text-transform:uppercase;font-size:14px;margin:0 0 10px;">État de la flotte</h3>
+      <div class="grid grid-status">
+        ${state.fleet.map(e=>`<div class="card-item">
+          <div class="row"><span class="led" style="background:${statutColor(e.statut)}"></span><span class="mono" style="font-size:12px;">${e.code}</span></div>
+          <div style="font-size:10px;color:var(--muted);margin-top:2px;">${e.type}</div>
+        </div>`).join('')}
+      </div>
+    </div>
+    <div class="plate p16">
+      <h3 class="oswald" style="text-transform:uppercase;font-size:14px;margin:0 0 10px;">État de l'usine</h3>
+      ${state.plantEquipment.length===0?`<div class="empty">${ICONS.factory}<span>Aucune machine enregistrée.</span></div>`:
+      `<div class="grid grid-status">
+        ${state.plantEquipment.map(e=>`<div class="card-item">
+          <div class="row"><span class="led" style="background:${statutColor(e.statut)}"></span><span class="mono" style="font-size:12px;">${e.code}</span></div>
+          <div style="font-size:10px;color:var(--muted);margin-top:2px;">${e.type}</div>
+        </div>`).join('')}
+      </div>`}
     </div>
   </div>`;
 }
@@ -606,7 +714,243 @@ function partForm(p){
   </div>`;
 }
 
-/* ============ REPORTS ============ */
+/* ============ EMPLACEMENTS FONCTIONNELS ============ */
+function viewFLoc(){
+  const map = locMap();
+  const sorted = [...state.locations].sort((a,b)=> (a.parentId?locPath(a.id):a.nom).localeCompare(b.parentId?locPath(b.id):b.nom));
+  return `
+  <div class="headrow">
+    <div><h1>Emplacements fonctionnels</h1><p class="subtitle" style="margin:0;">Hiérarchie Site › Atelier › Ligne › Machine</p></div>
+    <button class="btn btn-accent" data-open-modal="floc-new">${ICONS.plus} Nouvel emplacement</button>
+  </div>
+  ${sorted.length===0?`<div class="plate p16"><div class="empty">${ICONS.layers}<span>Aucun emplacement défini.</span></div></div>`:
+  `<div style="display:flex;flex-direction:column;gap:6px;">
+  ${sorted.map(l=>`<div class="plate p14 between wrapwrap" style="gap:12px;">
+    <div class="row"><span class="badge">${l.type}</span><span style="font-size:13px;">${esc(locPath(l.id))}</span></div>
+    <div class="row">
+      <span class="mono" style="font-size:11px;color:var(--muted);">${esc(l.code)}</span>
+      <button class="icon-btn" data-edit-floc="${l.id}">${ICONS.edit}</button>
+      <button class="icon-btn" data-del-floc="${l.id}">${ICONS.trash}</button>
+    </div>
+  </div>`).join('')}
+  </div>`}`;
+}
+function flocForm(l){
+  const parentOpts = state.locations.filter(x=>x.id!==l.id).map(x=>`<option value="${x.id}" ${l.parentId===x.id?'selected':''}>${esc(locPath(x.id))}</option>`).join('');
+  return `
+  <div class="formgrid">
+    <label class="field"><span>Code</span><input data-f="code" value="${esc(l.code)}" placeholder="USINE-L1"/></label>
+    <label class="field"><span>Type</span><select data-f="type">${LOCATION_TYPES.map(t=>`<option ${l.type===t?'selected':''}>${t}</option>`).join('')}</select></label>
+    <label class="field span2"><span>Nom</span><input data-f="nom" value="${esc(l.nom)}"/></label>
+    <label class="field span2"><span>Emplacement parent (optionnel)</span><select data-f="parentId"><option value="">— Aucun (racine) —</option>${parentOpts}</select></label>
+  </div>`;
+}
+
+/* ============ ÉQUIPEMENTS USINE ============ */
+function viewPlant(){
+  const lm = locMap();
+  return `
+  <div class="headrow">
+    <div><h1>Équipements usine</h1><p class="subtitle" style="margin:0;">${state.plantEquipment.length} machines enregistrées</p></div>
+    <button class="btn btn-accent" data-open-modal="plant-new">${ICONS.plus} Nouvelle machine</button>
+  </div>
+  ${state.plantEquipment.length===0?`<div class="plate p16"><div class="empty">${ICONS.factory}<span>Aucune machine enregistrée.</span></div></div>`:
+  `<div class="grid grid-fleet">
+  ${state.plantEquipment.map(e=>`
+  <div class="plate p16">
+    <div class="between" style="align-items:flex-start;">
+      <div>
+        <div class="row"><span class="led" style="background:${statutColor(e.statut)}"></span><span class="mono" style="font-size:15px;">${e.code}</span></div>
+        <div style="font-size:12px;color:var(--muted);">${e.type}</div>
+      </div>
+      <div class="row">
+        <button class="icon-btn" data-edit-plant="${e.id}">${ICONS.edit}</button>
+        <button class="icon-btn" data-del-plant="${e.id}">${ICONS.trash}</button>
+      </div>
+    </div>
+    <div style="font-size:13px;margin:8px 0;">${esc(e.nom)}</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">${esc(e.emplacementId?locPath(e.emplacementId):'—')}</div>
+    <div class="between" style="font-size:12px;color:var(--muted);border-top:1px solid var(--border);padding-top:8px;">
+      <span style="color:${statutColor(e.statut)}">${e.statut}</span>
+    </div>
+  </div>`).join('')}
+  </div>`}`;
+}
+function plantForm(e){
+  const locOpts = state.locations.map(l=>`<option value="${l.id}" ${e.emplacementId===l.id?'selected':''}>${esc(locPath(l.id))}</option>`).join('');
+  const ccOpts = state.costCenters.map(c=>`<option value="${c.id}" ${e.centreCoutId===c.id?'selected':''}>${esc(c.code)} — ${esc(c.nom)}</option>`).join('');
+  return `
+  <div class="formgrid">
+    <label class="field"><span>Code</span><input data-f="code" value="${esc(e.code)}" placeholder="LIGNE-03"/></label>
+    <label class="field"><span>Type</span><select data-f="type">${EQUIP_TYPES.map(t=>`<option ${e.type===t?'selected':''}>${t}</option>`).join('')}</select></label>
+    <label class="field span2"><span>Nom</span><input data-f="nom" value="${esc(e.nom)}"/></label>
+    <label class="field"><span>Statut</span><select data-f="statut">${STATUTS.map(s=>`<option ${e.statut===s?'selected':''}>${s}</option>`).join('')}</select></label>
+    <label class="field"><span>Date mise en service</span><input type="date" data-f="dateMiseEnService" value="${e.dateMiseEnService||''}"/></label>
+    <label class="field span2"><span>Emplacement</span><select data-f="emplacementId"><option value="">—</option>${locOpts}</select></label>
+    <label class="field span2"><span>Centre de coût</span><select data-f="centreCoutId"><option value="">—</option>${ccOpts}</select></label>
+  </div>`;
+}
+
+/* ============ PRODUCTION / OEE ============ */
+function viewProduction(){
+  const em = equipMap();
+  const sorted = [...state.productionLogs].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  return `
+  <div class="headrow">
+    <div><h1>Production / OEE</h1><p class="subtitle" style="margin:0;">Suivi de rendement par machine</p></div>
+    <button class="btn btn-accent" data-open-modal="prod-new">${ICONS.plus} Nouveau relevé</button>
+  </div>
+  ${sorted.length===0?`<div class="plate p16"><div class="empty">${ICONS.activity}<span>Aucun relevé de production.</span></div></div>`:
+  `<div class="plate" style="overflow:hidden;">
+  <table><thead><tr><th>Date</th><th>Machine</th><th class="right">Produit</th><th class="right">Prévu</th><th class="right">Rebut</th><th class="right">Arrêt (min)</th><th class="right">OEE</th><th></th></tr></thead>
+  <tbody>
+  ${sorted.map(p=>{ const oee = oeeOf(p);
+  return `<tr>
+    <td>${p.date||''}</td><td class="mono">${em[p.equipementId]?.code||'—'}</td>
+    <td class="right mono">${fmt(p.quantiteProduite)}</td><td class="right mono" style="color:var(--muted)">${fmt(p.quantitePrevue)}</td>
+    <td class="right mono" style="color:var(--muted)">${fmt(p.piecesRebut)}</td><td class="right mono" style="color:var(--muted)">${fmt(p.tempsArretMin)}</td>
+    <td class="right mono" style="color:${oee!==null&&oee>=75?'var(--success)':'var(--accent)'}">${oee!==null?oee.toFixed(1)+'%':'—'}</td>
+    <td><div class="row" style="justify-content:flex-end;"><button class="icon-btn" data-edit-prod="${p.id}">${ICONS.edit}</button><button class="icon-btn" data-del-prod="${p.id}">${ICONS.trash}</button></div></td>
+  </tr>`;}).join('')}
+  </tbody></table></div>`}`;
+}
+function prodForm(p){
+  const opts = state.plantEquipment.map(e=>`<option value="${e.id}" ${p.equipementId===e.id?'selected':''}>${e.code} — ${e.nom}</option>`).join('');
+  return `
+  <div class="formgrid">
+    <label class="field span2"><span>Machine</span><select data-f="equipementId">${opts||'<option value="">Aucune machine — crée-en une d\'abord</option>'}</select></label>
+    <label class="field"><span>Date</span><input type="date" data-f="date" value="${p.date||''}"/></label>
+    <label class="field"><span>Opérateur</span><input data-f="operateur" value="${esc(p.operateur)}"/></label>
+    <label class="field"><span>Quantité produite</span><input type="number" data-f="quantiteProduite" value="${p.quantiteProduite||0}"/></label>
+    <label class="field"><span>Quantité prévue</span><input type="number" data-f="quantitePrevue" value="${p.quantitePrevue||0}"/></label>
+    <label class="field"><span>Pièces rebut</span><input type="number" data-f="piecesRebut" value="${p.piecesRebut||0}"/></label>
+    <label class="field"><span>Temps fonctionnement (min)</span><input type="number" data-f="tempsFonctionnementMin" value="${p.tempsFonctionnementMin||0}"/></label>
+    <label class="field span2"><span>Temps d'arrêt (min)</span><input type="number" data-f="tempsArretMin" value="${p.tempsArretMin||0}"/></label>
+  </div>`;
+}
+
+/* ============ NOTIFICATIONS ============ */
+function viewNotif(){
+  const em = equipMap();
+  const allEquip = [...state.fleet, ...state.plantEquipment];
+  const sorted = [...state.notifications].sort((a,b)=>(b.dateCreation||'').localeCompare(a.dateCreation||''));
+  return `
+  <div class="headrow">
+    <div><h1>Notifications</h1><p class="subtitle" style="margin:0;">Signalement de pannes/anomalies avant ouverture d'un OT</p></div>
+    <button class="btn btn-accent" data-open-modal="notif-new">${ICONS.plus} Nouvelle notification</button>
+  </div>
+  ${sorted.length===0?`<div class="plate p16"><div class="empty">${ICONS.bell}<span>Aucune notification.</span></div></div>`:
+  `<div style="display:flex;flex-direction:column;gap:8px;">
+  ${sorted.map(n=>`
+  <div class="plate p14 between wrapwrap" style="gap:12px;">
+    <div class="row" style="min-width:0;">
+      <span class="led" style="background:${n.statut==='Clôturée'||n.statut==='Convertie en OT'?'var(--success)':n.priorite==='Urgente'?'var(--danger)':'var(--accent)'}"></span>
+      <div>
+        <div class="row" style="flex-wrap:wrap;"><span style="font-size:13px;font-weight:500;">${esc(n.description)}</span><span class="badge">${n.type}</span>${n.priorite==='Urgente'?`<span class="badge badge-danger">URGENT</span>`:''}</div>
+        <div style="font-size:12px;color:var(--muted);">${em[n.equipementId]?.code||'—'} · ${n.dateCreation||''} ${n.declarant?`· ${esc(n.declarant)}`:''} · ${n.statut}</div>
+      </div>
+    </div>
+    <div class="row">
+      ${n.statut!=='Convertie en OT' && n.statut!=='Clôturée' ? `<button class="btn btn-ghost" style="font-size:11px;padding:4px 8px;" data-convert-notif="${n.id}">${ICONS.convert} Convertir en OT</button>` : ''}
+      <button class="icon-btn" data-edit-notif="${n.id}">${ICONS.edit}</button>
+      <button class="icon-btn" data-del-notif="${n.id}">${ICONS.trash}</button>
+    </div>
+  </div>`).join('')}
+  </div>`}`;
+}
+function notifForm(n){
+  const allEquip = [...state.fleet.map(e=>({...e,grp:'Flotte'})), ...state.plantEquipment.map(e=>({...e,grp:'Usine'}))];
+  const opts = allEquip.map(e=>`<option value="${e.id}" ${n.equipementId===e.id?'selected':''}>[${e.grp}] ${e.code} — ${e.nom}</option>`).join('');
+  return `
+  <div class="formgrid">
+    <label class="field span2"><span>Équipement</span><select data-f="equipementId">${opts}</select></label>
+    <label class="field"><span>Type</span><select data-f="type"><option ${n.type==='Panne'?'selected':''}>Panne</option><option ${n.type==='Anomalie'?'selected':''}>Anomalie</option><option ${n.type==='Amélioration'?'selected':''}>Amélioration</option></select></label>
+    <label class="field"><span>Priorité</span><select data-f="priorite">${NOTIF_PRIORITES.map(p=>`<option ${n.priorite===p?'selected':''}>${p}</option>`).join('')}</select></label>
+    <label class="field span2"><span>Description</span><textarea data-f="description" rows="3">${esc(n.description)}</textarea></label>
+    <label class="field"><span>Déclarant</span><input data-f="declarant" value="${esc(n.declarant)}"/></label>
+    <label class="field"><span>Statut</span><select data-f="statut">${NOTIF_STATUTS.filter(s=>s!=='Convertie en OT').map(s=>`<option ${n.statut===s?'selected':''}>${s}</option>`).join('')}</select></label>
+    <label class="field"><span>Date</span><input type="date" data-f="dateCreation" value="${n.dateCreation||''}"/></label>
+  </div>`;
+}
+
+/* ============ COMPTEURS / MESURES ============ */
+function viewMeasures(){
+  const em = equipMap();
+  return `
+  <div class="headrow">
+    <div><h1>Compteurs / points de mesure</h1><p class="subtitle" style="margin:0;">Relevés et seuils d'alerte</p></div>
+    <button class="btn btn-accent" data-open-modal="measure-new">${ICONS.plus} Nouveau point de mesure</button>
+  </div>
+  ${state.measuringPoints.length===0?`<div class="plate p16"><div class="empty">${ICONS.ruler}<span>Aucun point de mesure défini.</span></div></div>`:
+  `<div class="plate" style="overflow:hidden;">
+  <table><thead><tr><th>Équipement</th><th>Point de mesure</th><th class="right">Dernier relevé</th><th class="right">Seuil min</th><th class="right">Seuil max</th><th>Date</th><th></th></tr></thead>
+  <tbody>
+  ${state.measuringPoints.map(m=>{
+    const val = Number(m.dernierReleve); const outOfRange = (m.seuilMin!=='' && val<Number(m.seuilMin)) || (m.seuilMax!=='' && val>Number(m.seuilMax));
+    return `<tr>
+    <td class="mono">${em[m.equipementId]?.code||'—'}</td><td>${esc(m.nom)} <span style="color:var(--muted);font-size:11px;">(${m.unite||''})</span></td>
+    <td class="right mono" style="color:${outOfRange?'var(--danger)':'var(--text)'}">${m.dernierReleve!==''?m.dernierReleve:'—'}</td>
+    <td class="right mono" style="color:var(--muted)">${m.seuilMin!==''?m.seuilMin:'—'}</td>
+    <td class="right mono" style="color:var(--muted)">${m.seuilMax!==''?m.seuilMax:'—'}</td>
+    <td style="color:var(--muted);font-size:12px;">${m.dateReleve||'—'}</td>
+    <td><div class="row" style="justify-content:flex-end;"><button class="icon-btn" data-edit-measure="${m.id}">${ICONS.edit}</button><button class="icon-btn" data-del-measure="${m.id}">${ICONS.trash}</button></div></td>
+  </tr>`;}).join('')}
+  </tbody></table></div>`}`;
+}
+function measureForm(m){
+  const allEquip = [...state.fleet.map(e=>({...e,grp:'Flotte'})), ...state.plantEquipment.map(e=>({...e,grp:'Usine'}))];
+  const opts = allEquip.map(e=>`<option value="${e.id}" ${m.equipementId===e.id?'selected':''}>[${e.grp}] ${e.code} — ${e.nom}</option>`).join('');
+  return `
+  <div class="formgrid">
+    <label class="field span2"><span>Équipement</span><select data-f="equipementId">${opts}</select></label>
+    <label class="field"><span>Type de point</span><select data-f="typePoint">${POINT_TYPES.map(t=>`<option ${m.typePoint===t?'selected':''}>${t}</option>`).join('')}</select></label>
+    <label class="field"><span>Nom</span><input data-f="nom" value="${esc(m.nom)}" placeholder="Température huile"/></label>
+    <label class="field"><span>Unité</span><input data-f="unite" value="${esc(m.unite)}" placeholder="°C, bar, h..."/></label>
+    <label class="field"><span>Dernier relevé</span><input type="number" data-f="dernierReleve" value="${m.dernierReleve}"/></label>
+    <label class="field"><span>Date du relevé</span><input type="date" data-f="dateReleve" value="${m.dateReleve||''}"/></label>
+    <label class="field"><span>Seuil min</span><input type="number" data-f="seuilMin" value="${m.seuilMin}"/></label>
+    <label class="field"><span>Seuil max</span><input type="number" data-f="seuilMax" value="${m.seuilMax}"/></label>
+  </div>`;
+}
+
+/* ============ CENTRES DE COÛTS ============ */
+function viewCosts(){
+  const em = equipMap();
+  const spentByCC = {};
+  state.workOrders.forEach(w=>{
+    const eq = em[w.equipementId];
+    const cc = eq && eq.centreCoutId ? eq.centreCoutId : null;
+    if(cc) spentByCC[cc] = (spentByCC[cc]||0) + Number(w.cout||0);
+  });
+  return `
+  <div class="headrow">
+    <div><h1>Centres de coûts</h1><p class="subtitle" style="margin:0;">Budget maintenance vs dépenses réelles</p></div>
+    <button class="btn btn-accent" data-open-modal="cc-new">${ICONS.plus} Nouveau centre de coût</button>
+  </div>
+  ${state.costCenters.length===0?`<div class="plate p16"><div class="empty">${ICONS.wallet}<span>Aucun centre de coût défini.</span></div></div>`:
+  `<div class="grid grid-fleet">
+  ${state.costCenters.map(c=>{
+    const spent = spentByCC[c.id]||0; const budget = Number(c.budgetAnnuel||0);
+    const pct = budget>0 ? Math.min(100, Math.round(spent/budget*100)) : null;
+    return `<div class="plate p16">
+      <div class="between" style="align-items:flex-start;">
+        <div><span class="mono" style="font-size:14px;">${esc(c.code)}</span><div style="font-size:12px;color:var(--muted);">${esc(c.nom)}</div></div>
+        <div class="row"><button class="icon-btn" data-edit-cc="${c.id}">${ICONS.edit}</button><button class="icon-btn" data-del-cc="${c.id}">${ICONS.trash}</button></div>
+      </div>
+      <div style="margin-top:10px;font-size:12px;color:var(--muted);">Dépensé <span class="mono" style="color:var(--text)">${fmt(spent)}</span> / Budget <span class="mono" style="color:var(--text)">${fmt(budget)}</span> FCFA</div>
+      ${budget>0?`<div style="background:var(--panelR);border-radius:4px;height:6px;margin-top:8px;overflow:hidden;"><div style="height:100%;width:${pct}%;background:${pct>=90?'var(--danger)':pct>=70?'var(--accent)':'var(--success)'}"></div></div>`:''}
+    </div>`;
+  }).join('')}
+  </div>`}`;
+}
+function ccForm(c){
+  return `
+  <div class="formgrid">
+    <label class="field"><span>Code</span><input data-f="code" value="${esc(c.code)}" placeholder="MAINT-USINE"/></label>
+    <label class="field"><span>Budget annuel (FCFA)</span><input type="number" data-f="budgetAnnuel" value="${c.budgetAnnuel||0}"/></label>
+    <label class="field span2"><span>Nom</span><input data-f="nom" value="${esc(c.nom)}"/></label>
+  </div>`;
+}
 function viewReports(){
   const k = computeKpis();
   const costByEquip = {}; state.workOrders.forEach(w=>{ costByEquip[w.equipementId]=(costByEquip[w.equipementId]||0)+Number(w.cout||0); });
@@ -788,6 +1132,161 @@ function attachHandlers(){
     state.parts = state.parts.filter(x=>x.id!==b.dataset.delPart);
     persist(); render(); toast('Pièce supprimée');
   }));
+
+  // Emplacements fonctionnels
+  const flocn = document.querySelector('[data-open-modal="floc-new"]');
+  if(flocn) flocn.addEventListener('click', ()=>{
+    const l = {id:null, code:'', nom:'', type:LOCATION_TYPES[0], parentId:''};
+    openModal('Nouvel emplacement', flocForm(l), (data)=>{
+      if(!data.code||!data.nom){ alert('Code et nom requis'); return; }
+      state.locations.push({...data, id:uid(), parentId: data.parentId||null});
+      persist(); closeModal(); render(); toast('Emplacement ajouté');
+    });
+  });
+  document.querySelectorAll('[data-edit-floc]').forEach(b=>b.addEventListener('click',()=>{
+    const l = state.locations.find(x=>x.id===b.dataset.editFloc);
+    openModal('Modifier l\'emplacement', flocForm(l), (data)=>{
+      Object.assign(l, data, {parentId: data.parentId||null});
+      persist(); closeModal(); render(); toast('Emplacement mis à jour');
+    });
+  }));
+  document.querySelectorAll('[data-del-floc]').forEach(b=>b.addEventListener('click',()=>{
+    if(!confirm('Supprimer cet emplacement ? (les enfants deviendront racines)')) return;
+    const id = b.dataset.delFloc;
+    state.locations.forEach(l=>{ if(l.parentId===id) l.parentId=null; });
+    state.locations = state.locations.filter(x=>x.id!==id);
+    persist(); render(); toast('Emplacement supprimé');
+  }));
+
+  // Équipements usine
+  const plantn = document.querySelector('[data-open-modal="plant-new"]');
+  if(plantn) plantn.addEventListener('click', ()=>{
+    const e = {id:null, code:'', nom:'', type:EQUIP_TYPES[0], statut:'Opérationnel', emplacementId:'', centreCoutId:'', dateMiseEnService:''};
+    openModal('Nouvelle machine', plantForm(e), (data)=>{
+      if(!data.code||!data.nom){ alert('Code et nom requis'); return; }
+      state.plantEquipment.push({...data, id:uid(), emplacementId:data.emplacementId||null, centreCoutId:data.centreCoutId||null});
+      persist(); closeModal(); render(); toast('Machine ajoutée');
+    });
+  });
+  document.querySelectorAll('[data-edit-plant]').forEach(b=>b.addEventListener('click',()=>{
+    const e = state.plantEquipment.find(x=>x.id===b.dataset.editPlant);
+    openModal('Modifier la machine', plantForm(e), (data)=>{
+      Object.assign(e, data, {emplacementId:data.emplacementId||null, centreCoutId:data.centreCoutId||null});
+      persist(); closeModal(); render(); toast('Machine mise à jour');
+    });
+  }));
+  document.querySelectorAll('[data-del-plant]').forEach(b=>b.addEventListener('click',()=>{
+    if(!confirm('Supprimer cette machine ?')) return;
+    state.plantEquipment = state.plantEquipment.filter(x=>x.id!==b.dataset.delPlant);
+    persist(); render(); toast('Machine supprimée');
+  }));
+
+  // Production / OEE
+  const prodn = document.querySelector('[data-open-modal="prod-new"]');
+  if(prodn) prodn.addEventListener('click', ()=>{
+    const p = {id:null, equipementId: state.plantEquipment[0]?.id||'', date:new Date().toISOString().slice(0,10), operateur:'', quantiteProduite:0, quantitePrevue:0, piecesRebut:0, tempsFonctionnementMin:0, tempsArretMin:0};
+    openModal('Nouveau relevé de production', prodForm(p), (data)=>{
+      if(!data.equipementId){ alert('Sélectionne une machine'); return; }
+      state.productionLogs.push({...data, id:uid(), quantiteProduite:Number(data.quantiteProduite), quantitePrevue:Number(data.quantitePrevue), piecesRebut:Number(data.piecesRebut), tempsFonctionnementMin:Number(data.tempsFonctionnementMin), tempsArretMin:Number(data.tempsArretMin)});
+      persist(); closeModal(); render(); toast('Relevé enregistré');
+    });
+  });
+  document.querySelectorAll('[data-edit-prod]').forEach(b=>b.addEventListener('click',()=>{
+    const p = state.productionLogs.find(x=>x.id===b.dataset.editProd);
+    openModal('Modifier le relevé', prodForm(p), (data)=>{
+      Object.assign(p, data, {quantiteProduite:Number(data.quantiteProduite), quantitePrevue:Number(data.quantitePrevue), piecesRebut:Number(data.piecesRebut), tempsFonctionnementMin:Number(data.tempsFonctionnementMin), tempsArretMin:Number(data.tempsArretMin)});
+      persist(); closeModal(); render(); toast('Relevé mis à jour');
+    });
+  }));
+  document.querySelectorAll('[data-del-prod]').forEach(b=>b.addEventListener('click',()=>{
+    if(!confirm('Supprimer ce relevé ?')) return;
+    state.productionLogs = state.productionLogs.filter(x=>x.id!==b.dataset.delProd);
+    persist(); render(); toast('Relevé supprimé');
+  }));
+
+  // Notifications
+  const notifn = document.querySelector('[data-open-modal="notif-new"]');
+  if(notifn) notifn.addEventListener('click', ()=>{
+    const allEquip = [...state.fleet, ...state.plantEquipment];
+    const n = {id:null, equipementId: allEquip[0]?.id||'', type:'Panne', priorite:'Normale', description:'', declarant:'', statut:'Nouvelle', dateCreation:new Date().toISOString().slice(0,10), workOrderId:null};
+    openModal('Nouvelle notification', notifForm(n), (data)=>{
+      if(!data.description||!data.equipementId){ alert('Description et équipement requis'); return; }
+      state.notifications.push({...data, id:uid(), workOrderId:null});
+      persist(); closeModal(); render(); toast('Notification créée');
+    });
+  });
+  document.querySelectorAll('[data-edit-notif]').forEach(b=>b.addEventListener('click',()=>{
+    const n = state.notifications.find(x=>x.id===b.dataset.editNotif);
+    openModal('Modifier la notification', notifForm(n), (data)=>{
+      Object.assign(n, data);
+      persist(); closeModal(); render(); toast('Notification mise à jour');
+    });
+  }));
+  document.querySelectorAll('[data-del-notif]').forEach(b=>b.addEventListener('click',()=>{
+    if(!confirm('Supprimer cette notification ?')) return;
+    state.notifications = state.notifications.filter(x=>x.id!==b.dataset.delNotif);
+    persist(); render(); toast('Notification supprimée');
+  }));
+  document.querySelectorAll('[data-convert-notif]').forEach(b=>b.addEventListener('click',()=>{
+    const n = state.notifications.find(x=>x.id===b.dataset.convertNotif);
+    if(!n) return;
+    const wo = {
+      id:uid(), equipementId:n.equipementId, type:'Correctif', titre:n.description.slice(0,60),
+      description:n.description, priorite:n.priorite, statut:'Ouvert',
+      dateCreation:new Date().toISOString().slice(0,10), dateFin:'', technicien:'', cout:0
+    };
+    state.workOrders.push(wo);
+    n.statut = 'Convertie en OT';
+    n.workOrderId = wo.id;
+    persist(); render(); toast('Notification convertie en ordre de travail');
+  }));
+
+  // Compteurs / mesures
+  const measn = document.querySelector('[data-open-modal="measure-new"]');
+  if(measn) measn.addEventListener('click', ()=>{
+    const allEquip = [...state.fleet, ...state.plantEquipment];
+    const m = {id:null, equipementId: allEquip[0]?.id||'', typePoint:POINT_TYPES[0], nom:'', unite:'', dernierReleve:'', dateReleve:'', seuilMin:'', seuilMax:''};
+    openModal('Nouveau point de mesure', measureForm(m), (data)=>{
+      if(!data.nom||!data.equipementId){ alert('Nom et équipement requis'); return; }
+      state.measuringPoints.push({...data, id:uid()});
+      persist(); closeModal(); render(); toast('Point de mesure ajouté');
+    });
+  });
+  document.querySelectorAll('[data-edit-measure]').forEach(b=>b.addEventListener('click',()=>{
+    const m = state.measuringPoints.find(x=>x.id===b.dataset.editMeasure);
+    openModal('Modifier le point de mesure', measureForm(m), (data)=>{
+      Object.assign(m, data);
+      persist(); closeModal(); render(); toast('Point de mesure mis à jour');
+    });
+  }));
+  document.querySelectorAll('[data-del-measure]').forEach(b=>b.addEventListener('click',()=>{
+    if(!confirm('Supprimer ce point de mesure ?')) return;
+    state.measuringPoints = state.measuringPoints.filter(x=>x.id!==b.dataset.delMeasure);
+    persist(); render(); toast('Point de mesure supprimé');
+  }));
+
+  // Centres de coûts
+  const ccn = document.querySelector('[data-open-modal="cc-new"]');
+  if(ccn) ccn.addEventListener('click', ()=>{
+    const c = {id:null, code:'', nom:'', budgetAnnuel:0};
+    openModal('Nouveau centre de coût', ccForm(c), (data)=>{
+      if(!data.code||!data.nom){ alert('Code et nom requis'); return; }
+      state.costCenters.push({...data, id:uid(), budgetAnnuel:Number(data.budgetAnnuel)});
+      persist(); closeModal(); render(); toast('Centre de coût ajouté');
+    });
+  });
+  document.querySelectorAll('[data-edit-cc]').forEach(b=>b.addEventListener('click',()=>{
+    const c = state.costCenters.find(x=>x.id===b.dataset.editCc);
+    openModal('Modifier le centre de coût', ccForm(c), (data)=>{
+      Object.assign(c, data, {budgetAnnuel:Number(data.budgetAnnuel)});
+      persist(); closeModal(); render(); toast('Centre de coût mis à jour');
+    });
+  }));
+  document.querySelectorAll('[data-del-cc]').forEach(b=>b.addEventListener('click',()=>{
+    if(!confirm('Supprimer ce centre de coût ?')) return;
+    state.costCenters = state.costCenters.filter(x=>x.id!==b.dataset.delCc);
+    persist(); render(); toast('Centre de coût supprimé');
+  }));
 }
 
 /* ============ INIT ============ */
@@ -822,7 +1321,23 @@ async function init(){
     data = loadLocalCache();
   }
   if(!data){
-    data = { fleet: seedFleet(), workOrders: [], fuelLogs: [], parts: [], pmPlans: [] };
+    const locs = seedLocations();
+    data = { fleet: seedFleet(), workOrders: [], fuelLogs: [], parts: [], pmPlans: [],
+      locations: locs, plantEquipment: seedPlantEquipment(locs), notifications: [], measuringPoints: [],
+      costCenters: seedCostCenters(), productionLogs: [] };
+  } else {
+    // compatibilité ascendante : ajoute le module usine si absent d'un compte existant
+    if(!data.locations || data.locations.length===0){
+      const locs = seedLocations();
+      data.locations = locs;
+      data.plantEquipment = (data.plantEquipment && data.plantEquipment.length) ? data.plantEquipment : seedPlantEquipment(locs);
+    } else {
+      data.plantEquipment = data.plantEquipment || [];
+    }
+    data.notifications = data.notifications || [];
+    data.measuringPoints = data.measuringPoints || [];
+    data.costCenters = (data.costCenters && data.costCenters.length) ? data.costCenters : seedCostCenters();
+    data.productionLogs = data.productionLogs || [];
   }
   state = data;
   render();
