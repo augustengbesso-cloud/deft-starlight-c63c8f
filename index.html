@@ -106,10 +106,19 @@ td{padding:9px 12px;border-bottom:1px solid var(--border);}
   .navbtn{justify-content:center;}
   .formgrid{grid-template-columns:1fr;}
 }
+#auth-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;}
+.auth-card{width:100%;max-width:380px;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:28px;}
+.auth-tabs{display:flex;gap:4px;margin-bottom:20px;background:var(--bg);border-radius:6px;padding:3px;}
+.auth-tab{flex:1;text-align:center;padding:8px;border-radius:5px;font-size:13px;cursor:pointer;color:var(--muted);}
+.auth-tab.active{background:var(--panelR);color:var(--text);}
+.auth-field{display:flex;flex-direction:column;gap:4px;margin-bottom:12px;font-size:12px;}
+.auth-field span{color:var(--muted);}
+.auth-error{color:var(--danger);font-size:12px;margin-bottom:10px;min-height:16px;}
 </style>
 </head>
 <body>
-<div id="app">
+<div id="auth-screen" style="display:none;"></div>
+<div id="app" style="display:none;">
   <aside id="sidebar">
     <div class="brand">
       <div class="brand-row"><span class="dot"></span><span class="brand-title">2NA · ERP</span></div>
@@ -118,6 +127,7 @@ td{padding:9px 12px;border-bottom:1px solid var(--border);}
     <nav id="nav"></nav>
     <div class="sidebar-foot">
       <div id="fleet-count"></div>
+      <div id="user-info" class="row" style="margin-top:8px;justify-content:space-between;"></div>
     </div>
   </aside>
   <main id="main">
@@ -143,6 +153,110 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
   }
 });
 
+/* ============ AUTHENTIFICATION & RÔLES ============ */
+const ROLE_LABELS = {
+  admin: 'Administrateur', planificateur: 'Planificateur maintenance',
+  technicien: 'Technicien terrain', rh: 'Responsable RH'
+};
+let currentUser = null; // { id, email, role, nomComplet }
+let authTab = 'login';
+let authError = '';
+
+function renderAuthScreen(){
+  document.getElementById('app').style.display = 'none';
+  const el = document.getElementById('auth-screen');
+  el.style.display = 'flex';
+  el.innerHTML = `
+  <div class="auth-card">
+    <div class="brand-row" style="justify-content:center;margin-bottom:20px;">
+      <span class="dot"></span><span class="brand-title" style="font-size:16px;">2NA · ERP</span>
+    </div>
+    <div class="auth-tabs">
+      <div class="auth-tab ${authTab==='login'?'active':''}" data-auth-tab="login">Connexion</div>
+      <div class="auth-tab ${authTab==='signup'?'active':''}" data-auth-tab="signup">Créer un compte</div>
+    </div>
+    <div class="auth-error">${esc(authError)}</div>
+    ${authTab==='signup'?`<label class="auth-field"><span>Nom complet</span><input id="auth-nom" placeholder="Kouassi Jean"/></label>`:''}
+    <label class="auth-field"><span>Email</span><input id="auth-email" type="email" placeholder="toi@exemple.com"/></label>
+    <label class="auth-field"><span>Mot de passe</span><input id="auth-pass" type="password" placeholder="••••••••"/></label>
+    <button class="btn btn-accent" id="auth-submit" style="width:100%;justify-content:center;margin-top:6px;">${authTab==='login'?'Se connecter':'Créer mon compte'}</button>
+    ${authTab==='signup'?`<p style="font-size:11px;color:var(--muted);margin-top:12px;">Ton compte sera créé avec un accès limité (technicien) jusqu'à ce qu'un administrateur t'attribue ton rôle réel dans "Utilisateurs".</p>`:''}
+  </div>`;
+  document.querySelectorAll('[data-auth-tab]').forEach(t=>t.addEventListener('click',()=>{ authTab=t.dataset.authTab; authError=''; renderAuthScreen(); }));
+  document.getElementById('auth-submit').addEventListener('click', handleAuthSubmit);
+  [document.getElementById('auth-email'), document.getElementById('auth-pass')].forEach(inp=>{
+    inp.addEventListener('keydown', e=>{ if(e.key==='Enter') handleAuthSubmit(); });
+  });
+}
+
+async function handleAuthSubmit(){
+  const email = document.getElementById('auth-email').value.trim();
+  const pass = document.getElementById('auth-pass').value;
+  const btn = document.getElementById('auth-submit');
+  authError = '';
+  if(!email || !pass){ authError = 'Email et mot de passe requis'; renderAuthScreen(); return; }
+  btn.disabled = true; btn.textContent = '...';
+  try{
+    if(authTab==='login'){
+      const { error } = await sb.auth.signInWithPassword({ email, password: pass });
+      if(error) throw error;
+    } else {
+      const nom = document.getElementById('auth-nom').value.trim();
+      if(!nom){ authError = 'Nom complet requis'; renderAuthScreen(); return; }
+      const { data, error } = await sb.auth.signUp({ email, password: pass });
+      if(error) throw error;
+      if(data.user){
+        await sb.from('user_roles').insert({ user_id: data.user.id, email, nom_complet: nom, role: 'technicien' });
+      }
+    }
+    await afterAuthSuccess();
+  }catch(e){
+    authError = (e && e.message) ? traduireErreurAuth(e.message) : String(e);
+    renderAuthScreen();
+  }
+  btn.disabled = false; btn.textContent = authTab==='login'?'Se connecter':'Créer mon compte';
+}
+function traduireErreurAuth(msg){
+  if(/Invalid login credentials/i.test(msg)) return 'Email ou mot de passe incorrect';
+  if(/already registered/i.test(msg)) return 'Un compte existe déjà avec cet email';
+  if(/Password should be/i.test(msg)) return 'Mot de passe trop court (6 caractères minimum)';
+  return msg;
+}
+async function fetchUserRole(userId, email){
+  try{
+    const { data } = await sb.from('user_roles').select('*').eq('user_id', userId).maybeSingle();
+    if(data) return data;
+  }catch(e){}
+  return { user_id:userId, email, nom_complet:email, role:'technicien' };
+}
+async function afterAuthSuccess(){
+  const { data: { session } } = await sb.auth.getSession();
+  if(!session){ renderAuthScreen(); return; }
+  const roleRow = await fetchUserRole(session.user.id, session.user.email);
+  currentUser = { id: session.user.id, email: session.user.email, role: roleRow.role, nomComplet: roleRow.nom_complet || session.user.email };
+  document.getElementById('auth-screen').style.display = 'none';
+  document.getElementById('app').style.display = 'flex';
+  await init();
+}
+async function handleLogout(){
+  await sb.auth.signOut();
+  currentUser = null;
+  document.getElementById('app').style.display = 'none';
+  authTab = 'login'; authError = '';
+  renderAuthScreen();
+}
+function canSee(navId){
+  if(!currentUser) return false;
+  if(currentUser.role==='admin') return true;
+  const restricted = {
+    planificateur: ['users'],
+    technicien: ['fleet','pm','fuel','parts','equiptypes','floc','plant','production','measures','costs','personnel','reports','settings','users'],
+    rh: ['fleet','wo','pm','fuel','parts','equiptypes','floc','plant','production','notif','measures','costs','reports','settings','users'],
+  };
+  const blocked = restricted[currentUser.role] || [];
+  return !blocked.includes(navId);
+}
+
 /* ============ ICONS (minimal inline SVG set) ============ */
 const ICONS = {
   gauge:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="m13.6 13.6 4.9-4.9M4 15a8 8 0 1 1 16 0"/></svg>',
@@ -165,7 +279,9 @@ const ICONS = {
   wallet:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>',
   factory:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 20h20M4 20V10l5 3V10l5 3V10l4 3v7"/><path d="M6 14v.01M10 14v.01M14 14v.01"/></svg>',
   convert:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 7h10l-3-3m3 13H7l3 3"/></svg>',
+  users:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
   ruler:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.3 8.7 15.3 2.7a1 1 0 0 0-1.4 0L2.7 13.9a1 1 0 0 0 0 1.4l6 6a1 1 0 0 0 1.4 0L21.3 10a1 1 0 0 0 0-1.3Z"/><path d="m14.5 5.5 2 2M11.5 8.5l2 2M8.5 11.5l2 2M5.5 14.5l2 2"/></svg>',
+  settings:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>',
 };
 
 /* ============ STORAGE (Supabase + cache local hors-ligne) ============ */
@@ -231,16 +347,86 @@ function startPolling(){
 }
 
 const uid = () => Math.random().toString(36).slice(2,10);
-const EQUIP_TYPES = ["Pelleteuse","Tombereau","Foreuse","Groupe électrogène","Ligne de production","Machine industrielle","Convoyeur","Emballeuse","Autre"];
+
+/* ============ THÈME PERSONNALISABLE ============ */
+const DEFAULT_THEME = {
+  bg:'#14171A', panel:'#1B1F23', panelR:'#22272C', text:'#ECEAE5', muted:'#8B939A',
+  accent:'#F2A63C', steel:'#5B8CB3', success:'#4CAF6D', danger:'#E5533C'
+};
+const THEME_LABELS = {
+  bg:'Fond général', panel:'Panneaux', panelR:'Panneaux (survol)', text:'Texte principal', muted:'Texte secondaire',
+  accent:'Accent (couleur signature)', steel:'Bleu secondaire', success:'Succès / vert', danger:'Alerte / rouge'
+};
+function applyTheme(theme){
+  const t = { ...DEFAULT_THEME, ...(theme||{}) };
+  const root = document.documentElement.style;
+  Object.keys(DEFAULT_THEME).forEach(k=> root.setProperty('--'+k, t[k]));
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if(meta) meta.setAttribute('content', t.bg);
+}
+
+/* ============ MINI GRAPHIQUES (canvas, sans librairie) ============ */
+function drawBarChart(canvas, labels, values, color){
+  if(!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio||1;
+  const W = canvas.clientWidth, H = canvas.clientHeight;
+  canvas.width = W*dpr; canvas.height = H*dpr; ctx.scale(dpr,dpr);
+  ctx.clearRect(0,0,W,H);
+  const max = Math.max(1, ...values);
+  const padL=8, padB=22, padT=10, padR=8;
+  const chartW = W-padL-padR, chartH = H-padB-padT;
+  const bw = chartW/values.length*0.6;
+  const gap = chartW/values.length;
+  ctx.font = '10px Inter, sans-serif';
+  values.forEach((v,i)=>{
+    const h = (v/max)*chartH;
+    const x = padL + i*gap + (gap-bw)/2;
+    const y = padT + (chartH-h);
+    ctx.fillStyle = color;
+    ctx.globalAlpha = 0.85;
+    ctx.fillRect(x, y, bw, h);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--muted').trim() || '#8B939A';
+    ctx.textAlign = 'center';
+    ctx.fillText(labels[i], x+bw/2, H-6);
+  });
+}
+function drawDonut(canvas, segments){
+  // segments: [{label, value, color}]
+  if(!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio||1;
+  const W = canvas.clientWidth, H = canvas.clientHeight;
+  canvas.width = W*dpr; canvas.height = H*dpr; ctx.scale(dpr,dpr);
+  ctx.clearRect(0,0,W,H);
+  const total = segments.reduce((a,s)=>a+s.value,0) || 1;
+  const cx=W/2, cy=H/2, rOuter=Math.min(W,H)/2-4, rInner=rOuter*0.6;
+  let start = -Math.PI/2;
+  segments.forEach(s=>{
+    const angle = (s.value/total)*Math.PI*2;
+    ctx.beginPath();
+    ctx.arc(cx,cy,rOuter,start,start+angle);
+    ctx.arc(cx,cy,rInner,start+angle,start,true);
+    ctx.closePath();
+    ctx.fillStyle = s.color;
+    ctx.fill();
+    start += angle;
+  });
+}
+const DEFAULT_EQUIP_TYPES = ["Pelleteuse","Tombereau","Foreuse","Groupe électrogène","Ligne de production","Machine industrielle","Convoyeur","Emballeuse","Autre"];
 const STATUTS = ["Opérationnel","En maintenance","En panne","À l'arrêt"];
 const WO_STATUTS = ["Ouvert","En cours","Terminé"];
 const WO_PRIORITES = ["Basse","Normale","Haute","Urgente"];
 const SITES = ["CIGRAC","Usine"];
 const LOCATION_TYPES = ["Site","Atelier","Ligne","Machine"];
+const PM_TYPES = ["Date","Heures","Kilométrage"];
 const NOTIF_STATUTS = ["Nouvelle","En traitement","Convertie en OT","Clôturée"];
 const NOTIF_PRIORITES = ["Basse","Normale","Haute","Urgente"];
 const POINT_TYPES = ["Compteur (heures/km)","Température","Vibration","Pression","Autre mesure"];
 const POSTES = ["Électricien","Mécanicien","Soudeur","Hydraulicien","Automaticien","Chaudronnier","Opérateur","Autre"];
+const AFFECTATIONS = ["Flotte","Usine","Les deux"];
+const PERSONNEL_STATUTS = ["Actif","Congé","Inactif"];
 
 function seedLocations(){
   const cigrac = { id: uid(), code:"CIGRAC", nom:"Site CIGRAC", type:"Site", parentId:null };
@@ -281,12 +467,12 @@ function seedFleet(){
   ];
   return defs.map(d=>({
     id:uid(), code:`${d.p}-${String(d.n).padStart(2,'0')}`, nom:`${d.t} ${String(d.n).padStart(2,'0')}`,
-    type:d.t, statut:"Opérationnel", heures:Math.floor(800+Math.random()*4000),
+    type:d.t, statut:"Opérationnel", heures:Math.floor(800+Math.random()*4000), km: d.t==="Tombereau"?Math.floor(5000+Math.random()*30000):0,
     dernierEntretien:"", prochainEntretien:"", conso100h: d.t==="Groupe électrogène"?18:d.t==="Foreuse"?22:14
   }));
 }
 
-let state = { fleet: [], workOrders: [], fuelLogs: [], parts: [], pmPlans: [], locations: [], plantEquipment: [], notifications: [], measuringPoints: [], costCenters: [], productionLogs: [], woCounter: 0 };
+let state = { fleet: [], workOrders: [], fuelLogs: [], parts: [], pmPlans: [], locations: [], plantEquipment: [], notifications: [], measuringPoints: [], costCenters: [], productionLogs: [], woCounter: 0, equipTypes: [...DEFAULT_EQUIP_TYPES], personnel: [] };
 let currentView = 'dashboard';
 
 /* ============ HELPERS ============ */
@@ -324,6 +510,7 @@ const NAV = [
     {id:'pm', label:'Préventif', icon:'calendar'},
     {id:'fuel', label:'Carburant', icon:'fuel'},
     {id:'parts', label:'Pièces / Stock', icon:'package'},
+    {id:'equiptypes', label:'Types d\'équipement', icon:'layers'},
   ]},
   { section:'Usine (Production)', items:[
     {id:'floc', label:'Emplacements', icon:'layers'},
@@ -332,22 +519,37 @@ const NAV = [
     {id:'notif', label:'Notifications', icon:'bell'},
     {id:'measures', label:'Compteurs / mesures', icon:'ruler'},
   ]},
+  { section:'RH', items:[
+    {id:'personnel', label:'Personnel', icon:'users'},
+  ]},
   { section:'Pilotage', items:[
     {id:'costs', label:'Centres de coûts', icon:'wallet'},
     {id:'reports', label:'Rapports', icon:'report'},
   ]},
+  { section:'Paramètres', items:[
+    {id:'settings', label:'Apparence / thème', icon:'settings'},
+    {id:'users', label:'Utilisateurs', icon:'users'},
+  ]},
 ];
 function renderNav(){
   const nav = document.getElementById('nav');
-  nav.innerHTML = NAV.map(group=>`
+  nav.innerHTML = NAV.map(group=>{
+    const items = group.items.filter(n=>canSee(n.id));
+    if(items.length===0) return '';
+    return `
     <div class="nav-section">${group.section}</div>
-    ${group.items.map(n=>`
+    ${items.map(n=>`
     <button class="navbtn ${currentView===n.id?'active':''}" data-nav="${n.id}">
       ${ICONS[n.icon]}<span class="label">${n.label}</span>
     </button>`).join('')}
-  `).join('');
+  `;}).join('');
   nav.querySelectorAll('[data-nav]').forEach(b=>b.addEventListener('click',()=>{ currentView=b.dataset.nav; render(); }));
   document.getElementById('fleet-count').textContent = `${state.fleet.length} engins · ${state.plantEquipment.length} machines`;
+  const ui = document.getElementById('user-info');
+  if(ui && currentUser){
+    ui.innerHTML = `<div style="min-width:0;"><div style="font-size:12px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(currentUser.nomComplet)}</div><div style="font-size:10px;color:var(--muted);">${ROLE_LABELS[currentUser.role]||currentUser.role}</div></div><button class="icon-btn" id="logout-btn" title="Déconnexion">${ICONS.close}</button>`;
+    const lb = document.getElementById('logout-btn'); if(lb) lb.addEventListener('click', handleLogout);
+  }
 }
 
 /* ============ KPIs ============ */
@@ -385,6 +587,7 @@ function oeeOf(p){
 
 /* ============ RENDER ROOT ============ */
 function render(){
+  if(!canSee(currentView)) currentView = 'dashboard';
   renderNav();
   const c = document.getElementById('content');
   if(currentView==='dashboard') c.innerHTML = viewDashboard();
@@ -393,14 +596,45 @@ function render(){
   else if(currentView==='pm') c.innerHTML = viewPM();
   else if(currentView==='fuel') c.innerHTML = viewFuel();
   else if(currentView==='parts') c.innerHTML = viewParts();
+  else if(currentView==='equiptypes') c.innerHTML = viewEquipTypes();
   else if(currentView==='floc') c.innerHTML = viewFLoc();
   else if(currentView==='plant') c.innerHTML = viewPlant();
   else if(currentView==='production') c.innerHTML = viewProduction();
   else if(currentView==='notif') c.innerHTML = viewNotif();
   else if(currentView==='measures') c.innerHTML = viewMeasures();
   else if(currentView==='costs') c.innerHTML = viewCosts();
+  else if(currentView==='personnel') c.innerHTML = viewPersonnel();
   else if(currentView==='reports') c.innerHTML = viewReports();
+  else if(currentView==='settings') c.innerHTML = viewSettings();
+  else if(currentView==='users') c.innerHTML = viewUsers();
   attachHandlers();
+  if(currentView==='dashboard') drawDashboardCharts();
+  if(currentView==='users' && allUsers.length===0){ loadAllUsers().then(()=>{ if(currentView==='users') render(); }); }
+}
+function drawDashboardCharts(){
+  const now = new Date();
+  const months = [];
+  for(let i=5;i>=0;i--){ const d=new Date(now.getFullYear(), now.getMonth()-i, 1); months.push(d); }
+  const monthKey = d => d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+  const monthLabel = d => d.toLocaleDateString('fr-FR',{month:'short'});
+  const maintByMonth = months.map(d=>{
+    const key = monthKey(d);
+    return state.workOrders.filter(w=>(w.dateCreation||'').slice(0,7)===key).reduce((a,w)=>a+Number(w.cout||0),0);
+  });
+  const fuelByMonth = months.map(d=>{
+    const key = monthKey(d);
+    return state.fuelLogs.filter(f=>(f.date||'').slice(0,7)===key).reduce((a,f)=>a+Number(f.quantite||0),0);
+  });
+  const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#F2A63C';
+  const steel = getComputedStyle(document.documentElement).getPropertyValue('--steel').trim() || '#5B8CB3';
+  const success = getComputedStyle(document.documentElement).getPropertyValue('--success').trim() || '#4CAF6D';
+  const muted = getComputedStyle(document.documentElement).getPropertyValue('--muted').trim() || '#8B939A';
+  drawBarChart(document.getElementById('chart-maint-cost'), months.map(monthLabel), maintByMonth, accent);
+  drawBarChart(document.getElementById('chart-fuel-cost'), months.map(monthLabel), fuelByMonth, steel);
+  const woColors = { 'Ouvert':muted, 'En cours':accent, 'Terminé':success };
+  drawDonut(document.getElementById('chart-wo-status'), WO_STATUTS.map(s=>({label:s, value: state.workOrders.filter(w=>w.statut===s).length || 0.0001, color: woColors[s]})));
+  const persColors = [accent, steel, success];
+  drawDonut(document.getElementById('chart-personnel'), AFFECTATIONS.map((a,i)=>({label:a, value: state.personnel.filter(p=>p.statut==='Actif'&&p.affectation===a).length || 0.0001, color: persColors[i%3]})));
 }
 
 /* ============ DASHBOARD ============ */
@@ -419,7 +653,7 @@ function viewDashboard(){
   state.plantEquipment.filter(e=>e.statut==="En panne").forEach(e=>alerts.push({lvl:'danger',text:`${e.code} — ${e.nom} (usine) est en panne`}));
   state.parts.filter(p=>Number(p.quantite)<=Number(p.seuil)).forEach(p=>alerts.push({lvl:'accent',text:`Stock bas : ${p.nom} (${p.quantite} restant)`}));
   const now = new Date();
-  state.pmPlans.filter(p=>p.prochaine && (new Date(p.prochaine)-now)/864e5<=7).forEach(p=>alerts.push({lvl:'accent',text:`Entretien à échéance : ${em[p.equipementId]?.code||'?'} — ${p.tache}`}));
+  state.pmPlans.filter(p=>pmStatus(p,em).urgent).forEach(p=>alerts.push({lvl:'accent',text:`Entretien à échéance : ${em[p.equipementId]?.code||'?'} — ${p.tache} (${pmStatus(p,em).label})`}));
   state.notifications.filter(n=>n.statut==="Nouvelle" && n.priorite==="Urgente").forEach(n=>alerts.push({lvl:'danger',text:`Notification urgente : ${em[n.equipementId]?.code||'?'} — ${n.description}`}));
   state.measuringPoints.filter(m=>m.seuilMax!=='' && m.dernierReleve!=='' && Number(m.dernierReleve)>Number(m.seuilMax)).forEach(m=>alerts.push({lvl:'accent',text:`Mesure hors seuil : ${em[m.equipementId]?.code||'?'} — ${m.nom} (${m.dernierReleve})`}));
   const recentWO = [...state.workOrders].sort((a,b)=>(b.dateCreation||'').localeCompare(a.dateCreation||'')).slice(0,6);
@@ -439,6 +673,44 @@ function viewDashboard(){
     ${kpiCard('Disponibilité usine', k.disponibilitePlant,'%','factory', k.disponibilitePlant>=80?'var(--success)':'var(--danger)', `${k.totalPlant} machines suivies`)}
     ${kpiCard('OEE moyen', k.oeeMoyen!==null?k.oeeMoyen.toFixed(1):'—','%','activity', k.oeeMoyen!==null&&k.oeeMoyen>=75?'var(--success)':'var(--accent)','Basé sur relevés production')}
     ${kpiCard('Notifications ouvertes', k.notifOuvertes,'','bell', k.notifOuvertes?'var(--accent)':'var(--success)','Pannes/anomalies non traitées')}
+  </div>
+  <div class="grid grid-2" style="margin-bottom:16px;">
+    <div class="plate p16">
+      <h3 class="oswald" style="text-transform:uppercase;font-size:14px;margin:0 0 10px;">Coût maintenance (6 derniers mois)</h3>
+      <canvas id="chart-maint-cost" style="width:100%;height:140px;"></canvas>
+    </div>
+    <div class="plate p16">
+      <h3 class="oswald" style="text-transform:uppercase;font-size:14px;margin:0 0 10px;">Carburant consommé (6 derniers mois, L)</h3>
+      <canvas id="chart-fuel-cost" style="width:100%;height:140px;"></canvas>
+    </div>
+  </div>
+  <div class="grid grid-2" style="margin-bottom:16px;">
+    <div class="plate p16">
+      <h3 class="oswald" style="text-transform:uppercase;font-size:14px;margin:0 0 10px;">Répartition des ordres de travail</h3>
+      <div class="row" style="gap:20px;">
+        <canvas id="chart-wo-status" style="width:120px;height:120px;flex-shrink:0;"></canvas>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          ${WO_STATUTS.map(s=>{
+            const n = state.workOrders.filter(w=>w.statut===s).length;
+            const c = s==='Terminé'?'var(--success)':s==='En cours'?'var(--accent)':'var(--muted)';
+            return `<div class="row"><span class="led" style="background:${c}"></span><span style="font-size:12px;color:var(--muted);">${s} : <span style="color:var(--text)">${n}</span></span></div>`;
+          }).join('')}
+        </div>
+      </div>
+    </div>
+    <div class="plate p16">
+      <h3 class="oswald" style="text-transform:uppercase;font-size:14px;margin:0 0 10px;">Personnel actif par affectation</h3>
+      <div class="row" style="gap:20px;">
+        <canvas id="chart-personnel" style="width:120px;height:120px;flex-shrink:0;"></canvas>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          ${AFFECTATIONS.map((a,i)=>{
+            const n = state.personnel.filter(p=>p.statut==='Actif' && p.affectation===a).length;
+            const colors=['var(--accent)','var(--steel)','var(--success)'];
+            return `<div class="row"><span class="led" style="background:${colors[i%3]}"></span><span style="font-size:12px;color:var(--muted);">${a} : <span style="color:var(--text)">${n}</span></span></div>`;
+          }).join('')}
+        </div>
+      </div>
+    </div>
   </div>
   <div class="grid grid-2" style="margin-bottom:16px;">
     <div class="plate p16">
@@ -494,6 +766,7 @@ function viewFleet(){
     <div><h1>Flotte</h1><p class="subtitle" style="margin:0;">${state.fleet.length} engins enregistrés</p></div>
     <div class="row">
       <input id="fleet-search" placeholder="Rechercher…" style="width:180px;" value="${esc(fleetSearch)}"/>
+      <button class="btn btn-ghost" data-open-types="1">${ICONS.layers} Types</button>
       <button class="btn btn-accent" data-open-modal="fleet-new">${ICONS.plus} Nouvel engin</button>
     </div>
   </div>
@@ -513,7 +786,7 @@ function viewFleet(){
       </div>
       <div style="font-size:13px;margin:8px 0;">${esc(e.nom)}</div>
       <div class="between" style="font-size:12px;color:var(--muted);border-top:1px solid var(--border);padding-top:8px;">
-        <span>${fmt(e.heures)} h</span><span style="color:${statutColor(e.statut)}">${e.statut}</span>
+        <span>${fmt(e.heures)} h ${e.km?`· ${fmt(e.km)} km`:''}</span><span style="color:${statutColor(e.statut)}">${e.statut}</span>
       </div>
       ${e.prochainEntretien?`<div style="font-size:11px;color:var(--muted);margin-top:6px;">Prochain entretien : ${e.prochainEntretien}</div>`:''}
     </div>`).join('')}
@@ -524,31 +797,73 @@ function fleetForm(e){
   return `
   <div class="formgrid">
     <label class="field"><span>Code</span><input data-f="code" value="${esc(e.code)}" placeholder="PEL-07"/></label>
-    <label class="field"><span>Type</span><select data-f="type">${EQUIP_TYPES.map(t=>`<option ${e.type===t?'selected':''}>${t}</option>`).join('')}</select></label>
+    <label class="field"><span>Type</span><select data-f="type">${state.equipTypes.map(t=>`<option ${e.type===t?'selected':''}>${t}</option>`).join('')}</select></label>
     <label class="field span2"><span>Nom / désignation</span><input data-f="nom" value="${esc(e.nom)}"/></label>
     <label class="field"><span>Statut</span><select data-f="statut">${STATUTS.map(s=>`<option ${e.statut===s?'selected':''}>${s}</option>`).join('')}</select></label>
     <label class="field"><span>Heures compteur</span><input type="number" data-f="heures" value="${e.heures||0}"/></label>
+    <label class="field"><span>Kilométrage</span><input type="number" data-f="km" value="${e.km||0}"/></label>
     <label class="field"><span>Dernier entretien</span><input type="date" data-f="dernierEntretien" value="${e.dernierEntretien||''}"/></label>
     <label class="field"><span>Prochain entretien</span><input type="date" data-f="prochainEntretien" value="${e.prochainEntretien||''}"/></label>
     <label class="field"><span>Conso. réf. / 100h (L)</span><input type="number" data-f="conso100h" value="${e.conso100h||0}"/></label>
   </div>`;
 }
 
+/* ============ Gestion des types d'équipement (partagée Flotte + Usine) ============ */
+function openTypesModal(){
+  renderTypesModal();
+}
+function renderTypesModal(){
+  const root = document.getElementById('modal-root');
+  root.innerHTML = `
+  <div class="modal-overlay" id="types-overlay">
+    <div class="modal">
+      <div class="modal-head"><h3>Types d'équipement</h3><button class="icon-btn" id="types-close">${ICONS.close}</button></div>
+      <div class="modal-body">
+        <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:12px;max-height:280px;overflow-y:auto;">
+          ${state.equipTypes.map((t,i)=>`<div class="between card-item" style="padding:6px 10px;"><span style="font-size:13px;">${esc(t)}</span><button class="icon-btn" data-type-del="${i}">${ICONS.trash}</button></div>`).join('')}
+        </div>
+        <div class="row">
+          <input id="type-new-input" placeholder="Nouveau type (ex: Chariot élévateur)" style="flex:1;"/>
+          <button class="btn btn-ghost" id="type-add" type="button">${ICONS.plus} Ajouter</button>
+        </div>
+        <div class="modal-actions"><button class="btn btn-accent" id="types-done">Terminé</button></div>
+      </div>
+    </div>
+  </div>`;
+  document.getElementById('types-overlay').addEventListener('click', e=>{ if(e.target.id==='types-overlay') closeTypesModal(); });
+  document.getElementById('types-close').addEventListener('click', closeTypesModal);
+  document.getElementById('types-done').addEventListener('click', closeTypesModal);
+  document.getElementById('type-add').addEventListener('click', ()=>{
+    const input = document.getElementById('type-new-input');
+    const val = input.value.trim();
+    if(val && !state.equipTypes.includes(val)){ state.equipTypes.push(val); persist(); renderTypesModal(); }
+  });
+  document.querySelectorAll('[data-type-del]').forEach(b=>b.addEventListener('click',()=>{
+    const i = Number(b.dataset.typeDel);
+    const used = [...state.fleet, ...state.plantEquipment].some(e=>e.type===state.equipTypes[i]);
+    if(used && !confirm('Ce type est utilisé par au moins un équipement. Le supprimer quand même ?')) return;
+    state.equipTypes.splice(i,1); persist(); renderTypesModal();
+  }));
+}
+function closeTypesModal(){ document.getElementById('modal-root').innerHTML=''; render(); }
+
 /* ============ WORK ORDERS ============ */
 let woFilter = 'Tous';
 function viewWO(){
   const em = equipMap();
-  const visible = woFilter==='Tous' ? state.workOrders : state.workOrders.filter(w=>w.statut===woFilter);
+  const isTech = currentUser && currentUser.role==='technicien';
+  const base = isTech ? state.workOrders.filter(w=>w.technicien===currentUser.nomComplet) : state.workOrders;
+  const visible = woFilter==='Tous' ? base : base.filter(w=>w.statut===woFilter);
   const sorted = [...visible].sort((a,b)=>(b.dateCreation||'').localeCompare(a.dateCreation||''));
   return `
   <div class="headrow">
-    <div><h1>Ordres de travail</h1><p class="subtitle" style="margin:0;">Maintenance corrective et préventive</p></div>
+    <div><h1>${isTech?'Mes ordres de travail':'Ordres de travail'}</h1><p class="subtitle" style="margin:0;">${isTech?'Ordres qui te sont assignés':'Maintenance corrective et préventive'}</p></div>
     <div class="row">
       <select id="wo-filter">
         <option ${woFilter==='Tous'?'selected':''}>Tous</option>
         ${WO_STATUTS.map(s=>`<option ${woFilter===s?'selected':''}>${s}</option>`).join('')}
       </select>
-      <button class="btn btn-accent" data-open-wo="new">${ICONS.plus} Nouvel OT</button>
+      ${isTech?'':`<button class="btn btn-accent" data-open-wo="new">${ICONS.plus} Nouvel OT</button>`}
     </div>
   </div>
   ${sorted.length===0?`<div class="plate p16"><div class="empty">${ICONS.wrench}<span>Aucun ordre de travail.</span></div></div>`:
@@ -576,7 +891,7 @@ function viewWO(){
       <span style="font-size:12px;color:${w.statut==='Terminé'?'var(--success)':w.statut==='En cours'?'var(--accent)':'var(--muted)'}">${w.statut}</span>
       ${w.cout>0?`<span class="mono" style="font-size:12px;color:var(--muted);">${fmt(w.cout)} FCFA</span>`:''}
       <button class="icon-btn" data-open-wo="${w.id}">${ICONS.edit}</button>
-      <button class="icon-btn" data-del-wo="${w.id}">${ICONS.trash}</button>
+      ${isTech?'':`<button class="icon-btn" data-del-wo="${w.id}">${ICONS.trash}</button>`}
     </div>
   </div>`).join('')}
   </div>`}`;
@@ -616,7 +931,10 @@ function renderWOModal(){
     <label class="field"><span>Statut</span><select id="wo-f-statut">${WO_STATUTS.map(s=>`<option ${w.statut===s?'selected':''}>${s}</option>`).join('')}</select></label>
     <label class="field"><span>Date début</span><input type="date" id="wo-f-debut" value="${w.dateDebut||w.dateCreation||''}"/></label>
     <label class="field"><span>Date fin</span><input type="date" id="wo-f-fin" value="${w.dateFin||''}"/></label>
-    <label class="field"><span>Technicien</span><input id="wo-f-tech" value="${esc(w.technicien)}"/></label>
+    <label class="field"><span>Technicien</span>
+      <input id="wo-f-tech" list="wo-personnel-list" value="${esc(w.technicien)}" placeholder="Choisir ou saisir un nom"/>
+      <datalist id="wo-personnel-list">${state.personnel.filter(p=>p.statut==='Actif').map(p=>`<option value="${esc(p.nom)}">${esc(p.poste)}</option>`).join('')}</datalist>
+    </label>
     <label class="field"><span>Coût (FCFA)</span><input type="number" id="wo-f-cout" value="${w.cout||0}"/></label>
   </div>
 
@@ -719,43 +1037,118 @@ function renderWOModal(){
 function closeWOModal(){ document.getElementById('modal-root').innerHTML=''; woDraft=null; }
 
 /* ============ PREVENTIVE ============ */
+function pmStatus(p, em){
+  const now = new Date();
+  if(p.type==='Heures' || p.type==='Kilométrage'){
+    const eq = em[p.equipementId];
+    const unite = p.type==='Heures' ? 'h' : 'km';
+    const valeurActuelle = eq ? Number(p.type==='Heures' ? eq.heures : eq.km) || 0 : 0;
+    const prochaineValeur = Number(p.derniereValeur||0) + Number(p.intervalle||0);
+    const restant = prochaineValeur - valeurActuelle;
+    const seuilUrgent = p.type==='Heures' ? 20 : 200;
+    const urgent = restant <= seuilUrgent;
+    const label = restant<=0 ? `Dépassé de ${Math.abs(Math.round(restant))} ${unite}` : `Reste ${Math.round(restant)} ${unite} (échéance à ${prochaineValeur} ${unite})`;
+    return { urgent, label };
+  }
+  const daysLeft = p.prochaine? Math.round((new Date(p.prochaine)-now)/864e5): null;
+  const urgent = daysLeft!==null && daysLeft<=7;
+  const label = p.prochaine ? `Échéance : ${p.prochaine}${daysLeft!==null?` (${daysLeft}j)`:''}` : 'Non planifié';
+  return { urgent, label };
+}
 function viewPM(){
-  const em = equipMap(); const now = new Date();
-  const sorted = [...state.pmPlans].sort((a,b)=>(a.prochaine||'').localeCompare(b.prochaine||''));
+  const em = equipMap();
+  const sorted = [...state.pmPlans].sort((a,b)=> (pmStatus(a,em).urgent===pmStatus(b,em).urgent)?0:(pmStatus(a,em).urgent?-1:1));
   return `
   <div class="headrow">
-    <div><h1>Maintenance préventive</h1><p class="subtitle" style="margin:0;">Planification des entretiens périodiques</p></div>
-    <button class="btn btn-accent" data-open-modal="pm-new">${ICONS.plus} Nouveau plan</button>
+    <div><h1>Maintenance préventive</h1><p class="subtitle" style="margin:0;">Planification par date ou par compteur (heures/km)</p></div>
+    <button class="btn btn-accent" data-open-pm="new">${ICONS.plus} Nouveau plan</button>
   </div>
   ${sorted.length===0?`<div class="plate p16"><div class="empty">${ICONS.calendar}<span>Aucun plan préventif défini.</span></div></div>`:
   `<div style="display:flex;flex-direction:column;gap:8px;">
   ${sorted.map(p=>{
-    const daysLeft = p.prochaine? Math.round((new Date(p.prochaine)-now)/864e5): null;
-    const urgent = daysLeft!==null && daysLeft<=7;
+    const st = pmStatus(p, em);
     return `<div class="plate p14 between wrapwrap" style="gap:12px;">
-      <div class="row"><span class="led" style="background:${urgent?'var(--danger)':'var(--success)'}"></span>
+      <div class="row"><span class="led" style="background:${st.urgent?'var(--danger)':'var(--success)'}"></span>
         <div><div style="font-size:13px;font-weight:500;">${esc(p.tache)}</div>
-        <div style="font-size:12px;color:var(--muted);">${em[p.equipementId]?.code||'—'} · tous les ${p.frequenceJours} j</div></div>
+        <div style="font-size:12px;color:var(--muted);">${em[p.equipementId]?.code||'—'} · <span class="badge">${p.type||'Date'}</span>${p.type==='Date'||!p.type?` · tous les ${p.frequenceJours} j`:` · tous les ${p.intervalle} ${p.type==='Heures'?'h':'km'}`}</div></div>
       </div>
       <div class="row">
-        <span style="font-size:12px;color:${urgent?'var(--danger)':'var(--muted)'}">${p.prochaine?`Échéance : ${p.prochaine}${daysLeft!==null?` (${daysLeft}j)`:''}`:'Non planifié'}</span>
-        <button class="icon-btn" data-edit-pm="${p.id}">${ICONS.edit}</button>
+        <span style="font-size:12px;color:${st.urgent?'var(--danger)':'var(--muted)'}">${st.label}</span>
+        <button class="icon-btn" data-open-pm="${p.id}">${ICONS.edit}</button>
         <button class="icon-btn" data-del-pm="${p.id}">${ICONS.trash}</button>
       </div>
     </div>`;
   }).join('')}
   </div>`}`;
 }
-function pmForm(p){
-  const opts = state.fleet.map(e=>`<option value="${e.id}" ${p.equipementId===e.id?'selected':''}>${e.code} — ${e.nom}</option>`).join('');
-  return `
+
+let pmDraft = null;
+let pmIsNew = false;
+function blankPM(){
+  return { id:null, equipementId: state.fleet[0]?.id||state.plantEquipment[0]?.id||'', tache:'', type:'Date',
+    frequenceJours:90, derniere:'', prochaine:'', intervalle:250, derniereValeur:0 };
+}
+function openPMModal(id){
+  pmIsNew = (id==='new');
+  pmDraft = pmIsNew ? blankPM() : JSON.parse(JSON.stringify(state.pmPlans.find(x=>x.id===id)));
+  renderPMModal();
+}
+function closePMModal(){ document.getElementById('modal-root').innerHTML=''; pmDraft=null; }
+function renderPMModal(){
+  const p = pmDraft;
+  const allEquip = [...state.fleet.map(e=>({...e,grp:'Flotte'})), ...state.plantEquipment.map(e=>({...e,grp:'Usine'}))];
+  const equipOpts = allEquip.map(e=>`<option value="${e.id}" ${p.equipementId===e.id?'selected':''}>[${e.grp}] ${e.code} — ${e.nom}</option>`).join('');
+  const isCounter = p.type==='Heures' || p.type==='Kilométrage';
+  const unite = p.type==='Heures' ? 'h' : 'km';
+
+  const body = `
   <div class="formgrid">
-    <label class="field"><span>Engin</span><select data-f="equipementId">${opts}</select></label>
-    <label class="field"><span>Fréquence (jours)</span><input type="number" data-f="frequenceJours" value="${p.frequenceJours||90}"/></label>
-    <label class="field span2"><span>Tâche</span><input data-f="tache" value="${esc(p.tache)}" placeholder="Vidange moteur + filtres"/></label>
-    <label class="field"><span>Dernière réalisation</span><input type="date" data-f="derniere" value="${p.derniere||''}"/></label>
-    <label class="field"><span>Prochaine échéance</span><input type="date" data-f="prochaine" value="${p.prochaine||''}"/></label>
+    <label class="field span2"><span>Équipement</span><select id="pm-f-equip">${equipOpts}</select></label>
+    <label class="field span2"><span>Tâche</span><input id="pm-f-tache" value="${esc(p.tache)}" placeholder="Vidange moteur + filtres"/></label>
+    <label class="field span2"><span>Type de déclenchement</span><select id="pm-f-type">${PM_TYPES.map(t=>`<option ${p.type===t?'selected':''}>${t}</option>`).join('')}</select></label>
+    ${!isCounter ? `
+    <label class="field"><span>Fréquence (jours)</span><input type="number" id="pm-f-freq" value="${p.frequenceJours||90}"/></label>
+    <label class="field"><span>Dernière réalisation</span><input type="date" id="pm-f-derniere" value="${p.derniere||''}"/></label>
+    ` : `
+    <label class="field"><span>Intervalle (${unite})</span><input type="number" id="pm-f-intervalle" value="${p.intervalle||(p.type==='Heures'?250:5000)}"/></label>
+    <label class="field"><span>Dernier relevé au moment de l'entretien (${unite})</span><input type="number" id="pm-f-derniereValeur" value="${p.derniereValeur||0}"/></label>
+    `}
+  </div>
+  <div class="modal-actions">
+    <button class="btn btn-ghost" id="pm-cancel">Annuler</button>
+    <button class="btn btn-accent" id="pm-save">Enregistrer</button>
   </div>`;
+
+  const root = document.getElementById('modal-root');
+  root.innerHTML = `
+  <div class="modal-overlay" id="pm-overlay">
+    <div class="modal">
+      <div class="modal-head"><h3>${pmIsNew?"Nouveau plan préventif":"Modifier le plan"}</h3><button class="icon-btn" id="pm-close">${ICONS.close}</button></div>
+      <div class="modal-body">${body}</div>
+    </div>
+  </div>`;
+
+  document.getElementById('pm-overlay').addEventListener('click', e=>{ if(e.target.id==='pm-overlay') closePMModal(); });
+  document.getElementById('pm-close').addEventListener('click', closePMModal);
+  document.getElementById('pm-cancel').addEventListener('click', closePMModal);
+  document.getElementById('pm-f-type').addEventListener('change', (e)=>{ p.type = e.target.value; renderPMModal(); });
+
+  document.getElementById('pm-save').addEventListener('click', ()=>{
+    p.equipementId = document.getElementById('pm-f-equip').value;
+    p.tache = document.getElementById('pm-f-tache').value;
+    p.type = document.getElementById('pm-f-type').value;
+    if(p.type==='Heures' || p.type==='Kilométrage'){
+      p.intervalle = Number(document.getElementById('pm-f-intervalle').value)||0;
+      p.derniereValeur = Number(document.getElementById('pm-f-derniereValeur').value)||0;
+    } else {
+      p.frequenceJours = Number(document.getElementById('pm-f-freq').value)||0;
+      p.derniere = document.getElementById('pm-f-derniere').value;
+      if(p.derniere && p.frequenceJours){ const d=new Date(p.derniere); d.setDate(d.getDate()+Number(p.frequenceJours)); p.prochaine=d.toISOString().slice(0,10); }
+    }
+    if(!p.tache || !p.equipementId){ alert('Tâche et équipement requis'); return; }
+    if(pmIsNew){ p.id = uid(); state.pmPlans.push(p); persist(); closePMModal(); render(); toast('Plan préventif ajouté'); }
+    else { const idx = state.pmPlans.findIndex(x=>x.id===p.id); if(idx>-1) state.pmPlans[idx]=p; persist(); closePMModal(); render(); toast('Plan préventif mis à jour'); }
+  });
 }
 
 /* ============ FUEL ============ */
@@ -879,7 +1272,10 @@ function viewPlant(){
   return `
   <div class="headrow">
     <div><h1>Équipements usine</h1><p class="subtitle" style="margin:0;">${state.plantEquipment.length} machines enregistrées</p></div>
-    <button class="btn btn-accent" data-open-modal="plant-new">${ICONS.plus} Nouvelle machine</button>
+    <div class="row">
+      <button class="btn btn-ghost" data-open-types="1">${ICONS.layers} Types</button>
+      <button class="btn btn-accent" data-open-modal="plant-new">${ICONS.plus} Nouvelle machine</button>
+    </div>
   </div>
   ${state.plantEquipment.length===0?`<div class="plate p16"><div class="empty">${ICONS.factory}<span>Aucune machine enregistrée.</span></div></div>`:
   `<div class="grid grid-fleet">
@@ -909,7 +1305,7 @@ function plantForm(e){
   return `
   <div class="formgrid">
     <label class="field"><span>Code</span><input data-f="code" value="${esc(e.code)}" placeholder="LIGNE-03"/></label>
-    <label class="field"><span>Type</span><select data-f="type">${EQUIP_TYPES.map(t=>`<option ${e.type===t?'selected':''}>${t}</option>`).join('')}</select></label>
+    <label class="field"><span>Type</span><select data-f="type">${state.equipTypes.map(t=>`<option ${e.type===t?'selected':''}>${t}</option>`).join('')}</select></label>
     <label class="field span2"><span>Nom</span><input data-f="nom" value="${esc(e.nom)}"/></label>
     <label class="field"><span>Statut</span><select data-f="statut">${STATUTS.map(s=>`<option ${e.statut===s?'selected':''}>${s}</option>`).join('')}</select></label>
     <label class="field"><span>Date mise en service</span><input type="date" data-f="dateMiseEnService" value="${e.dateMiseEnService||''}"/></label>
@@ -1078,6 +1474,101 @@ function ccForm(c){
     <label class="field span2"><span>Nom</span><input data-f="nom" value="${esc(c.nom)}"/></label>
   </div>`;
 }
+
+/* ============ PERSONNEL (RH) ============ */
+function viewPersonnel(){
+  const woCount = {};
+  state.workOrders.forEach(w=>{ if(w.technicien) woCount[w.technicien]=(woCount[w.technicien]||0)+1; });
+  const sorted = [...state.personnel].sort((a,b)=>(a.nom||'').localeCompare(b.nom||''));
+  return `
+  <div class="headrow">
+    <div><h1>Personnel</h1><p class="subtitle" style="margin:0;">${state.personnel.length} personnes · par métier et affectation</p></div>
+    <button class="btn btn-accent" data-open-modal="personnel-new">${ICONS.plus} Nouvelle personne</button>
+  </div>
+  ${sorted.length===0?`<div class="plate p16"><div class="empty">${ICONS.users}<span>Aucun personnel enregistré.</span></div></div>`:
+  `<div class="grid grid-fleet">
+  ${sorted.map(p=>`
+  <div class="plate p16">
+    <div class="between" style="align-items:flex-start;">
+      <div>
+        <div class="row"><span class="led" style="background:${p.statut==='Actif'?'var(--success)':p.statut==='Congé'?'var(--accent)':'var(--muted)'}"></span><span style="font-size:14px;font-weight:500;">${esc(p.nom)}</span></div>
+        <div style="font-size:12px;color:var(--muted);">${esc(p.poste)} · ${esc(p.affectation)}</div>
+      </div>
+      <div class="row">
+        <button class="icon-btn" data-edit-personnel="${p.id}">${ICONS.edit}</button>
+        <button class="icon-btn" data-del-personnel="${p.id}">${ICONS.trash}</button>
+      </div>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-top:8px;border-top:1px solid var(--border);padding-top:8px;">
+      ${p.telephone?`${esc(p.telephone)} · `:''}${woCount[p.nom]||0} OT réalisé(s)
+    </div>
+  </div>`).join('')}
+  </div>`}`;
+}
+function personnelForm(p){
+  return `
+  <div class="formgrid">
+    <label class="field span2"><span>Nom complet</span><input data-f="nom" value="${esc(p.nom)}" placeholder="Ex: Kouassi Jean"/></label>
+    <label class="field"><span>Poste / métier</span><select data-f="poste">${POSTES.map(t=>`<option ${p.poste===t?'selected':''}>${t}</option>`).join('')}</select></label>
+    <label class="field"><span>Affectation</span><select data-f="affectation">${AFFECTATIONS.map(a=>`<option ${p.affectation===a?'selected':''}>${a}</option>`).join('')}</select></label>
+    <label class="field"><span>Statut</span><select data-f="statut">${PERSONNEL_STATUTS.map(s=>`<option ${p.statut===s?'selected':''}>${s}</option>`).join('')}</select></label>
+    <label class="field"><span>Téléphone</span><input data-f="telephone" value="${esc(p.telephone)}"/></label>
+    <label class="field span2"><span>Date d'embauche</span><input type="date" data-f="dateEmbauche" value="${p.dateEmbauche||''}"/></label>
+  </div>`;
+}
+
+let allUsers = [];
+async function loadAllUsers(){
+  try{
+    const { data, error } = await sb.from('user_roles').select('*').order('created_at',{ascending:true});
+    if(!error && data) allUsers = data;
+  }catch(e){}
+}
+function viewUsers(){
+  return `
+  <h1>Utilisateurs</h1>
+  <p class="subtitle">Gestion des comptes et des rôles — réservé aux administrateurs</p>
+  <div class="plate" style="overflow:hidden;">
+  <table><thead><tr><th>Nom</th><th>Email</th><th>Rôle</th><th>Inscrit le</th></tr></thead>
+  <tbody>
+  ${allUsers.length===0?`<tr><td colspan="4" style="padding:20px;text-align:center;color:var(--muted);">Chargement des comptes…</td></tr>`:
+  allUsers.map(u=>`<tr>
+    <td>${esc(u.nom_complet||'—')}</td>
+    <td style="color:var(--muted);">${esc(u.email)}</td>
+    <td>
+      <select data-user-role="${u.user_id}" ${u.user_id===currentUser.id?'disabled title="Tu ne peux pas changer ton propre rôle ici"':''}>
+        ${Object.keys(ROLE_LABELS).map(r=>`<option value="${r}" ${u.role===r?'selected':''}>${ROLE_LABELS[r]}</option>`).join('')}
+      </select>
+    </td>
+    <td style="color:var(--muted);font-size:12px;">${(u.created_at||'').slice(0,10)}</td>
+  </tr>`).join('')}
+  </tbody></table></div>
+  <p style="font-size:11px;color:var(--muted);margin-top:12px;">Nouveaux comptes créés via "Créer un compte" arrivent avec le rôle Technicien par défaut — change-le ici pour leur donner le bon accès.</p>`;
+}
+
+function viewSettings(){
+  const t = { ...DEFAULT_THEME, ...(state.theme||{}) };
+  return `
+  <h1>Apparence / thème</h1>
+  <p class="subtitle">Personnalise chaque couleur de ton ERP — appliqué immédiatement</p>
+  <div class="plate p16" style="max-width:520px;">
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      ${Object.keys(DEFAULT_THEME).map(k=>`
+        <div class="between">
+          <span style="font-size:13px;color:var(--text);">${THEME_LABELS[k]}</span>
+          <div class="row">
+            <input type="color" id="theme-${k}" value="${t[k]}" data-theme-key="${k}" style="width:44px;height:32px;padding:2px;border-radius:6px;cursor:pointer;"/>
+            <span class="mono" style="font-size:11px;color:var(--muted);width:64px;">${t[k]}</span>
+          </div>
+        </div>`).join('')}
+    </div>
+    <div class="row" style="margin-top:20px;">
+      <button class="btn btn-accent" id="theme-save">Enregistrer</button>
+      <button class="btn btn-ghost" id="theme-reset">Réinitialiser par défaut</button>
+    </div>
+  </div>`;
+}
+
 function viewReports(){
   const k = computeKpis();
   const costByEquip = {}; state.workOrders.forEach(w=>{ costByEquip[w.equipementId]=(costByEquip[w.equipementId]||0)+Number(w.cout||0); });
@@ -1141,17 +1632,17 @@ function attachHandlers(){
   if(fs) fs.addEventListener('input', e=>{ fleetSearch=e.target.value; render(); document.getElementById('fleet-search').focus(); document.getElementById('fleet-search').selectionStart = document.getElementById('fleet-search').value.length; });
   const bo = document.querySelector('[data-open-modal="fleet-new"]');
   if(bo) bo.addEventListener('click', ()=>{
-    const e = {id:null, code:"", nom:"", type:EQUIP_TYPES[0], statut:"Opérationnel", heures:0, dernierEntretien:"", prochainEntretien:"", conso100h:15};
+    const e = {id:null, code:"", nom:"", type:state.equipTypes[0], statut:"Opérationnel", heures:0, dernierEntretien:"", prochainEntretien:"", conso100h:15};
     openModal('Nouvel engin', fleetForm(e), (data)=>{
       if(!data.code||!data.nom){ alert('Code et nom requis'); return; }
-      state.fleet.push({...data, id:uid(), heures:Number(data.heures), conso100h:Number(data.conso100h)});
+      state.fleet.push({...data, id:uid(), heures:Number(data.heures), km:Number(data.km), conso100h:Number(data.conso100h)});
       persist(); closeModal(); render(); toast('Engin ajouté à la flotte');
     });
   });
   document.querySelectorAll('[data-edit-fleet]').forEach(b=>b.addEventListener('click',()=>{
     const e = state.fleet.find(x=>x.id===b.dataset.editFleet);
     openModal("Modifier l'engin", fleetForm(e), (data)=>{
-      Object.assign(e, data, {heures:Number(data.heures), conso100h:Number(data.conso100h)});
+      Object.assign(e, data, {heures:Number(data.heures), km:Number(data.km), conso100h:Number(data.conso100h)});
       persist(); closeModal(); render(); toast('Engin mis à jour');
     });
   }));
@@ -1174,23 +1665,9 @@ function attachHandlers(){
   }));
 
   // PM
-  const pmn = document.querySelector('[data-open-modal="pm-new"]');
-  if(pmn) pmn.addEventListener('click', ()=>{
-    const p = {id:null, equipementId: state.fleet[0]?.id||'', tache:'', frequenceJours:90, derniere:'', prochaine:''};
-    openModal('Nouveau plan préventif', pmForm(p), (data)=>{
-      if(!data.tache||!data.equipementId){ alert('Tâche et engin requis'); return; }
-      if(data.derniere && data.frequenceJours){ const d=new Date(data.derniere); d.setDate(d.getDate()+Number(data.frequenceJours)); data.prochaine=d.toISOString().slice(0,10); }
-      state.pmPlans.push({...data, id:uid(), frequenceJours:Number(data.frequenceJours)});
-      persist(); closeModal(); render(); toast('Plan préventif ajouté');
-    });
-  });
-  document.querySelectorAll('[data-edit-pm]').forEach(b=>b.addEventListener('click',()=>{
-    const p = state.pmPlans.find(x=>x.id===b.dataset.editPm);
-    openModal('Modifier le plan', pmForm(p), (data)=>{
-      if(data.derniere && data.frequenceJours){ const d=new Date(data.derniere); d.setDate(d.getDate()+Number(data.frequenceJours)); data.prochaine=d.toISOString().slice(0,10); }
-      Object.assign(p, data, {frequenceJours:Number(data.frequenceJours)});
-      persist(); closeModal(); render(); toast('Plan préventif mis à jour');
-    });
+  document.querySelectorAll('[data-open-types]').forEach(b=>b.addEventListener('click', openTypesModal));
+  document.querySelectorAll('[data-open-pm]').forEach(b=>b.addEventListener('click',()=>{
+    openPMModal(b.dataset.openPm);
   }));
   document.querySelectorAll('[data-del-pm]').forEach(b=>b.addEventListener('click',()=>{
     if(!confirm('Supprimer ce plan ?')) return;
@@ -1272,7 +1749,7 @@ function attachHandlers(){
   // Équipements usine
   const plantn = document.querySelector('[data-open-modal="plant-new"]');
   if(plantn) plantn.addEventListener('click', ()=>{
-    const e = {id:null, code:'', nom:'', type:EQUIP_TYPES[0], statut:'Opérationnel', emplacementId:'', centreCoutId:'', dateMiseEnService:''};
+    const e = {id:null, code:'', nom:'', type:state.equipTypes[0], statut:'Opérationnel', emplacementId:'', centreCoutId:'', dateMiseEnService:''};
     openModal('Nouvelle machine', plantForm(e), (data)=>{
       if(!data.code||!data.nom){ alert('Code et nom requis'); return; }
       state.plantEquipment.push({...data, id:uid(), emplacementId:data.emplacementId||null, centreCoutId:data.centreCoutId||null});
@@ -1402,6 +1879,59 @@ function attachHandlers(){
     state.costCenters = state.costCenters.filter(x=>x.id!==b.dataset.delCc);
     persist(); render(); toast('Centre de coût supprimé');
   }));
+
+  // Utilisateurs (admin)
+  document.querySelectorAll('[data-user-role]').forEach(sel=>sel.addEventListener('change', async (e)=>{
+    const uid_ = e.target.dataset.userRole;
+    const newRole = e.target.value;
+    try{
+      const { error } = await sb.from('user_roles').update({ role:newRole }).eq('user_id', uid_);
+      if(error) throw error;
+      const u = allUsers.find(x=>x.user_id===uid_); if(u) u.role = newRole;
+      toast('Rôle mis à jour');
+    }catch(err){ alert('Erreur : '+((err&&err.message)||String(err))); render(); }
+  }));
+
+  // Apparence / thème
+  document.querySelectorAll('[data-theme-key]').forEach(inp=>inp.addEventListener('input', (e)=>{
+    const key = e.target.dataset.themeKey;
+    const val = e.target.value;
+    state.theme = { ...DEFAULT_THEME, ...(state.theme||{}) };
+    state.theme[key] = val;
+    applyTheme(state.theme);
+    const label = e.target.nextElementSibling; if(label) label.textContent = val;
+  }));
+  const themeSave = document.getElementById('theme-save');
+  if(themeSave) themeSave.addEventListener('click', ()=>{ persist(); toast('Thème enregistré'); });
+  const themeReset = document.getElementById('theme-reset');
+  if(themeReset) themeReset.addEventListener('click', ()=>{
+    state.theme = { ...DEFAULT_THEME };
+    applyTheme(state.theme);
+    persist(); render(); toast('Thème réinitialisé');
+  });
+
+  // Personnel
+  const pern = document.querySelector('[data-open-modal="personnel-new"]');
+  if(pern) pern.addEventListener('click', ()=>{
+    const p = {id:null, nom:'', poste:POSTES[0], affectation:AFFECTATIONS[0], statut:'Actif', telephone:'', dateEmbauche:''};
+    openModal('Nouvelle personne', personnelForm(p), (data)=>{
+      if(!data.nom){ alert('Nom requis'); return; }
+      state.personnel.push({...data, id:uid()});
+      persist(); closeModal(); render(); toast('Personne ajoutée');
+    });
+  });
+  document.querySelectorAll('[data-edit-personnel]').forEach(b=>b.addEventListener('click',()=>{
+    const p = state.personnel.find(x=>x.id===b.dataset.editPersonnel);
+    openModal('Modifier la personne', personnelForm(p), (data)=>{
+      Object.assign(p, data);
+      persist(); closeModal(); render(); toast('Personne mise à jour');
+    });
+  }));
+  document.querySelectorAll('[data-del-personnel]').forEach(b=>b.addEventListener('click',()=>{
+    if(!confirm('Supprimer cette personne ?')) return;
+    state.personnel = state.personnel.filter(x=>x.id!==b.dataset.delPersonnel);
+    persist(); render(); toast('Personne supprimée');
+  }));
 }
 
 /* ============ INIT ============ */
@@ -1421,6 +1951,21 @@ document.getElementById('refresh-btn').addEventListener('click', async ()=>{
   btn.disabled = false; btn.textContent = 'Actualiser';
 });
 
+async function bootstrap(){
+  document.getElementById('auth-screen').style.display = 'flex';
+  document.getElementById('auth-screen').innerHTML = '<div class="auth-card" style="text-align:center;color:var(--muted);font-size:13px;">Vérification de la session…</div>';
+  document.getElementById('app').style.display = 'none';
+  const { data: { session } } = await sb.auth.getSession();
+  sb.auth.onAuthStateChange((event, sess)=>{
+    if(event==='SIGNED_OUT'){ currentUser=null; authTab='login'; authError=''; renderAuthScreen(); }
+  });
+  if(session){
+    await afterAuthSuccess();
+  } else {
+    renderAuthScreen();
+  }
+}
+
 async function init(){
   document.getElementById('content').innerHTML = '<div class="empty">Chargement…</div>';
   let res = await loadRemote();
@@ -1439,7 +1984,7 @@ async function init(){
     const locs = seedLocations();
     data = { fleet: seedFleet(), workOrders: [], fuelLogs: [], parts: [], pmPlans: [],
       locations: locs, plantEquipment: seedPlantEquipment(locs), notifications: [], measuringPoints: [],
-      costCenters: seedCostCenters(), productionLogs: [], woCounter: 0 };
+      costCenters: seedCostCenters(), productionLogs: [], woCounter: 0, equipTypes: [...DEFAULT_EQUIP_TYPES], personnel: [], theme: { ...DEFAULT_THEME } };
   } else {
     // compatibilité ascendante : ajoute le module usine si absent d'un compte existant
     if(!data.locations || data.locations.length===0){
@@ -1453,6 +1998,9 @@ async function init(){
     data.measuringPoints = data.measuringPoints || [];
     data.costCenters = (data.costCenters && data.costCenters.length) ? data.costCenters : seedCostCenters();
     data.productionLogs = data.productionLogs || [];
+    data.equipTypes = (data.equipTypes && data.equipTypes.length) ? data.equipTypes : [...DEFAULT_EQUIP_TYPES];
+    data.personnel = data.personnel || [];
+    data.theme = data.theme || { ...DEFAULT_THEME };
     // compatibilité ascendante : numérote les anciens ordres de travail et complète les nouveaux champs
     data.woCounter = data.woCounter || 0;
     (data.workOrders||[]).sort((a,b)=>(a.dateCreation||'').localeCompare(b.dateCreation||'')).forEach(w=>{
@@ -1464,11 +2012,12 @@ async function init(){
     });
   }
   state = data;
+  applyTheme(state.theme);
   render();
   persist();
   startPolling();
 }
-init();
+bootstrap();
 
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
