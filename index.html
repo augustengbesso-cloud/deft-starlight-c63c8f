@@ -88,6 +88,9 @@ td{padding:9px 12px;border-bottom:1px solid var(--border);}
 .modal-head h3{font-family:'Oswald',sans-serif;text-transform:uppercase;font-size:16px;margin:0;}
 .modal-body{padding:20px;}
 .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;}
+.wo-toolbar{display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--panelR);border:1px solid var(--border);border-radius:8px;margin-bottom:14px;position:sticky;top:0;z-index:5;}
+.wo-headband{background:var(--panel);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:6px;padding:14px 16px;margin-bottom:16px;}
+.wo-headband-label{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-family:'Oswald',sans-serif;}
 /* misc */
 .row{display:flex;align-items:center;gap:8px;}
 .between{display:flex;align-items:center;justify-content:space-between;}
@@ -259,7 +262,7 @@ function canSee(navId){
   const restricted = {
     planificateur: ['users'],
     technicien: ['fleet','pm','fuel','parts','floc','plant','production','measures','costs','personnel','reports','settings','users','da','bc','resa'],
-    rh: ['fleet','wo','pm','fuel','parts','floc','plant','production','notif','measures','costs','reports','settings','users','da','bc','resa'],
+    rh: ['fleet','wo','wo-edit','pm','fuel','parts','floc','plant','production','notif','measures','costs','reports','settings','users','da','bc','resa'],
   };
   const blocked = restricted[currentUser.role] || [];
   return !blocked.includes(navId);
@@ -626,6 +629,7 @@ function render(){
   if(currentView==='dashboard') c.innerHTML = viewDashboard();
   else if(currentView==='fleet') c.innerHTML = viewFleet();
   else if(currentView==='wo') c.innerHTML = viewWO();
+  else if(currentView==='wo-edit') c.innerHTML = viewWOEdit();
   else if(currentView==='pm') c.innerHTML = viewPM();
   else if(currentView==='fuel') c.innerHTML = viewFuel();
   else if(currentView==='parts') c.innerHTML = viewParts();
@@ -956,42 +960,62 @@ function blankWO(){
     dateCreation:new Date().toISOString().slice(0,10), dateDebut:new Date().toISOString().slice(0,10), dateFin:'',
     technicien:'', cout:0, operations:[], piecesUtilisees:[] };
 }
-function openWOModal(id){
+function openWOEditor(id){
   woIsNew = (id==='new');
   woDraft = woIsNew ? blankWO() : JSON.parse(JSON.stringify(state.workOrders.find(x=>x.id===id)));
   if(!woDraft.operations) woDraft.operations=[];
   if(!woDraft.piecesUtilisees) woDraft.piecesUtilisees=[];
-  renderWOModal();
+  currentView = 'wo-edit';
+  render();
 }
-function renderWOModal(){
+function viewWOEdit(){
   const w = woDraft;
   const allEquip = [...state.fleet.map(e=>({...e,grp:'Flotte'})), ...state.plantEquipment.map(e=>({...e,grp:'Usine'}))];
   const equipOpts = allEquip.map(e=>`<option value="${e.id}" ${w.equipementId===e.id?'selected':''}>[${e.grp}] ${e.code} — ${e.nom}</option>`).join('');
   const partOpts = state.parts.map(p=>`<option value="${p.id}">${esc(p.ref||p.nom)} — ${esc(p.nom)} (stock: ${p.quantite})</option>`).join('');
+  const linkedNotif = w.id ? state.notifications.find(n=>n.workOrderId===w.id) : null;
+  const badges = w.id ? woStatusBadges(w) : [{t:'NOUVEAU', c:'var(--muted)'}];
 
-  const body = `
-  <div class="formgrid">
-    <label class="field"><span>N° d'ordre</span><input value="${w.numero||"Généré à l'enregistrement"}" disabled style="opacity:.6"/></label>
-    <label class="field"><span>Équipement</span><select id="wo-f-equip">${equipOpts}</select></label>
-    <label class="field span2"><span>Libellé</span><input id="wo-f-titre" value="${esc(w.titre)}" placeholder="Remplacement flexible hydraulique"/></label>
-    <label class="field span2"><span>Description</span><textarea id="wo-f-desc" rows="2">${esc(w.description)}</textarea></label>
-    <label class="field"><span>Type</span><select id="wo-f-type"><option ${w.type==='Correctif'?'selected':''}>Correctif</option><option ${w.type==='Préventif'?'selected':''}>Préventif</option></select></label>
-    <label class="field"><span>Type de travail</span><select id="wo-f-typetravail">${TYPES_TRAVAIL.map(t=>`<option ${w.typeTravail===t?'selected':''}>${t}</option>`).join('')}</select></label>
-    <label class="field"><span>Poste responsable</span><select id="wo-f-poste">${state.postes.map(p=>`<option ${w.poste===p?'selected':''}>${p}</option>`).join('')}</select></label>
-    <label class="field"><span>Priorité</span><select id="wo-f-priorite">${WO_PRIORITES.map(p=>`<option ${w.priorite===p?'selected':''}>${p}</option>`).join('')}</select></label>
-    <label class="field"><span>Statut</span><select id="wo-f-statut">${WO_STATUTS.map(s=>`<option ${w.statut===s?'selected':''}>${s}</option>`).join('')}</select></label>
-    <label class="field"><span>Date début</span><input type="date" id="wo-f-debut" value="${w.dateDebut||w.dateCreation||''}"/></label>
-    <label class="field"><span>Date fin</span><input type="date" id="wo-f-fin" value="${w.dateFin||''}"/></label>
-    <label class="field"><span>Technicien</span>
-      <input id="wo-f-tech" list="wo-personnel-list" value="${esc(w.technicien)}" placeholder="Choisir ou saisir un nom"/>
-      <datalist id="wo-personnel-list">${state.personnel.filter(p=>p.statut==='Actif').map(p=>`<option value="${esc(p.nom)}">${esc(p.poste)}</option>`).join('')}</datalist>
-    </label>
-    <label class="field"><span>Coût (FCFA)</span><input type="number" id="wo-f-cout" value="${w.cout||0}"/></label>
+  return `
+  <div class="wo-toolbar">
+    <button class="btn btn-ghost" id="wo-back">${ICONS.close} Retour à la liste</button>
+    <div class="row" style="margin-left:auto;">
+      <button class="btn btn-accent" id="wo-save">${ICONS.check} Enregistrer</button>
+    </div>
   </div>
 
-  <div style="margin-top:16px;">
-    <div class="between" style="margin-bottom:6px;"><span style="font-size:12px;color:var(--muted);">Opérations effectuées</span></div>
-    <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px;">
+  <div class="wo-headband">
+    <div class="row wrapwrap" style="gap:24px;">
+      <div><span class="wo-headband-label">Ordre</span><div class="mono" style="font-size:15px;">${w.numero||"Nouveau"}</div></div>
+      ${linkedNotif?`<div><span class="wo-headband-label">Avis</span><div class="mono" style="font-size:15px;">${linkedNotif.numero}</div></div>`:''}
+      <div style="flex:1;min-width:200px;"><span class="wo-headband-label">Statut système</span><div class="row wrapwrap" style="gap:4px;margin-top:4px;">${badges.map(b=>`<span class="badge" style="color:${b.c};border-color:${b.c};">${b.t}</span>`).join('')}</div></div>
+    </div>
+  </div>
+
+  <div class="plate p16" style="margin-bottom:16px;">
+    <h3 class="oswald" style="text-transform:uppercase;font-size:13px;margin:0 0 14px;color:var(--muted);">Données générales</h3>
+    <div class="formgrid">
+      <label class="field"><span>Équipement</span><select id="wo-f-equip">${equipOpts}</select></label>
+      <label class="field"><span>Type de travail</span><select id="wo-f-typetravail">${TYPES_TRAVAIL.map(t=>`<option ${w.typeTravail===t?'selected':''}>${t}</option>`).join('')}</select></label>
+      <label class="field span2"><span>Libellé</span><input id="wo-f-titre" value="${esc(w.titre)}" placeholder="Remplacement flexible hydraulique"/></label>
+      <label class="field span2"><span>Description</span><textarea id="wo-f-desc" rows="2">${esc(w.description)}</textarea></label>
+      <label class="field"><span>Type</span><select id="wo-f-type"><option ${w.type==='Correctif'?'selected':''}>Correctif</option><option ${w.type==='Préventif'?'selected':''}>Préventif</option></select></label>
+      <label class="field"><span>Poste responsable</span><select id="wo-f-poste">${state.postes.map(p=>`<option ${w.poste===p?'selected':''}>${p}</option>`).join('')}</select></label>
+      <label class="field"><span>Priorité</span><select id="wo-f-priorite">${WO_PRIORITES.map(p=>`<option ${w.priorite===p?'selected':''}>${p}</option>`).join('')}</select></label>
+      <label class="field"><span>Statut</span><select id="wo-f-statut">${WO_STATUTS.map(s=>`<option ${w.statut===s?'selected':''}>${s}</option>`).join('')}</select></label>
+      <label class="field"><span>Date début</span><input type="date" id="wo-f-debut" value="${w.dateDebut||w.dateCreation||''}"/></label>
+      <label class="field"><span>Date fin</span><input type="date" id="wo-f-fin" value="${w.dateFin||''}"/></label>
+      <label class="field"><span>Technicien</span>
+        <input id="wo-f-tech" list="wo-personnel-list" value="${esc(w.technicien)}" placeholder="Choisir ou saisir un nom"/>
+        <datalist id="wo-personnel-list">${state.personnel.filter(p=>p.statut==='Actif').map(p=>`<option value="${esc(p.nom)}">${esc(p.poste)}</option>`).join('')}</datalist>
+      </label>
+      <label class="field"><span>Coût (FCFA)</span><input type="number" id="wo-f-cout" value="${w.cout||0}"/></label>
+    </div>
+  </div>
+
+  <div class="plate p16" style="margin-bottom:16px;">
+    <h3 class="oswald" style="text-transform:uppercase;font-size:13px;margin:0 0 12px;color:var(--muted);">Opérations effectuées</h3>
+    <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:10px;">
       ${w.operations.length===0?`<span style="font-size:12px;color:var(--muted);">Aucune opération ajoutée.</span>`:
       w.operations.map((op,i)=>`<div class="between card-item" style="padding:6px 10px;"><span style="font-size:13px;">${esc(op)}</span><button class="icon-btn" data-wo-op-del="${i}">${ICONS.trash}</button></div>`).join('')}
     </div>
@@ -1001,9 +1025,9 @@ function renderWOModal(){
     </div>
   </div>
 
-  <div style="margin-top:16px;">
-    <div class="between" style="margin-bottom:6px;"><span style="font-size:12px;color:var(--muted);">Pièces / composants utilisés</span></div>
-    <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px;">
+  <div class="plate p16" style="margin-bottom:16px;">
+    <h3 class="oswald" style="text-transform:uppercase;font-size:13px;margin:0 0 12px;color:var(--muted);">Composants utilisés</h3>
+    <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:10px;">
       ${w.piecesUtilisees.length===0?`<span style="font-size:12px;color:var(--muted);">Aucune pièce ajoutée.</span>`:
       w.piecesUtilisees.map((pu,i)=>{ const pt=state.parts.find(p=>p.id===pu.partId);
       return `<div class="between card-item" style="padding:6px 10px;"><span style="font-size:13px;">${pt?esc(pt.nom):'Pièce supprimée'} × ${pu.quantite}</span><button class="icon-btn" data-wo-part-del="${i}">${ICONS.trash}</button></div>`;}).join('')}
@@ -1015,42 +1039,38 @@ function renderWOModal(){
       <button class="btn btn-ghost" id="wo-part-add" type="button">${ICONS.plus} Ajouter</button>
     </div>`}
   </div>
-  <div class="modal-actions">
-    <button class="btn btn-ghost" id="wo-cancel">Annuler</button>
-    <button class="btn btn-accent" id="wo-save">Enregistrer</button>
+
+  <div class="row" style="justify-content:flex-end;margin-bottom:24px;">
+    <button class="btn btn-ghost" id="wo-back-2">Annuler</button>
+    <button class="btn btn-accent" id="wo-save-2">${ICONS.check} Enregistrer</button>
   </div>`;
+}
+function wireWOEditor(){
+  const w = woDraft;
+  if(!w) return;
+  const back = ()=>{ currentView='wo'; woDraft=null; render(); };
+  const backBtn = document.getElementById('wo-back'); if(backBtn) backBtn.addEventListener('click', back);
+  const backBtn2 = document.getElementById('wo-back-2'); if(backBtn2) backBtn2.addEventListener('click', back);
 
-  const root = document.getElementById('modal-root');
-  root.innerHTML = `
-  <div class="modal-overlay" id="wo-overlay">
-    <div class="modal">
-      <div class="modal-head"><h3>${woIsNew?"Nouvel ordre de travail":"Modifier l'ordre de travail"}</h3><button class="icon-btn" id="wo-close">${ICONS.close}</button></div>
-      <div class="modal-body">${body}</div>
-    </div>
-  </div>`;
-
-  document.getElementById('wo-overlay').addEventListener('click', e=>{ if(e.target.id==='wo-overlay') closeWOModal(); });
-  document.getElementById('wo-close').addEventListener('click', closeWOModal);
-  document.getElementById('wo-cancel').addEventListener('click', closeWOModal);
-
-  document.getElementById('wo-op-add').addEventListener('click', ()=>{
+  const opAdd = document.getElementById('wo-op-add');
+  if(opAdd) opAdd.addEventListener('click', ()=>{
     const input = document.getElementById('wo-op-input');
-    if(input.value.trim()){ w.operations.push(input.value.trim()); renderWOModal(); }
+    if(input.value.trim()){ w.operations.push(input.value.trim()); render(); }
   });
   document.querySelectorAll('[data-wo-op-del]').forEach(b=>b.addEventListener('click',()=>{
-    w.operations.splice(Number(b.dataset.woOpDel),1); renderWOModal();
+    w.operations.splice(Number(b.dataset.woOpDel),1); render();
   }));
   const partAddBtn = document.getElementById('wo-part-add');
   if(partAddBtn) partAddBtn.addEventListener('click', ()=>{
     const partId = document.getElementById('wo-part-select').value;
     const qty = Number(document.getElementById('wo-part-qty').value)||1;
-    if(partId){ w.piecesUtilisees.push({partId, quantite:qty}); renderWOModal(); }
+    if(partId){ w.piecesUtilisees.push({partId, quantite:qty}); render(); }
   });
   document.querySelectorAll('[data-wo-part-del]').forEach(b=>b.addEventListener('click',()=>{
-    w.piecesUtilisees.splice(Number(b.dataset.woPartDel),1); renderWOModal();
+    w.piecesUtilisees.splice(Number(b.dataset.woPartDel),1); render();
   }));
 
-  document.getElementById('wo-save').addEventListener('click', ()=>{
+  const saveHandler = ()=>{
     w.equipementId = document.getElementById('wo-f-equip').value;
     w.titre = document.getElementById('wo-f-titre').value;
     w.description = document.getElementById('wo-f-desc').value;
@@ -1072,21 +1092,21 @@ function renderWOModal(){
       w.numero = 'OT-'+String(state.woCounter).padStart(4,'0');
       w.id = uid();
       state.workOrders.push(w);
-      // décrémente le stock des pièces utilisées à la création
       w.piecesUtilisees.forEach(pu=>{
         const pt = state.parts.find(p=>p.id===pu.partId);
         if(pt) pt.quantite = Math.max(0, Number(pt.quantite) - Number(pu.quantite));
       });
       if(w.statut!=='Terminé'){ const eq=[...state.fleet,...state.plantEquipment].find(x=>x.id===w.equipementId); if(eq) eq.statut='En maintenance'; }
-      persist(); closeWOModal(); render(); toast('Ordre de travail '+w.numero+' créé');
+      persist(); currentView='wo'; woDraft=null; render(); toast('Ordre de travail '+w.numero+' créé');
     } else {
       const idx = state.workOrders.findIndex(x=>x.id===w.id);
       if(idx>-1) state.workOrders[idx] = w;
-      persist(); closeWOModal(); render(); toast('Ordre de travail mis à jour');
+      persist(); currentView='wo'; woDraft=null; render(); toast('Ordre de travail mis à jour');
     }
-  });
+  };
+  const saveBtn = document.getElementById('wo-save'); if(saveBtn) saveBtn.addEventListener('click', saveHandler);
+  const saveBtn2 = document.getElementById('wo-save-2'); if(saveBtn2) saveBtn2.addEventListener('click', saveHandler);
 }
-function closeWOModal(){ document.getElementById('modal-root').innerHTML=''; woDraft=null; }
 
 /* ============ PREVENTIVE ============ */
 function pmStatus(p, em){
@@ -1896,13 +1916,14 @@ function attachHandlers(){
   const wf = document.getElementById('wo-filter');
   if(wf) wf.addEventListener('change', e=>{ woFilter=e.target.value; render(); });
   document.querySelectorAll('[data-open-wo]').forEach(b=>b.addEventListener('click',()=>{
-    openWOModal(b.dataset.openWo);
+    openWOEditor(b.dataset.openWo);
   }));
   document.querySelectorAll('[data-del-wo]').forEach(b=>b.addEventListener('click',()=>{
     if(!confirm('Supprimer cet ordre de travail ?')) return;
     state.workOrders = state.workOrders.filter(x=>x.id!==b.dataset.delWo);
     persist(); render(); toast('Ordre de travail supprimé');
   }));
+  if(currentView==='wo-edit') wireWOEditor();
 
   // PM
   document.querySelectorAll('[data-open-types]').forEach(b=>b.addEventListener('click', openTypesModal));
