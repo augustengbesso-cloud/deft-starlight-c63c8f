@@ -443,6 +443,12 @@ const DA_TYPES = ["Via Ordre de Travail","Service / Centre de coût","Service / 
 const RESA_TYPES = ["Centre de coût","Ordre interne (véhicule)","Ordre de travail"];
 const RESA_STATUTS = ["En attente","Sortie validée"];
 const CATEGORIES_ARTICLE = ["Mécanique","Électrique","HSE","Consommable","Autre"];
+const UNITES_ARTICLE = [
+  "Pièce (PCE)","Unité (UN)","Kilogramme (KG)","Gramme (G)","Tonne (T)",
+  "Litre (L)","Millilitre (ML)","Mètre (M)","Mètre carré (M2)","Mètre cube (M3)",
+  "Boîte (BT)","Carton (CAR)","Sachet (SAC)","Bidon (BID)","Rouleau (RLO)",
+  "Paire (PR)","Jeu / Kit (JEU)","Lot (LOT)","Bouteille (BOU)","Sac (SC)","Barre (BAR)","Autre"
+];
 const STATUTS_STOCK = ["Libre","Réservé","En transit"];
 const NIVEAUX_CRITICITE = ["A","B","C"];
 const TYPES_MOUVEMENT = ["Achat","Retour","Réparation"];
@@ -914,6 +920,26 @@ function importFleetRows(rows){
   }
   persist(); render(); toast(count+" engin(s) importé(s)/mis à jour");
 }
+function matchUnite(raw){
+  if(!raw) return 'Pièce (PCE)';
+  const r = String(raw).trim().toLowerCase();
+  for(const u of UNITES_ARTICLE){
+    const abbrevMatch = u.match(/\(([^)]+)\)/);
+    const abbrev = abbrevMatch ? abbrevMatch[1].toLowerCase() : '';
+    const label = u.split(' (')[0].toLowerCase();
+    if(r===abbrev || r===label || u.toLowerCase()===r) return u;
+  }
+  const aliases = {
+    'kg':'Kilogramme (KG)','kgs':'Kilogramme (KG)','g':'Gramme (G)','l':'Litre (L)','litre':'Litre (L)','litres':'Litre (L)',
+    'm':'Mètre (M)','metre':'Mètre (M)','mètre':'Mètre (M)','m2':'Mètre carré (M2)','m3':'Mètre cube (M3)',
+    'pce':'Pièce (PCE)','piece':'Pièce (PCE)','pièce':'Pièce (PCE)','pieces':'Pièce (PCE)','pièces':'Pièce (PCE)',
+    'un':'Unité (UN)','unite':'Unité (UN)','unité':'Unité (UN)','t':'Tonne (T)','tonne':'Tonne (T)',
+    'bt':'Boîte (BT)','boite':'Boîte (BT)','boîte':'Boîte (BT)','car':'Carton (CAR)','carton':'Carton (CAR)',
+    'lot':'Lot (LOT)','jeu':'Jeu / Kit (JEU)','kit':'Jeu / Kit (JEU)','pr':'Paire (PR)','paire':'Paire (PR)',
+    'sac':'Sac (SC)','sachet':'Sachet (SAC)','bidon':'Bidon (BID)','rouleau':'Rouleau (RLO)','rlo':'Rouleau (RLO)','bouteille':'Bouteille (BOU)'
+  };
+  return aliases[r] || 'Pièce (PCE)';
+}
 function importPartsRows(rows){
   let count=0;
   rows.forEach(r=>{
@@ -925,9 +951,11 @@ function importPartsRows(rows){
     const coutUnitaire = Number(findCol(r,['Coût unitaire','Cout unitaire','Prix']))||0;
     const fournisseur = String(findCol(r,['Fournisseur principal','Fournisseur'])||'');
     const categorie = String(findCol(r,['Catégorie','Categorie'])||CATEGORIES_ARTICLE[4]);
+    const uniteRaw = String(findCol(r,['Unité','Unite','UM',"Unité de mesure",'Unite de mesure'])||'');
     const existing = state.parts.find(p=>(ref && p.ref && p.ref.toLowerCase()===ref.toLowerCase()) || p.nom.toLowerCase()===nom.toLowerCase());
     const obj = {ref, nom, quantite, seuil, coutUnitaire, fournisseurPrincipal:fournisseur,
       categorie: CATEGORIES_ARTICLE.includes(categorie)?categorie:CATEGORIES_ARTICLE[4],
+      unite: matchUnite(uniteRaw) || (existing?existing.unite:'Pièce (PCE)'),
       statutStock: existing?existing.statutStock:'Libre'};
     if(existing) Object.assign(existing, obj); else state.parts.push({...obj, id:uid()});
     count++;
@@ -1171,7 +1199,7 @@ function viewWOEdit(){
         const statusTxt = resa ? (resa.statut||'En attente') : (pu.reserved ? 'Réservé' : 'À réserver à l\'enregistrement');
         const statusColor = resa && resa.statut==='Sortie validée' ? 'var(--success)' : 'var(--accent)';
         return `<div class="between card-item" style="padding:6px 10px;">
-          <span style="font-size:13px;">${pt?esc(pt.nom):'Pièce supprimée'} <span class="mono" style="color:var(--muted);font-size:11px;">${pt&&pt.ref?'('+esc(pt.ref)+')':''}</span> × ${pu.quantite} <span style="color:${statusColor};font-size:11px;margin-left:6px;">● ${statusTxt}</span></span>
+          <span style="font-size:13px;">${pt?esc(pt.nom):'Pièce supprimée'} <span class="mono" style="color:var(--muted);font-size:11px;">${pt&&pt.ref?'('+esc(pt.ref)+')':''}</span> × ${pu.quantite}${pt?' '+uniteAbrev(pt):''} <span style="color:${statusColor};font-size:11px;margin-left:6px;">● ${statusTxt}</span></span>
           <button class="icon-btn" data-wo-part-del="${i}">${ICONS.trash}</button>
         </div>`;}).join('')}
     </div>
@@ -1245,7 +1273,7 @@ function wireWOEditor(){
     partCodeInput.addEventListener('input', ()=>{
       const val = partCodeInput.value.trim().toLowerCase();
       const pt = state.parts.find(p=>(p.ref||'').toLowerCase()===val);
-      partPreview.textContent = pt ? (pt.nom+' — stock: '+pt.quantite) : (val?'Article introuvable':'—');
+      partPreview.textContent = pt ? (pt.nom+' — stock: '+pt.quantite+' '+uniteAbrev(pt)) : (val?'Article introuvable':'—');
       partPreview.style.color = pt ? 'var(--text)' : 'var(--muted)';
     });
   }
@@ -1550,16 +1578,22 @@ function partsEmptyState(){
 }
 
 /* --- 1. Catalogue des articles --- */
+function uniteAbrev(p){
+  const u = p.unite || 'Pièce (PCE)';
+  const m = u.match(/\(([^)]+)\)/);
+  return m ? m[1] : u;
+}
 function viewPartsCatalogue(list){
   if(list.length===0) return partsEmptyState();
   const sorted = [...list].sort((a,b)=>(a.nom||'').localeCompare(b.nom||''));
   return `<div class="plate" style="overflow:hidden;">
-  <table><thead><tr><th>Code article</th><th>Désignation</th><th>Catégorie</th><th>Fournisseur principal</th><th>Code SAP/MM</th><th></th></tr></thead>
+  <table><thead><tr><th>Code article</th><th>Désignation</th><th>Catégorie</th><th>Unité</th><th>Fournisseur principal</th><th>Code SAP/MM</th><th></th></tr></thead>
   <tbody>
   ${sorted.map(p=>`<tr>
     <td class="mono" style="color:var(--muted)">${esc(p.ref)||'—'}</td>
     <td>${esc(p.nom)}</td>
     <td><span class="badge">${esc(p.categorie)||'—'}</span></td>
+    <td class="mono" style="color:var(--muted)">${uniteAbrev(p)}</td>
     <td style="color:var(--muted)">${esc(p.fournisseurPrincipal||p.fournisseur)||'—'}</td>
     <td class="mono" style="color:var(--muted)">${esc(p.codeSAP)||'—'}</td>
     <td><div class="row" style="justify-content:flex-end;"><button class="icon-btn" data-edit-part="${p.id}">${ICONS.edit}</button><button class="icon-btn" data-del-part="${p.id}">${ICONS.trash}</button></div></td>
@@ -1577,7 +1611,7 @@ function viewPartsStock(list){
   ${sorted.map(p=>`<tr>
     <td class="mono" style="color:var(--muted)">${esc(p.ref)||'—'}</td>
     <td>${esc(p.nom)}</td>
-    <td class="right mono">${fmt(p.quantite)}</td>
+    <td class="right mono">${fmt(p.quantite)} <span style="color:var(--muted);font-size:11px;">${uniteAbrev(p)}</span></td>
     <td style="color:var(--muted)">${esc(p.localisation)||'—'}</td>
     <td><span class="badge" style="color:${p.statutStock==='Réservé'?'var(--accent)':p.statutStock==='En transit'?'var(--steel)':'var(--success)'};">${esc(p.statutStock)||'Libre'}</span></td>
     <td style="color:var(--muted);font-size:12px;">${p.dateDernierMouvement||'—'}</td>
@@ -1597,7 +1631,7 @@ function viewPartsSeuils(list){
   return `<tr>
     <td class="mono" style="color:var(--muted)">${esc(p.ref)||'—'}</td>
     <td>${esc(p.nom)}</td>
-    <td class="right mono" style="color:${low?'var(--danger)':'var(--text)'}">${fmt(p.quantite)}</td>
+    <td class="right mono" style="color:${low?'var(--danger)':'var(--text)'}">${fmt(p.quantite)} <span style="color:var(--muted);font-size:11px;">${uniteAbrev(p)}</span></td>
     <td class="right mono" style="color:var(--muted)">${fmt(p.seuil)}</td>
     <td class="right mono" style="color:var(--muted)">${p.seuilMax?fmt(p.seuilMax):'—'}</td>
     <td class="right mono" style="color:var(--muted)">${p.pointReappro?fmt(p.pointReappro):'—'}</td>
@@ -1716,6 +1750,7 @@ function partForm(p){
     <label class="field span2"><span>Désignation</span><input data-f="nom" value="${esc(p.nom)}"/></label>
     <label class="field"><span>Catégorie</span><select data-f="categorie">${CATEGORIES_ARTICLE.map(c=>`<option ${p.categorie===c?'selected':''}>${c}</option>`).join('')}</select></label>
     <label class="field"><span>Fournisseur principal</span><input data-f="fournisseurPrincipal" value="${esc(p.fournisseurPrincipal||p.fournisseur)}"/></label>
+    <label class="field"><span>Unité de mesure</span><select data-f="unite">${UNITES_ARTICLE.map(u=>`<option ${p.unite===u?'selected':''}>${u}</option>`).join('')}</select></label>
   </div>
   <div style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-family:'Oswald',sans-serif;margin:16px 0 8px;">Stock actuel</div>
   <div class="formgrid">
@@ -2444,7 +2479,7 @@ function attachHandlers(){
   if(ps) ps.addEventListener('input', e=>{ partsSearch=e.target.value; render(); const el=document.getElementById('parts-search'); if(el){ el.focus(); el.selectionStart = el.value.length; } });
   const pn = document.querySelector('[data-open-modal="part-new"]');
   if(pn) pn.addEventListener('click', ()=>{
-    const p = {id:null, ref:'', nom:'', categorie:CATEGORIES_ARTICLE[0], fournisseurPrincipal:'', codeSAP:'',
+    const p = {id:null, ref:'', nom:'', categorie:CATEGORIES_ARTICLE[0], fournisseurPrincipal:'', codeSAP:'', unite:'Pièce (PCE)',
       quantite:0, localisation:'', statutStock:'Libre', dateDernierMouvement:'',
       seuil:2, seuilMax:0, pointReappro:0, coutUnitaire:0, centreCoutId:'',
       fournisseursAlternatifs:'', delaiLivraison:0, conditions:'',
@@ -2918,6 +2953,7 @@ async function init(){
       if(p.pointReappro===undefined) p.pointReappro = 0;
       if(p.critique===undefined) p.critique = false;
       if(!p.niveauCriticite) p.niveauCriticite = 'C';
+      if(!p.unite) p.unite = 'Pièce (PCE)';
     });
     (data.notifications||[]).sort((a,b)=>(a.dateCreation||'').localeCompare(b.dateCreation||'')).forEach(n=>{
       if(!n.numero){ data.avisCounter++; n.numero = 'AV-'+String(data.avisCounter).padStart(4,'0'); }
