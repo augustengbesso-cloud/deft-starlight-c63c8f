@@ -1149,6 +1149,7 @@ function viewWO(){
 
 /* ============ Modal Ordre de Travail (dynamique : opérations + pièces) ============ */
 let woDraft = null;
+let woEditTab = 'general';
 let woIsNew = false;
 function blankWO(){
   return { id:null, numero:null, equipementId: state.fleet[0]?.id||state.plantEquipment[0]?.id||'', type:'Correctif',
@@ -1163,6 +1164,7 @@ function openWOEditor(id){
   if(!woDraft.operations) woDraft.operations=[];
   if(!woDraft.piecesUtilisees) woDraft.piecesUtilisees=[];
   if(!woDraft.documents) woDraft.documents=[];
+  woEditTab = 'general';
   currentView = 'wo-edit';
   render();
 }
@@ -1176,6 +1178,16 @@ function viewWOEdit(){
 
   const isTechEdit = currentUser && currentUser.role==='technicien';
   const canSuperviseEdit = currentUser && (currentUser.role==='admin' || currentUser.role==='planificateur');
+
+  const hasBudgetTab = !woIsNew && Number(w.cout)>0;
+  const woTabs = [
+    {id:'general', label:'Données générales'},
+    {id:'operations', label:'Opérations'},
+    {id:'composants', label:'Composants'},
+    {id:'hse', label:'Sécurité / HSE'},
+    {id:'documents', label:'Documents'},
+    ...(hasBudgetTab ? [{id:'budget', label:'Budget & clôture'}] : []),
+  ];
 
   return `
   <div class="wo-toolbar">
@@ -1195,6 +1207,11 @@ function viewWOEdit(){
     </div>
   </div>
 
+  <div class="row wrapwrap" style="gap:4px;margin-bottom:16px;border-bottom:1px solid var(--border);padding-bottom:10px;">
+    ${woTabs.map(t=>`<button class="btn ${woEditTab===t.id?'btn-accent':'btn-ghost'}" style="font-size:12px;padding:7px 14px;" data-wo-tab="${t.id}">${t.label}</button>`).join('')}
+  </div>
+
+  ${woEditTab==='general' ? `
   <div class="plate p16" style="margin-bottom:16px;">
     <h3 class="oswald" style="text-transform:uppercase;font-size:13px;margin:0 0 14px;color:var(--muted);">Données générales</h3>
     <div class="formgrid">
@@ -1214,16 +1231,18 @@ function viewWOEdit(){
       </label>
       <label class="field"><span>Coût (FCFA)</span><input type="number" id="wo-f-cout" value="${w.cout||0}"/></label>
     </div>
-  </div>
+  </div>` : ''}
 
+  ${woEditTab==='hse' ? `
   <div class="plate p16" style="margin-bottom:16px;">
     <h3 class="oswald" style="text-transform:uppercase;font-size:13px;margin:0 0 12px;color:var(--muted);">Sécurité / HSE</h3>
     <div class="formgrid">
       <label class="field" style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" id="wo-f-permis" ${w.permisTravail?'checked':''} style="width:auto;"/><span>Permis de travail délivré</span></label>
       <label class="field span2"><span>Consignation / autorisations</span><input id="wo-f-consignation" value="${esc(w.consignation)}" placeholder="Ex: LOTO ligne 3, cadenas n°12"/></label>
     </div>
-  </div>
+  </div>` : ''}
 
+  ${woEditTab==='documents' ? `
   <div class="plate p16" style="margin-bottom:16px;">
     <h3 class="oswald" style="text-transform:uppercase;font-size:13px;margin:0 0 12px;color:var(--muted);">Documents / pièces jointes</h3>
     <p style="font-size:11px;color:var(--muted);margin:0 0 12px;">Photos, rapports techniques, certificats — stockés en ligne, accessibles à toute l'équipe.</p>
@@ -1239,9 +1258,9 @@ function viewWOEdit(){
       <button class="btn btn-ghost" id="wo-doc-add" type="button">${ICONS.plus} Téléverser</button>
     </div>
     <div id="wo-doc-status" style="font-size:11px;color:var(--muted);margin-top:6px;"></div>
-  </div>
+  </div>` : ''}
 
-  ${!woIsNew && Number(w.cout)>0 ? `
+  ${woEditTab==='budget' && hasBudgetTab ? `
   <div class="plate p16" style="margin-bottom:16px;">
     <h3 class="oswald" style="text-transform:uppercase;font-size:13px;margin:0 0 12px;color:var(--muted);">Approbation budget & clôture financière</h3>
     <div class="row wrapwrap" style="gap:16px;">
@@ -1257,6 +1276,8 @@ function viewWOEdit(){
       ${canSuperviseEdit && w.statut==='Clôturé' && !w.clotureFinanciere ? `<button class="btn btn-ghost" id="wo-close-financial" style="color:var(--success);border-color:var(--success);">${ICONS.check} Clôturer financièrement</button>` : ''}
     </div>
   </div>` : ''}
+
+  ${woEditTab==='operations' ? `
   <div class="plate p16" style="margin-bottom:16px;">
     <h3 class="oswald" style="text-transform:uppercase;font-size:13px;margin:0 0 4px;color:var(--muted);">Opérations effectuées</h3>
     <p style="font-size:11px;color:var(--muted);margin:0 0 12px;">Une tâche peut réunir plusieurs corps de métier — ajoute un intervenant par poste, avec ses heures.</p>
@@ -1288,8 +1309,9 @@ function viewWOEdit(){
       <input id="wo-op-input" placeholder="Nouvelle tâche, ex: Remplacement du roulement avant" style="flex:1;"/>
       <button class="btn btn-ghost" id="wo-op-add" type="button">${ICONS.plus} Ajouter une tâche</button>
     </div>
-  </div>
+  </div>` : ''}
 
+  ${woEditTab==='composants' ? `
   <div class="plate p16" style="margin-bottom:16px;">
     <h3 class="oswald" style="text-transform:uppercase;font-size:13px;margin:0 0 4px;color:var(--muted);">Composants / pièces de rechange</h3>
     <p style="font-size:11px;color:var(--muted);margin:0 0 12px;">Saisis le code article — la désignation s'affiche automatiquement. Une réservation est générée à l'enregistrement ; le magasinier valide la sortie dans "Pièces / Stock".</p>
@@ -1312,7 +1334,7 @@ function viewWOEdit(){
       <input id="wo-part-qty" type="number" value="1" min="1" style="width:70px;"/>
       <button class="btn btn-ghost" id="wo-part-add" type="button">${ICONS.plus} Réserver</button>
     </div>`}
-  </div>
+  </div>` : ''}
 
   <div class="row" style="justify-content:flex-end;margin-bottom:24px;">
     <button class="btn btn-ghost" id="wo-back-2">Annuler</button>
@@ -1325,6 +1347,7 @@ function wireWOEditor(){
   const back = ()=>{ currentView='wo'; woDraft=null; render(); };
   const backBtn = document.getElementById('wo-back'); if(backBtn) backBtn.addEventListener('click', back);
   const backBtn2 = document.getElementById('wo-back-2'); if(backBtn2) backBtn2.addEventListener('click', back);
+  document.querySelectorAll('[data-wo-tab]').forEach(b=>b.addEventListener('click',()=>{ woEditTab=b.dataset.woTab; render(); }));
 
   function quickTransition(newStatut){
     w.statut = newStatut;
@@ -1452,23 +1475,24 @@ function wireWOEditor(){
     });
   }
 
+  function val(id, fallback){ const el = document.getElementById(id); return el ? el.value : fallback; }
   const saveHandler = ()=>{
-    w.equipementId = document.getElementById('wo-f-equip').value;
-    w.titre = document.getElementById('wo-f-titre').value;
-    w.description = document.getElementById('wo-f-desc').value;
-    w.type = document.getElementById('wo-f-type').value;
-    w.typeTravail = document.getElementById('wo-f-typetravail').value;
-    w.poste = document.getElementById('wo-f-poste').value;
-    w.priorite = document.getElementById('wo-f-priorite').value;
-    w.statut = document.getElementById('wo-f-statut').value;
-    w.dateDebut = document.getElementById('wo-f-debut').value;
-    w.dateFin = document.getElementById('wo-f-fin').value;
-    w.technicien = document.getElementById('wo-f-tech').value;
-    w.cout = Number(document.getElementById('wo-f-cout').value)||0;
+    w.equipementId = val('wo-f-equip', w.equipementId);
+    w.titre = val('wo-f-titre', w.titre);
+    w.description = val('wo-f-desc', w.description);
+    w.type = val('wo-f-type', w.type);
+    w.typeTravail = val('wo-f-typetravail', w.typeTravail);
+    w.poste = val('wo-f-poste', w.poste);
+    w.priorite = val('wo-f-priorite', w.priorite);
+    w.statut = val('wo-f-statut', w.statut);
+    w.dateDebut = val('wo-f-debut', w.dateDebut);
+    w.dateFin = val('wo-f-fin', w.dateFin);
+    w.technicien = val('wo-f-tech', w.technicien);
+    w.cout = Number(val('wo-f-cout', w.cout))||0;
     const permisEl = document.getElementById('wo-f-permis'); if(permisEl) w.permisTravail = permisEl.checked;
     const consigEl = document.getElementById('wo-f-consignation'); if(consigEl) w.consignation = consigEl.value;
     w.dateCreation = w.dateCreation || w.dateDebut;
-    if(!w.titre || !w.equipementId){ alert('Libellé et équipement requis'); return; }
+    if(!w.titre || !w.equipementId){ alert('Libellé et équipement requis — vérifie l\'onglet "Données générales"'); woEditTab='general'; render(); return; }
     if((w.statut==='Terminé' || w.statut==='Clôturé') && !w.dateFin) w.dateFin = new Date().toISOString().slice(0,10);
     const eqForStatus = [...state.fleet,...state.plantEquipment].find(x=>x.id===w.equipementId);
 
