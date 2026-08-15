@@ -904,7 +904,7 @@ function importPartsRows(rows){
   rows.forEach(r=>{
     const nom = String(findCol(r,['Nom','Désignation','Designation'])||'').trim();
     if(!nom) return;
-    const ref = String(findCol(r,['Référence','Reference','Ref'])||'');
+    const ref = String(findCol(r,['Code article','Code','Référence','Reference','Ref'])||'');
     const quantite = Number(findCol(r,['Quantité','Quantite','Stock']))||0;
     const seuil = Number(findCol(r,["Seuil","Seuil d'alerte"]))||2;
     const coutUnitaire = Number(findCol(r,['Coût unitaire','Cout unitaire','Prix']))||0;
@@ -1487,7 +1487,7 @@ function viewParts(){
   </div>`:''}
   ${sorted.length===0?`<div class="plate p16"><div class="empty">${ICONS.package}<span>Aucune pièce enregistrée.</span></div></div>`:
   `<div class="plate" style="overflow:hidden;">
-  <table><thead><tr><th>Référence</th><th>Désignation</th><th class="right">Qté</th><th class="right">Seuil</th><th class="right">Coût unit.</th><th>Fournisseur</th><th></th></tr></thead>
+  <table><thead><tr><th>Code article</th><th>Désignation</th><th class="right">Qté</th><th class="right">Seuil</th><th class="right">Coût unit.</th><th>Fournisseur</th><th></th></tr></thead>
   <tbody>
   ${sorted.map(p=>{ const low = Number(p.quantite)<=Number(p.seuil);
   return `<tr>
@@ -1503,7 +1503,7 @@ function viewParts(){
 function partForm(p){
   return `
   <div class="formgrid">
-    <label class="field"><span>Référence</span><input data-f="ref" value="${esc(p.ref)}"/></label>
+    <label class="field"><span>Code article</span><input data-f="ref" value="${esc(p.ref)}" placeholder="Ex: 6000611"/></label>
     <label class="field"><span>Désignation</span><input data-f="nom" value="${esc(p.nom)}"/></label>
     <label class="field"><span>Quantité en stock</span><input type="number" data-f="quantite" value="${p.quantite||0}"/></label>
     <label class="field"><span>Seuil d'alerte</span><input type="number" data-f="seuil" value="${p.seuil||0}"/></label>
