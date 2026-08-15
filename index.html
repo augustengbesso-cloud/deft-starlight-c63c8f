@@ -442,6 +442,10 @@ const DEFAULT_POSTES = ["Électricien","Mécanicien","Soudeur","Hydraulicien","A
 const DA_TYPES = ["Via Ordre de Travail","Service / Centre de coût","Service / Ordre interne"];
 const RESA_TYPES = ["Centre de coût","Ordre interne (véhicule)","Ordre de travail"];
 const RESA_STATUTS = ["En attente","Sortie validée"];
+const CATEGORIES_ARTICLE = ["Mécanique","Électrique","HSE","Consommable","Autre"];
+const STATUTS_STOCK = ["Libre","Réservé","En transit"];
+const NIVEAUX_CRITICITE = ["A","B","C"];
+const TYPES_MOUVEMENT = ["Achat","Retour","Réparation"];
 const TYPES_TRAVAIL = ["Inspection","Remplacement pièces","Intervention","Révision","Autre"];
 const DA_STATUTS = ["Ouverte","Convertie en BC","Clôturée"];
 const BC_STATUTS = ["Émis","Réceptionné partiellement","Réceptionné"];
@@ -492,7 +496,7 @@ function seedFleet(){
   }));
 }
 
-let state = { fleet: [], workOrders: [], fuelLogs: [], parts: [], pmPlans: [], locations: [], plantEquipment: [], notifications: [], measuringPoints: [], costCenters: [], productionLogs: [], woCounter: 0, equipTypes: [...DEFAULT_EQUIP_TYPES], personnel: [], purchaseRequests: [], purchaseOrders: [], daCounter: 0, bcCounter: 0, reservations: [], resaCounter: 0, postes: [...DEFAULT_POSTES], avisCounter: 0 };
+let state = { fleet: [], workOrders: [], fuelLogs: [], parts: [], pmPlans: [], locations: [], plantEquipment: [], notifications: [], measuringPoints: [], costCenters: [], productionLogs: [], woCounter: 0, equipTypes: [...DEFAULT_EQUIP_TYPES], personnel: [], purchaseRequests: [], purchaseOrders: [], daCounter: 0, bcCounter: 0, reservations: [], resaCounter: 0, postes: [...DEFAULT_POSTES], avisCounter: 0, stockMovements: [] };
 let currentView = 'dashboard';
 
 /* ============ HELPERS ============ */
@@ -803,6 +807,7 @@ function viewDashboard(){
 
 /* ============ FLEET ============ */
 let fleetSearch = '';
+let partsSubTab = 'catalogue';
 function viewFleet(){
   const filtered = state.fleet.filter(e=>`${e.code} ${e.nom} ${e.type}`.toLowerCase().includes(fleetSearch.toLowerCase()));
   return `
@@ -917,9 +922,12 @@ function importPartsRows(rows){
     const quantite = Number(findCol(r,['Quantité','Quantite','Stock']))||0;
     const seuil = Number(findCol(r,["Seuil","Seuil d'alerte"]))||2;
     const coutUnitaire = Number(findCol(r,['Coût unitaire','Cout unitaire','Prix']))||0;
-    const fournisseur = String(findCol(r,['Fournisseur'])||'');
+    const fournisseur = String(findCol(r,['Fournisseur principal','Fournisseur'])||'');
+    const categorie = String(findCol(r,['Catégorie','Categorie'])||CATEGORIES_ARTICLE[4]);
     const existing = state.parts.find(p=>(ref && p.ref && p.ref.toLowerCase()===ref.toLowerCase()) || p.nom.toLowerCase()===nom.toLowerCase());
-    const obj = {ref, nom, quantite, seuil, coutUnitaire, fournisseur};
+    const obj = {ref, nom, quantite, seuil, coutUnitaire, fournisseurPrincipal:fournisseur,
+      categorie: CATEGORIES_ARTICLE.includes(categorie)?categorie:CATEGORIES_ARTICLE[4],
+      statutStock: existing?existing.statutStock:'Libre'};
     if(existing) Object.assign(existing, obj); else state.parts.push({...obj, id:uid()});
     count++;
   });
@@ -1474,12 +1482,22 @@ function fuelForm(f){
 }
 
 /* ============ PARTS ============ */
+const PARTS_TABS = [
+  {id:'catalogue', label:'Catalogue'},
+  {id:'stock', label:'Stock actuel'},
+  {id:'seuils', label:'Seuils & alertes'},
+  {id:'mouvements', label:'Mouvements'},
+  {id:'couts', label:'Coûts & valorisation'},
+  {id:'fournisseurs', label:'Fournisseurs'},
+  {id:'critiques', label:'Pièces critiques'},
+];
+function partsSubNav(){
+  return `<div class="row wrapwrap" style="gap:4px;margin-bottom:16px;border-bottom:1px solid var(--border);padding-bottom:10px;">
+    ${PARTS_TABS.map(t=>`<button class="btn ${partsSubTab===t.id?'btn-accent':'btn-ghost'}" style="font-size:12px;padding:6px 12px;" data-parts-tab="${t.id}">${t.label}</button>`).join('')}
+  </div>`;
+}
 function viewParts(){
-  const sorted = [...state.parts].sort((a,b)=> (Number(a.quantite)-Number(a.seuil)) - (Number(b.quantite)-Number(b.seuil)) );
-  const pm = Object.fromEntries(state.parts.map(p=>[p.id,p]));
-  const wom = Object.fromEntries(state.workOrders.map(w=>[w.id,w]));
-  const pending = state.reservations.filter(r=>(r.statut||'En attente')==='En attente').sort((a,b)=>(a.dateCreation||'').localeCompare(b.dateCreation||''));
-  return `
+  const header = `
   <div class="headrow">
     <div><h1>Pièces & stock</h1><p class="subtitle" style="margin:0;">${state.parts.length} références</p></div>
     <div class="row">
@@ -1487,8 +1505,11 @@ function viewParts(){
       <input type="file" id="parts-import-file" accept=".xlsx,.xls,.csv" style="display:none;"/>
       <button class="btn btn-accent" data-open-modal="part-new">${ICONS.plus} Nouvelle pièce</button>
     </div>
-  </div>
-  ${pending.length>0?`
+  </div>`;
+  const pm = Object.fromEntries(state.parts.map(p=>[p.id,p]));
+  const wom = Object.fromEntries(state.workOrders.map(w=>[w.id,w]));
+  const pending = state.reservations.filter(r=>(r.statut||'En attente')==='En attente').sort((a,b)=>(a.dateCreation||'').localeCompare(b.dateCreation||''));
+  const pendingPanel = pending.length>0 ? `
   <div class="plate p16" style="margin-bottom:16px;border-left:3px solid var(--accent);">
     <h3 class="oswald" style="text-transform:uppercase;font-size:13px;margin:0 0 10px;color:var(--accent);">${ICONS.receipt} Réservations en attente de sortie (${pending.length})</h3>
     <div style="display:flex;flex-direction:column;gap:6px;">
@@ -1501,31 +1522,222 @@ function viewParts(){
         <button class="btn btn-ghost" style="font-size:11px;padding:3px 8px;color:var(--success);" data-validate-resa="${r.id}">${ICONS.check} Valider sortie</button>
       </div>`).join('')}
     </div>
-  </div>`:''}
-  ${sorted.length===0?`<div class="plate p16"><div class="empty">${ICONS.package}<span>Aucune pièce enregistrée.</span></div></div>`:
-  `<div class="plate" style="overflow:hidden;">
-  <table><thead><tr><th>Code article</th><th>Désignation</th><th class="right">Qté</th><th class="right">Seuil</th><th class="right">Coût unit.</th><th>Fournisseur</th><th></th></tr></thead>
+  </div>` : '';
+
+  let body = '';
+  if(partsSubTab==='catalogue') body = viewPartsCatalogue();
+  else if(partsSubTab==='stock') body = viewPartsStock();
+  else if(partsSubTab==='seuils') body = viewPartsSeuils();
+  else if(partsSubTab==='mouvements') body = viewPartsMouvements();
+  else if(partsSubTab==='couts') body = viewPartsCouts();
+  else if(partsSubTab==='fournisseurs') body = viewPartsFournisseurs();
+  else if(partsSubTab==='critiques') body = viewPartsCritiques();
+
+  return header + pendingPanel + partsSubNav() + body;
+}
+
+function partsEmptyState(){
+  return `<div class="plate p16"><div class="empty">${ICONS.package}<span>Aucune pièce enregistrée.</span></div></div>`;
+}
+
+/* --- 1. Catalogue des articles --- */
+function viewPartsCatalogue(){
+  if(state.parts.length===0) return partsEmptyState();
+  const sorted = [...state.parts].sort((a,b)=>(a.nom||'').localeCompare(b.nom||''));
+  return `<div class="plate" style="overflow:hidden;">
+  <table><thead><tr><th>Code article</th><th>Désignation</th><th>Catégorie</th><th>Fournisseur principal</th><th>Code SAP/MM</th><th></th></tr></thead>
+  <tbody>
+  ${sorted.map(p=>`<tr>
+    <td class="mono" style="color:var(--muted)">${esc(p.ref)||'—'}</td>
+    <td>${esc(p.nom)}</td>
+    <td><span class="badge">${esc(p.categorie)||'—'}</span></td>
+    <td style="color:var(--muted)">${esc(p.fournisseurPrincipal||p.fournisseur)||'—'}</td>
+    <td class="mono" style="color:var(--muted)">${esc(p.codeSAP)||'—'}</td>
+    <td><div class="row" style="justify-content:flex-end;"><button class="icon-btn" data-edit-part="${p.id}">${ICONS.edit}</button><button class="icon-btn" data-del-part="${p.id}">${ICONS.trash}</button></div></td>
+  </tr>`).join('')}
+  </tbody></table></div>`;
+}
+
+/* --- 2. Stock actuel --- */
+function viewPartsStock(){
+  if(state.parts.length===0) return partsEmptyState();
+  const sorted = [...state.parts].sort((a,b)=>(a.nom||'').localeCompare(b.nom||''));
+  return `<div class="plate" style="overflow:hidden;">
+  <table><thead><tr><th>Code article</th><th>Désignation</th><th class="right">Qté dispo.</th><th>Localisation</th><th>Statut</th><th>Dernier mouvement</th></tr></thead>
+  <tbody>
+  ${sorted.map(p=>`<tr>
+    <td class="mono" style="color:var(--muted)">${esc(p.ref)||'—'}</td>
+    <td>${esc(p.nom)}</td>
+    <td class="right mono">${fmt(p.quantite)}</td>
+    <td style="color:var(--muted)">${esc(p.localisation)||'—'}</td>
+    <td><span class="badge" style="color:${p.statutStock==='Réservé'?'var(--accent)':p.statutStock==='En transit'?'var(--steel)':'var(--success)'};">${esc(p.statutStock)||'Libre'}</span></td>
+    <td style="color:var(--muted);font-size:12px;">${p.dateDernierMouvement||'—'}</td>
+  </tr>`).join('')}
+  </tbody></table></div>`;
+}
+
+/* --- 3. Seuils et alertes --- */
+function viewPartsSeuils(){
+  if(state.parts.length===0) return partsEmptyState();
+  const sorted = [...state.parts].sort((a,b)=> (Number(a.quantite)-Number(a.seuil)) - (Number(b.quantite)-Number(b.seuil)) );
+  return `<div class="plate" style="overflow:hidden;">
+  <table><thead><tr><th>Code article</th><th>Désignation</th><th class="right">Qté</th><th class="right">Seuil min</th><th class="right">Seuil max</th><th class="right">Pt réappro</th><th>Alerte</th></tr></thead>
   <tbody>
   ${sorted.map(p=>{ const low = Number(p.quantite)<=Number(p.seuil);
+    const over = p.seuilMax && Number(p.quantite)>Number(p.seuilMax);
   return `<tr>
-    <td class="mono" style="color:var(--muted)">${esc(p.ref)||'—'}</td><td>${esc(p.nom)}</td>
-    <td class="right mono" style="color:${low?'var(--danger)':'var(--text)'}">${p.quantite}</td>
-    <td class="right mono" style="color:var(--muted)">${p.seuil}</td>
-    <td class="right mono" style="color:var(--muted)">${fmt(p.coutUnitaire)}</td>
-    <td style="color:var(--muted)">${esc(p.fournisseur)||'—'}</td>
-    <td><div class="row" style="justify-content:flex-end;"><button class="icon-btn" data-edit-part="${p.id}">${ICONS.edit}</button><button class="icon-btn" data-del-part="${p.id}">${ICONS.trash}</button></div></td>
+    <td class="mono" style="color:var(--muted)">${esc(p.ref)||'—'}</td>
+    <td>${esc(p.nom)}</td>
+    <td class="right mono" style="color:${low?'var(--danger)':'var(--text)'}">${fmt(p.quantite)}</td>
+    <td class="right mono" style="color:var(--muted)">${fmt(p.seuil)}</td>
+    <td class="right mono" style="color:var(--muted)">${p.seuilMax?fmt(p.seuilMax):'—'}</td>
+    <td class="right mono" style="color:var(--muted)">${p.pointReappro?fmt(p.pointReappro):'—'}</td>
+    <td>${low?`<span class="badge badge-danger">SOUS SEUIL</span>`:over?`<span class="badge" style="color:var(--accent);border-color:var(--accent);">SURSTOCK</span>`:`<span class="badge" style="color:var(--success);border-color:var(--success);">OK</span>`}</td>
   </tr>`;}).join('')}
+  </tbody></table></div>`;
+}
+
+/* --- 4. Mouvements de stock --- */
+function viewPartsMouvements(){
+  const pm = Object.fromEntries(state.parts.map(p=>[p.id,p]));
+  const wom = Object.fromEntries(state.workOrders.map(w=>[w.id,w]));
+  const entrees = (state.stockMovements||[]).map(m=>({date:m.date, type:m.type, nom:pm[m.partId]?pm[m.partId].nom:'Pièce supprimée', qte:m.quantite, sens:'Entrée', detail:m.commentaire||m.fournisseur||''}));
+  const sorties = state.reservations.filter(r=>r.statut==='Sortie validée').map(r=>({date:r.dateSortie||r.dateCreation, type:'Sortie magasin', nom:pm[r.partId]?pm[r.partId].nom:'Pièce supprimée', qte:r.quantite, sens:'Sortie', detail:r.workOrderId?('OT '+(wom[r.workOrderId]?.numero||'—')):r.numero}));
+  const all = [...entrees, ...sorties].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  return `
+  <div class="between" style="margin-bottom:12px;">
+    <span style="font-size:12px;color:var(--muted);">Historique complet des entrées et sorties</span>
+    <button class="btn btn-accent" data-open-modal="mvt-new" style="font-size:12px;">${ICONS.plus} Nouvelle entrée</button>
+  </div>
+  ${all.length===0?`<div class="plate p16"><div class="empty">${ICONS.receipt}<span>Aucun mouvement enregistré.</span></div></div>`:
+  `<div class="plate" style="overflow:hidden;">
+  <table><thead><tr><th>Date</th><th>Sens</th><th>Type</th><th>Article</th><th class="right">Qté</th><th>Détail</th></tr></thead>
+  <tbody>
+  ${all.map(m=>`<tr>
+    <td style="color:var(--muted);font-size:12px;">${m.date||'—'}</td>
+    <td><span class="badge" style="color:${m.sens==='Entrée'?'var(--success)':'var(--accent)'};">${m.sens}</span></td>
+    <td style="color:var(--muted);">${esc(m.type)}</td>
+    <td>${esc(m.nom)}</td>
+    <td class="right mono">${fmt(m.qte)}</td>
+    <td style="color:var(--muted);font-size:12px;">${esc(m.detail)}</td>
+  </tr>`).join('')}
   </tbody></table></div>`}`;
 }
-function partForm(p){
+function mvtForm(m){
+  const partOpts = state.parts.map(p=>`<option value="${p.id}">${esc(p.ref||p.nom)} — ${esc(p.nom)}</option>`).join('');
   return `
   <div class="formgrid">
+    <label class="field span2"><span>Article</span><select data-f="partId">${partOpts||'<option value="">Aucune pièce</option>'}</select></label>
+    <label class="field"><span>Type d'entrée</span><select data-f="type">${TYPES_MOUVEMENT.map(t=>`<option>${t}</option>`).join('')}</select></label>
+    <label class="field"><span>Quantité</span><input type="number" data-f="quantite" value="1" min="1"/></label>
+    <label class="field span2"><span>Fournisseur / commentaire</span><input data-f="commentaire" placeholder="Ex: BC-1234 / retour atelier"/></label>
+    <label class="field span2"><span>Date</span><input type="date" data-f="date" value="${new Date().toISOString().slice(0,10)}"/></label>
+  </div>`;
+}
+
+/* --- 5. Coûts et valorisation --- */
+function viewPartsCouts(){
+  if(state.parts.length===0) return partsEmptyState();
+  const ccm = Object.fromEntries(state.costCenters.map(c=>[c.id,c]));
+  const sorted = [...state.parts].sort((a,b)=> (Number(b.quantite)*Number(b.coutUnitaire)) - (Number(a.quantite)*Number(a.coutUnitaire)) );
+  const totalValeur = state.parts.reduce((a,p)=>a+Number(p.quantite)*Number(p.coutUnitaire),0);
+  return `
+  <div class="plate p16" style="margin-bottom:16px;max-width:320px;">
+    <span class="wo-headband-label">Valeur totale du stock</span>
+    <div class="mono" style="font-size:22px;color:var(--accent);">${fmt(totalValeur)} FCFA</div>
+  </div>
+  <div class="plate" style="overflow:hidden;">
+  <table><thead><tr><th>Code article</th><th>Désignation</th><th class="right">Qté</th><th class="right">Coût unit.</th><th class="right">Valeur totale</th><th>Centre de coût</th></tr></thead>
+  <tbody>
+  ${sorted.map(p=>`<tr>
+    <td class="mono" style="color:var(--muted)">${esc(p.ref)||'—'}</td>
+    <td>${esc(p.nom)}</td>
+    <td class="right mono">${fmt(p.quantite)}</td>
+    <td class="right mono" style="color:var(--muted)">${fmt(p.coutUnitaire)}</td>
+    <td class="right mono" style="color:var(--accent)">${fmt(Number(p.quantite)*Number(p.coutUnitaire))}</td>
+    <td style="color:var(--muted);font-size:12px;">${p.centreCoutId?(ccm[p.centreCoutId]?.code||'—'):'—'}</td>
+  </tr>`).join('')}
+  </tbody></table></div>`;
+}
+
+/* --- 6. Fournisseurs et contrats --- */
+function viewPartsFournisseurs(){
+  if(state.parts.length===0) return partsEmptyState();
+  const sorted = [...state.parts].filter(p=>p.fournisseurPrincipal||p.fournisseur).sort((a,b)=>(a.fournisseurPrincipal||a.fournisseur||'').localeCompare(b.fournisseurPrincipal||b.fournisseur||''));
+  return `${sorted.length===0?`<div class="plate p16"><div class="empty">${ICONS.package}<span>Aucun fournisseur renseigné.</span></div></div>`:
+  `<div class="plate" style="overflow:hidden;">
+  <table><thead><tr><th>Article</th><th>Fournisseur principal</th><th>Alternatifs</th><th>Délai livraison</th><th>Conditions</th></tr></thead>
+  <tbody>
+  ${sorted.map(p=>`<tr>
+    <td>${esc(p.nom)}</td>
+    <td style="color:var(--text)">${esc(p.fournisseurPrincipal||p.fournisseur)||'—'}</td>
+    <td style="color:var(--muted);font-size:12px;">${esc(p.fournisseursAlternatifs)||'—'}</td>
+    <td style="color:var(--muted);font-size:12px;">${p.delaiLivraison?p.delaiLivraison+' j':'—'}</td>
+    <td style="color:var(--muted);font-size:12px;">${esc(p.conditions)||'—'}</td>
+  </tr>`).join('')}
+  </tbody></table></div>`}`;
+}
+
+/* --- 7. Pièces critiques / stratégiques --- */
+function viewPartsCritiques(){
+  const critiques = state.parts.filter(p=>p.critique).sort((a,b)=>(a.niveauCriticite||'C').localeCompare(b.niveauCriticite||'C'));
+  return `${critiques.length===0?`<div class="plate p16"><div class="empty">${ICONS.alert}<span>Aucune pièce marquée critique. Coche "Pièce critique" dans la fiche article.</span></div></div>`:
+  `<div class="plate" style="overflow:hidden;">
+  <table><thead><tr><th>Niveau</th><th>Code article</th><th>Désignation</th><th class="right">Stock</th><th>MTBF</th><th>MTTR</th><th>Politique stock tampon</th></tr></thead>
+  <tbody>
+  ${critiques.map(p=>`<tr>
+    <td><span class="badge" style="color:${p.niveauCriticite==='A'?'var(--danger)':p.niveauCriticite==='B'?'var(--accent)':'var(--muted)'};border-color:${p.niveauCriticite==='A'?'var(--danger)':p.niveauCriticite==='B'?'var(--accent)':'var(--muted)'};">${p.niveauCriticite||'C'}</span></td>
+    <td class="mono" style="color:var(--muted)">${esc(p.ref)||'—'}</td>
+    <td>${esc(p.nom)}</td>
+    <td class="right mono">${fmt(p.quantite)}</td>
+    <td style="color:var(--muted);font-size:12px;">${p.mtbf?p.mtbf+' h':'—'}</td>
+    <td style="color:var(--muted);font-size:12px;">${p.mttr?p.mttr+' h':'—'}</td>
+    <td style="color:var(--muted);font-size:12px;">${esc(p.politiqueStockTampon)||'—'}</td>
+  </tr>`).join('')}
+  </tbody></table></div>`}`;
+}
+
+function partForm(p){
+  const ccOpts = state.costCenters.map(c=>`<option value="${c.id}" ${p.centreCoutId===c.id?'selected':''}>${esc(c.code)} — ${esc(c.nom)}</option>`).join('');
+  return `
+  <div style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-family:'Oswald',sans-serif;margin-bottom:8px;">Catalogue</div>
+  <div class="formgrid">
     <label class="field"><span>Code article</span><input data-f="ref" value="${esc(p.ref)}" placeholder="Ex: 6000611"/></label>
-    <label class="field"><span>Désignation</span><input data-f="nom" value="${esc(p.nom)}"/></label>
+    <label class="field"><span>Code SAP/MM (optionnel)</span><input data-f="codeSAP" value="${esc(p.codeSAP)}"/></label>
+    <label class="field span2"><span>Désignation</span><input data-f="nom" value="${esc(p.nom)}"/></label>
+    <label class="field"><span>Catégorie</span><select data-f="categorie">${CATEGORIES_ARTICLE.map(c=>`<option ${p.categorie===c?'selected':''}>${c}</option>`).join('')}</select></label>
+    <label class="field"><span>Fournisseur principal</span><input data-f="fournisseurPrincipal" value="${esc(p.fournisseurPrincipal||p.fournisseur)}"/></label>
+  </div>
+  <div style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-family:'Oswald',sans-serif;margin:16px 0 8px;">Stock actuel</div>
+  <div class="formgrid">
     <label class="field"><span>Quantité en stock</span><input type="number" data-f="quantite" value="${p.quantite||0}"/></label>
-    <label class="field"><span>Seuil d'alerte</span><input type="number" data-f="seuil" value="${p.seuil||0}"/></label>
+    <label class="field"><span>Statut</span><select data-f="statutStock">${STATUTS_STOCK.map(s=>`<option ${p.statutStock===s?'selected':''}>${s}</option>`).join('')}</select></label>
+    <label class="field span2"><span>Localisation (magasin, dépôt, atelier)</span><input data-f="localisation" value="${esc(p.localisation)}"/></label>
+  </div>
+  <div style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-family:'Oswald',sans-serif;margin:16px 0 8px;">Seuils & alertes</div>
+  <div class="formgrid">
+    <label class="field"><span>Seuil minimum</span><input type="number" data-f="seuil" value="${p.seuil||0}"/></label>
+    <label class="field"><span>Seuil maximum</span><input type="number" data-f="seuilMax" value="${p.seuilMax||0}"/></label>
+    <label class="field span2"><span>Point de réapprovisionnement</span><input type="number" data-f="pointReappro" value="${p.pointReappro||0}"/></label>
+  </div>
+  <div style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-family:'Oswald',sans-serif;margin:16px 0 8px;">Coûts & valorisation</div>
+  <div class="formgrid">
     <label class="field"><span>Coût unitaire (FCFA)</span><input type="number" data-f="coutUnitaire" value="${p.coutUnitaire||0}"/></label>
-    <label class="field"><span>Fournisseur</span><input data-f="fournisseur" value="${esc(p.fournisseur)}"/></label>
+    <label class="field span2"><span>Centre de coût (imputation)</span><select data-f="centreCoutId"><option value="">—</option>${ccOpts}</select></label>
+  </div>
+  <div style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-family:'Oswald',sans-serif;margin:16px 0 8px;">Fournisseurs & contrats</div>
+  <div class="formgrid">
+    <label class="field"><span>Fournisseurs alternatifs</span><input data-f="fournisseursAlternatifs" value="${esc(p.fournisseursAlternatifs)}"/></label>
+    <label class="field"><span>Délai livraison moyen (jours)</span><input type="number" data-f="delaiLivraison" value="${p.delaiLivraison||0}"/></label>
+    <label class="field span2"><span>Conditions (incoterms, garanties)</span><input data-f="conditions" value="${esc(p.conditions)}"/></label>
+  </div>
+  <div style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-family:'Oswald',sans-serif;margin:16px 0 8px;">Criticité</div>
+  <div class="formgrid">
+    <label class="field" style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" data-f="critique" ${p.critique?'checked':''} style="width:auto;"/><span>Pièce critique / stratégique</span></label>
+    <label class="field"><span>Niveau (A/B/C)</span><select data-f="niveauCriticite">${NIVEAUX_CRITICITE.map(n=>`<option ${p.niveauCriticite===n?'selected':''}>${n}</option>`).join('')}</select></label>
+    <label class="field"><span>MTBF associé (h)</span><input type="number" data-f="mtbf" value="${p.mtbf||0}"/></label>
+    <label class="field"><span>MTTR associé (h)</span><input type="number" data-f="mttr" value="${p.mttr||0}"/></label>
+    <label class="field span2"><span>Politique de stock tampon</span><input data-f="politiqueStockTampon" value="${esc(p.politiqueStockTampon)}"/></label>
   </div>`;
 }
 
@@ -2111,7 +2323,9 @@ function openModal(title, bodyHtml, onSave){
   document.getElementById('modal-cancel').addEventListener('click', closeModal);
   document.getElementById('modal-save').addEventListener('click', ()=>{
     const data = {};
-    document.querySelectorAll('#modal-form [data-f]').forEach(el=>{ data[el.dataset.f] = el.value; });
+    document.querySelectorAll('#modal-form [data-f]').forEach(el=>{
+      data[el.dataset.f] = el.type==='checkbox' ? (el.checked?'on':'') : el.value;
+    });
     onSave(data);
   });
 }
@@ -2216,19 +2430,28 @@ function attachHandlers(){
     partsImportBtn.addEventListener('click', ()=>partsImportFile.click());
     partsImportFile.addEventListener('change', (e)=>{ if(e.target.files[0]) readExcelFile(e.target.files[0], importPartsRows); });
   }
+  document.querySelectorAll('[data-parts-tab]').forEach(b=>b.addEventListener('click',()=>{ partsSubTab=b.dataset.partsTab; render(); }));
   const pn = document.querySelector('[data-open-modal="part-new"]');
   if(pn) pn.addEventListener('click', ()=>{
-    const p = {id:null, ref:'', nom:'', quantite:0, seuil:2, coutUnitaire:0, fournisseur:''};
+    const p = {id:null, ref:'', nom:'', categorie:CATEGORIES_ARTICLE[0], fournisseurPrincipal:'', codeSAP:'',
+      quantite:0, localisation:'', statutStock:'Libre', dateDernierMouvement:'',
+      seuil:2, seuilMax:0, pointReappro:0, coutUnitaire:0, centreCoutId:'',
+      fournisseursAlternatifs:'', delaiLivraison:0, conditions:'',
+      critique:false, niveauCriticite:'C', mtbf:0, mttr:0, politiqueStockTampon:''};
     openModal('Nouvelle pièce', partForm(p), (data)=>{
       if(!data.nom){ alert('Nom requis'); return; }
-      state.parts.push({...data, id:uid(), quantite:Number(data.quantite), seuil:Number(data.seuil), coutUnitaire:Number(data.coutUnitaire)});
+      state.parts.push({...data, id:uid(), quantite:Number(data.quantite), seuil:Number(data.seuil), seuilMax:Number(data.seuilMax),
+        pointReappro:Number(data.pointReappro), coutUnitaire:Number(data.coutUnitaire), delaiLivraison:Number(data.delaiLivraison),
+        mtbf:Number(data.mtbf), mttr:Number(data.mttr), critique: data.critique==='on', centreCoutId:data.centreCoutId||null});
       persist(); closeModal(); render(); toast('Pièce ajoutée au stock');
     });
   });
   document.querySelectorAll('[data-edit-part]').forEach(b=>b.addEventListener('click',()=>{
     const p = state.parts.find(x=>x.id===b.dataset.editPart);
     openModal('Modifier la pièce', partForm(p), (data)=>{
-      Object.assign(p, data, {quantite:Number(data.quantite), seuil:Number(data.seuil), coutUnitaire:Number(data.coutUnitaire)});
+      Object.assign(p, data, {quantite:Number(data.quantite), seuil:Number(data.seuil), seuilMax:Number(data.seuilMax),
+        pointReappro:Number(data.pointReappro), coutUnitaire:Number(data.coutUnitaire), delaiLivraison:Number(data.delaiLivraison),
+        mtbf:Number(data.mtbf), mttr:Number(data.mttr), critique: data.critique==='on', centreCoutId:data.centreCoutId||null});
       persist(); closeModal(); render(); toast('Pièce mise à jour');
     });
   }));
@@ -2237,6 +2460,18 @@ function attachHandlers(){
     state.parts = state.parts.filter(x=>x.id!==b.dataset.delPart);
     persist(); render(); toast('Pièce supprimée');
   }));
+  const mvtn = document.querySelector('[data-open-modal="mvt-new"]');
+  if(mvtn) mvtn.addEventListener('click', ()=>{
+    openModal('Nouvelle entrée en stock', mvtForm({}), (data)=>{
+      if(!data.partId){ alert('Sélectionne un article'); return; }
+      const qty = Number(data.quantite)||1;
+      state.stockMovements = state.stockMovements || [];
+      state.stockMovements.push({id:uid(), partId:data.partId, type:data.type, quantite:qty, commentaire:data.commentaire, date:data.date});
+      const pt = state.parts.find(p=>p.id===data.partId);
+      if(pt){ pt.quantite = Number(pt.quantite)+qty; pt.dateDernierMouvement = data.date; }
+      persist(); closeModal(); render(); toast('Entrée enregistrée, stock mis à jour');
+    });
+  });
 
   // Emplacements fonctionnels
   const flocn = document.querySelector('[data-open-modal="floc-new"]');
@@ -2638,7 +2873,7 @@ async function init(){
     data = { fleet: seedFleet(), workOrders: [], fuelLogs: [], parts: [], pmPlans: [],
       locations: locs, plantEquipment: seedPlantEquipment(locs), notifications: [], measuringPoints: [],
       costCenters: seedCostCenters(), productionLogs: [], woCounter: 0, equipTypes: [...DEFAULT_EQUIP_TYPES], personnel: [], theme: { ...DEFAULT_THEME },
-      purchaseRequests: [], purchaseOrders: [], daCounter: 0, bcCounter: 0, reservations: [], resaCounter: 0, postes: [...DEFAULT_POSTES], avisCounter: 0 };
+      purchaseRequests: [], purchaseOrders: [], daCounter: 0, bcCounter: 0, reservations: [], resaCounter: 0, postes: [...DEFAULT_POSTES], avisCounter: 0, stockMovements: [] };
   } else {
     // compatibilité ascendante : ajoute le module usine si absent d'un compte existant
     if(!data.locations || data.locations.length===0){
@@ -2663,6 +2898,16 @@ async function init(){
     data.resaCounter = data.resaCounter || 0;
     data.postes = (data.postes && data.postes.length) ? data.postes : [...DEFAULT_POSTES];
     data.avisCounter = data.avisCounter || 0;
+    data.stockMovements = data.stockMovements || [];
+    (data.parts||[]).forEach(p=>{
+      if(p.fournisseurPrincipal===undefined) p.fournisseurPrincipal = p.fournisseur||'';
+      if(!p.categorie) p.categorie = CATEGORIES_ARTICLE[4];
+      if(!p.statutStock) p.statutStock = 'Libre';
+      if(p.seuilMax===undefined) p.seuilMax = 0;
+      if(p.pointReappro===undefined) p.pointReappro = 0;
+      if(p.critique===undefined) p.critique = false;
+      if(!p.niveauCriticite) p.niveauCriticite = 'C';
+    });
     (data.notifications||[]).sort((a,b)=>(a.dateCreation||'').localeCompare(b.dateCreation||'')).forEach(n=>{
       if(!n.numero){ data.avisCounter++; n.numero = 'AV-'+String(data.avisCounter).padStart(4,'0'); }
     });
