@@ -163,7 +163,21 @@ const ROLE_LABELS = {
   admin: 'Administrateur', planificateur: 'Planificateur maintenance',
   technicien: 'Technicien terrain', rh: 'Responsable RH'
 };
-let currentUser = null; // { id, email, role, nomComplet }
+const FONCTIONS = ["Technicien","Planificateur","Superviseur","Responsable","Administrateur"];
+const NIVEAUX_HIER = [1,2,3,4,5];
+const STATUTS_COMPTE = ["Actif","Inactif"];
+const NIVEAUX_APPROBATION = ["Technique","Financière","Stratégique"];
+const MODULES_ACCES = [
+  {id:'maintenance', label:'Maintenance (OT, Préventif, Notifications)'},
+  {id:'stock', label:'Stock / Pièces de rechange'},
+  {id:'achats', label:'Achats (DA / BC)'},
+  {id:'rh', label:'RH'},
+  {id:'reporting', label:'Reporting / KPI'},
+];
+const NIVEAUX_ACCES = ["Aucun","Lecture seule","Écriture","Validation","Administration complète"];
+const EMAIL_DOMAIN = '2na-erp.internal';
+function identifiantToEmail(id){ return String(id||'').trim().toLowerCase().replace(/[^a-z0-9]/g,'')+'@'+EMAIL_DOMAIN; }
+let currentUser = null; // { id, email, role, nomComplet, identifiant, fonction, niveauHierarchique, statutCompte, superieurId, niveauApprobation, modules }
 let authTab = 'login';
 let authError = '';
 
@@ -182,25 +196,26 @@ function renderAuthScreen(){
     </div>
     <div class="auth-error">${esc(authError)}</div>
     ${authTab==='signup'?`<label class="auth-field"><span>Nom complet</span><input id="auth-nom" placeholder="Kouassi Jean"/></label>`:''}
-    <label class="auth-field"><span>Email</span><input id="auth-email" type="email" placeholder="toi@exemple.com"/></label>
+    <label class="auth-field"><span>Identifiant</span><input id="auth-id" placeholder="Ex: USR004" style="text-transform:uppercase;"/></label>
     <label class="auth-field"><span>Mot de passe</span><input id="auth-pass" type="password" placeholder="••••••••"/></label>
     <button class="btn btn-accent" id="auth-submit" style="width:100%;justify-content:center;margin-top:6px;">${authTab==='login'?'Se connecter':'Créer mon compte'}</button>
-    ${authTab==='signup'?`<p style="font-size:11px;color:var(--muted);margin-top:12px;">Ton compte sera créé avec un accès limité (technicien) jusqu'à ce qu'un administrateur t'attribue ton rôle réel dans "Utilisateurs".</p>`:''}
+    ${authTab==='signup'?`<p style="font-size:11px;color:var(--muted);margin-top:12px;">Choisis un identifiant unique (ex: USR004). Ton compte sera créé avec un accès limité (technicien) jusqu'à ce qu'un administrateur t'attribue ton rôle réel dans "Utilisateurs".</p>`:''}
   </div>`;
   document.querySelectorAll('[data-auth-tab]').forEach(t=>t.addEventListener('click',()=>{ authTab=t.dataset.authTab; authError=''; renderAuthScreen(); }));
   document.getElementById('auth-submit').addEventListener('click', handleAuthSubmit);
-  [document.getElementById('auth-email'), document.getElementById('auth-pass')].forEach(inp=>{
+  [document.getElementById('auth-id'), document.getElementById('auth-pass')].forEach(inp=>{
     inp.addEventListener('keydown', e=>{ if(e.key==='Enter') handleAuthSubmit(); });
   });
 }
 
 let pendingNomComplet = '';
 async function handleAuthSubmit(){
-  const email = document.getElementById('auth-email').value.trim();
+  const identifiant = document.getElementById('auth-id').value.trim().toUpperCase();
   const pass = document.getElementById('auth-pass').value;
   const btn = document.getElementById('auth-submit');
   authError = '';
-  if(!email || !pass){ authError = 'Email et mot de passe requis'; renderAuthScreen(); return; }
+  if(!identifiant || !pass){ authError = 'Identifiant et mot de passe requis'; renderAuthScreen(); return; }
+  const email = identifiantToEmail(identifiant);
   btn.disabled = true; btn.textContent = '...';
   try{
     if(authTab==='login'){
@@ -213,8 +228,8 @@ async function handleAuthSubmit(){
       const { data, error } = await sb.auth.signUp({ email, password: pass });
       if(error) throw error;
       if(data.user && data.session){
-        // session déjà active (confirmation email désactivée) -> on peut créer la fiche tout de suite
-        try{ await sb.from('user_roles').insert({ user_id: data.user.id, email, nom_complet: nom, role: 'technicien' }); }catch(e){}
+        try{ await sb.from('user_roles').insert({ user_id: data.user.id, email, nom_complet: nom, role: 'technicien',
+          identifiant, fonction:'Technicien', niveau_hierarchique:1, statut_compte:'Actif', niveau_approbation:'Technique', modules:{} }); }catch(e){}
       }
     }
     await afterAuthSuccess();
@@ -225,9 +240,10 @@ async function handleAuthSubmit(){
   btn.disabled = false; btn.textContent = authTab==='login'?'Se connecter':'Créer mon compte';
 }
 function traduireErreurAuth(msg){
-  if(/Invalid login credentials/i.test(msg)) return 'Email ou mot de passe incorrect';
-  if(/already registered/i.test(msg)) return 'Un compte existe déjà avec cet email';
+  if(/Invalid login credentials/i.test(msg)) return 'Identifiant ou mot de passe incorrect';
+  if(/already registered/i.test(msg)) return 'Cet identifiant est déjà utilisé';
   if(/Password should be/i.test(msg)) return 'Mot de passe trop court (6 caractères minimum)';
+  if(/Compte désactivé/i.test(msg)) return msg;
   return msg;
 }
 async function fetchUserRole(userId, email, nomComplet){
@@ -235,8 +251,8 @@ async function fetchUserRole(userId, email, nomComplet){
     const { data } = await sb.from('user_roles').select('*').eq('user_id', userId).maybeSingle();
     if(data) return data;
   }catch(e){}
-  // fiche absente (ex: créée avant confirmation email) -> on la crée maintenant, l'utilisateur est authentifié ici
-  const fresh = { user_id:userId, email, nom_complet: nomComplet||email, role:'technicien' };
+  const fresh = { user_id:userId, email, nom_complet: nomComplet||email, role:'technicien',
+    identifiant:'', fonction:'Technicien', niveau_hierarchique:1, statut_compte:'Actif', niveau_approbation:'Technique', modules:{} };
   try{ await sb.from('user_roles').insert(fresh); }catch(e){}
   return fresh;
 }
@@ -245,7 +261,18 @@ async function afterAuthSuccess(){
   if(!session){ renderAuthScreen(); return; }
   const roleRow = await fetchUserRole(session.user.id, session.user.email, pendingNomComplet);
   pendingNomComplet = '';
-  currentUser = { id: session.user.id, email: session.user.email, role: roleRow.role, nomComplet: roleRow.nom_complet || session.user.email };
+  if(roleRow.statut_compte==='Inactif'){
+    await sb.auth.signOut();
+    currentUser = null;
+    authError = 'Compte désactivé — contacte un administrateur.';
+    renderAuthScreen();
+    return;
+  }
+  currentUser = { id: session.user.id, email: session.user.email, role: roleRow.role, nomComplet: roleRow.nom_complet || session.user.email,
+    identifiant: roleRow.identifiant||'', fonction: roleRow.fonction||'Technicien', niveauHierarchique: roleRow.niveau_hierarchique||1,
+    statutCompte: roleRow.statut_compte||'Actif', superieurId: roleRow.superieur_id||null, niveauApprobation: roleRow.niveau_approbation||'Technique',
+    modules: roleRow.modules||{} };
+  try{ await sb.rpc('update_last_login'); }catch(e){}
   document.getElementById('auth-screen').style.display = 'none';
   document.getElementById('app').style.display = 'flex';
   await init();
@@ -259,11 +286,16 @@ async function handleLogout(){
 }
 function canSee(navId){
   if(!currentUser) return false;
+  if(currentUser.statutCompte==='Inactif') return false;
   if(currentUser.role==='admin') return true;
+  const moduleOf = { wo:'maintenance', pm:'maintenance', notif:'maintenance', floc:'maintenance', plant:'maintenance', production:'maintenance', measures:'maintenance', fleet:'maintenance', fuel:'maintenance',
+    parts:'stock', resa:'stock', da:'achats', bc:'achats', personnel:'rh', dashboard:'reporting', costs:'reporting', reports:'reporting' };
+  const mod = moduleOf[navId];
+  if(mod && currentUser.modules && currentUser.modules[mod]==='Aucun') return false;
   const restricted = {
-    planificateur: ['users'],
-    technicien: ['fleet','pm','fuel','parts','floc','plant','production','measures','costs','personnel','reports','settings','users','da','bc','resa'],
-    rh: ['fleet','wo','wo-edit','pm','fuel','parts','floc','plant','production','notif','measures','costs','reports','settings','users','da','bc','resa'],
+    planificateur: ['users','audit'],
+    technicien: ['fleet','pm','fuel','parts','floc','plant','production','measures','costs','personnel','reports','settings','users','audit','da','bc','resa'],
+    rh: ['fleet','wo','wo-edit','pm','fuel','parts','floc','plant','production','notif','measures','costs','reports','settings','users','audit','da','bc','resa'],
   };
   const blocked = restricted[currentUser.role] || [];
   return !blocked.includes(navId);
@@ -503,7 +535,7 @@ function seedFleet(){
   }));
 }
 
-let state = { fleet: [], workOrders: [], fuelLogs: [], parts: [], pmPlans: [], locations: [], plantEquipment: [], notifications: [], measuringPoints: [], costCenters: [], productionLogs: [], woCounter: 0, equipTypes: [...DEFAULT_EQUIP_TYPES], personnel: [], purchaseRequests: [], purchaseOrders: [], daCounter: 0, bcCounter: 0, reservations: [], resaCounter: 0, postes: [...DEFAULT_POSTES], avisCounter: 0, stockMovements: [] };
+let state = { fleet: [], workOrders: [], fuelLogs: [], parts: [], pmPlans: [], locations: [], plantEquipment: [], notifications: [], measuringPoints: [], costCenters: [], productionLogs: [], woCounter: 0, equipTypes: [...DEFAULT_EQUIP_TYPES], personnel: [], purchaseRequests: [], purchaseOrders: [], daCounter: 0, bcCounter: 0, reservations: [], resaCounter: 0, postes: [...DEFAULT_POSTES], avisCounter: 0, stockMovements: [], auditLog: [] };
 let currentView = 'dashboard';
 
 /* ============ HELPERS ============ */
@@ -515,6 +547,11 @@ function statutColor(s){
 }
 function fmt(n){ return Number(n||0).toLocaleString('fr-FR'); }
 function equipMap(){ return Object.fromEntries([...state.fleet, ...state.plantEquipment].map(e=>[e.id,e])); }
+function logAudit(action){
+  state.auditLog = state.auditLog || [];
+  state.auditLog.unshift({ date: new Date().toISOString(), user: currentUser?currentUser.nomComplet:'Système', action });
+  if(state.auditLog.length>500) state.auditLog.length = 500;
+}
 function woStatusBadges(w){
   // Reproduit l'esprit du bandeau "statut système" SAP (LANC/DANP/DELN...) à partir de l'état réel de l'OT
   const tags = [{t:'CRÉÉ', c:'var(--muted)'}];
@@ -586,6 +623,7 @@ const NAV = [
   { section:'Paramètres', items:[
     {id:'settings', label:'Paramétrage', icon:'settings'},
     {id:'users', label:'Utilisateurs', icon:'users'},
+    {id:'audit', label:'Historique & audit', icon:'receipt'},
   ]},
 ];
 function renderNav(){
@@ -666,6 +704,7 @@ function render(){
   else if(currentView==='reports') c.innerHTML = viewReports();
   else if(currentView==='settings') c.innerHTML = viewSettings();
   else if(currentView==='users') c.innerHTML = viewUsers();
+  else if(currentView==='audit') c.innerHTML = viewAudit();
   else if(currentView==='resa') c.innerHTML = viewResa();
   else if(currentView==='da') c.innerHTML = viewDA();
   else if(currentView==='bc') c.innerHTML = viewBC();
@@ -1362,7 +1401,7 @@ function wireWOEditor(){
       if(newStatut==='Terminé' || newStatut==='Clôturé') eq.statut='Opérationnel';
       else if(newStatut==='En cours') eq.statut='En maintenance';
     }
-    persist(); toast('Statut : '+newStatut); render();
+    logAudit('OT '+w.numero+' → '+newStatut); persist(); toast('Statut : '+newStatut); render();
   }
   const launchBtn = document.getElementById('wo-launch');
   if(launchBtn) launchBtn.addEventListener('click', ()=>quickTransition('En cours'));
@@ -1375,7 +1414,7 @@ function wireWOEditor(){
     w.approbateurBudget = currentUser ? currentUser.nomComplet : '';
     const idx = state.workOrders.findIndex(x=>x.id===w.id);
     if(idx>-1) state.workOrders[idx] = {...w};
-    persist(); toast('Budget approuvé'); render();
+    logAudit('Budget approuvé pour '+w.numero); persist(); toast('Budget approuvé'); render();
   });
   const closeFinancialBtn = document.getElementById('wo-close-financial');
   if(closeFinancialBtn) closeFinancialBtn.addEventListener('click', ()=>{
@@ -1384,7 +1423,7 @@ function wireWOEditor(){
     w.clotureFinancierePar = currentUser ? currentUser.nomComplet : '';
     const idx = state.workOrders.findIndex(x=>x.id===w.id);
     if(idx>-1) state.workOrders[idx] = {...w};
-    persist(); toast('Ordre clôturé financièrement'); render();
+    logAudit('Clôture financière '+w.numero); persist(); toast('Ordre clôturé financièrement'); render();
   });
 
   const docAddBtn = document.getElementById('wo-doc-add');
@@ -1509,6 +1548,7 @@ function wireWOEditor(){
         if(w.statut==='Terminé' || w.statut==='Clôturé') eqForStatus.statut='Opérationnel';
         else eqForStatus.statut='En maintenance';
       }
+      logAudit('Création OT '+w.numero+' — '+w.titre);
       persist(); currentView='wo'; woDraft=null; render(); toast('Ordre de travail '+w.numero+' créé');
     } else {
       reservePendingParts();
@@ -2273,25 +2313,63 @@ async function loadAllUsers(){
   }catch(e){}
 }
 function viewUsers(){
+  const um = Object.fromEntries(allUsers.map(u=>[u.user_id,u]));
   return `
   <h1>Utilisateurs</h1>
-  <p class="subtitle">Gestion des comptes et des rôles — réservé aux administrateurs</p>
-  <div class="plate" style="overflow:hidden;">
-  <table><thead><tr><th>Nom</th><th>Email</th><th>Rôle</th><th>Inscrit le</th></tr></thead>
+  <p class="subtitle">Gestion des comptes, rôles, hiérarchie et accès — réservé aux administrateurs</p>
+  <div class="plate" style="overflow:hidden;margin-bottom:16px;">
+  <table><thead><tr><th>Identifiant</th><th>Nom</th><th>Fonction</th><th>Niv.</th><th>Statut</th><th>Rôle</th><th>Supérieur</th><th>Dernière connexion</th><th></th></tr></thead>
   <tbody>
-  ${allUsers.length===0?`<tr><td colspan="4" style="padding:20px;text-align:center;color:var(--muted);">Chargement des comptes…</td></tr>`:
+  ${allUsers.length===0?`<tr><td colspan="9" style="padding:20px;text-align:center;color:var(--muted);">Chargement des comptes…</td></tr>`:
   allUsers.map(u=>`<tr>
+    <td class="mono" style="color:var(--muted);">${esc(u.identifiant)||'—'}</td>
     <td>${esc(u.nom_complet||'—')}</td>
-    <td style="color:var(--muted);">${esc(u.email)}</td>
-    <td>
-      <select data-user-role="${u.user_id}" ${u.user_id===currentUser.id?'disabled title="Tu ne peux pas changer ton propre rôle ici"':''}>
-        ${Object.keys(ROLE_LABELS).map(r=>`<option value="${r}" ${u.role===r?'selected':''}>${ROLE_LABELS[r]}</option>`).join('')}
-      </select>
-    </td>
-    <td style="color:var(--muted);font-size:12px;">${(u.created_at||'').slice(0,10)}</td>
+    <td style="color:var(--muted);">${esc(u.fonction)||'—'}</td>
+    <td class="mono" style="color:var(--muted);">${u.niveau_hierarchique||1}</td>
+    <td><span class="badge" style="color:${u.statut_compte==='Inactif'?'var(--danger)':'var(--success)'};border-color:${u.statut_compte==='Inactif'?'var(--danger)':'var(--success)'};">${u.statut_compte||'Actif'}</span></td>
+    <td style="color:var(--text);">${ROLE_LABELS[u.role]||u.role}</td>
+    <td style="color:var(--muted);font-size:12px;">${u.superieur_id&&um[u.superieur_id]?esc(um[u.superieur_id].nom_complet):'—'}</td>
+    <td style="color:var(--muted);font-size:12px;">${u.derniere_connexion?new Date(u.derniere_connexion).toLocaleString('fr-FR'):'Jamais'}</td>
+    <td><button class="icon-btn" data-edit-user="${u.user_id}">${ICONS.edit}</button></td>
   </tr>`).join('')}
   </tbody></table></div>
-  <p style="font-size:11px;color:var(--muted);margin-top:12px;">Nouveaux comptes créés via "Créer un compte" arrivent avec le rôle Technicien par défaut — change-le ici pour leur donner le bon accès.</p>`;
+  <p style="font-size:11px;color:var(--muted);">Nouveaux comptes créés via "Créer un compte" arrivent avec le rôle Technicien par défaut — clique le crayon pour définir fonction, niveau, rôle, hiérarchie et accès par module.</p>`;
+}
+function userEditForm(u){
+  const others = allUsers.filter(x=>x.user_id!==u.user_id);
+  const modules = u.modules || {};
+  return `
+  <div class="formgrid">
+    <label class="field"><span>Identifiant</span><input value="${esc(u.identifiant)}" disabled style="opacity:.6"/></label>
+    <label class="field"><span>Nom complet</span><input data-f="nom_complet" value="${esc(u.nom_complet)}"/></label>
+    <label class="field"><span>Fonction / poste</span><select data-f="fonction">${FONCTIONS.map(f=>`<option ${u.fonction===f?'selected':''}>${f}</option>`).join('')}</select></label>
+    <label class="field"><span>Niveau hiérarchique (1-5)</span><select data-f="niveau_hierarchique">${NIVEAUX_HIER.map(n=>`<option value="${n}" ${Number(u.niveau_hierarchique)===n?'selected':''}>${n}</option>`).join('')}</select></label>
+    <label class="field"><span>Statut</span><select data-f="statut_compte">${STATUTS_COMPTE.map(s=>`<option ${u.statut_compte===s?'selected':''}>${s}</option>`).join('')}</select></label>
+    <label class="field"><span>Rôle applicatif</span><select data-f="role" ${u.user_id===currentUser.id?'disabled title="Tu ne peux pas changer ton propre rôle"':''}>${Object.keys(ROLE_LABELS).map(r=>`<option value="${r}" ${u.role===r?'selected':''}>${ROLE_LABELS[r]}</option>`).join('')}</select></label>
+    <label class="field span2"><span>Supérieur hiérarchique direct</span><select data-f="superieur_id"><option value="">— Aucun —</option>${others.map(o=>`<option value="${o.user_id}" ${u.superieur_id===o.user_id?'selected':''}>${esc(o.nom_complet)} (${esc(o.identifiant)||o.email})</option>`).join('')}</select></label>
+    <label class="field span2"><span>Niveau d'approbation</span><select data-f="niveau_approbation">${NIVEAUX_APPROBATION.map(n=>`<option ${u.niveau_approbation===n?'selected':''}>${n}</option>`).join('')}</select></label>
+  </div>
+  <div style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-family:'Oswald',sans-serif;margin:16px 0 8px;">Accès par module</div>
+  <div class="formgrid">
+    ${MODULES_ACCES.map(m=>`<label class="field"><span>${m.label}</span><select data-uf-mod="${m.id}">${NIVEAUX_ACCES.map(n=>`<option ${(modules[m.id]||'Écriture')===n?'selected':''}>${n}</option>`).join('')}</select></label>`).join('')}
+  </div>`;
+}
+
+function viewAudit(){
+  const log = state.auditLog || [];
+  return `
+  <h1>Historique & audit</h1>
+  <p class="subtitle">Journal des actions clés — création, validation, clôture — réservé aux administrateurs</p>
+  ${log.length===0?`<div class="plate p16"><div class="empty">${ICONS.receipt}<span>Aucune action enregistrée pour l'instant.</span></div></div>`:
+  `<div class="plate" style="overflow:hidden;">
+  <table><thead><tr><th>Date / heure</th><th>Utilisateur</th><th>Action</th></tr></thead>
+  <tbody>
+  ${log.slice(0,200).map(e=>`<tr>
+    <td style="color:var(--muted);font-size:12px;">${new Date(e.date).toLocaleString('fr-FR')}</td>
+    <td style="color:var(--text);font-size:13px;">${esc(e.user)}</td>
+    <td style="color:var(--muted);font-size:13px;">${esc(e.action)}</td>
+  </tr>`).join('')}
+  </tbody></table></div>`}`;
 }
 
 function viewSettings(){
@@ -2799,7 +2877,7 @@ function attachHandlers(){
     const n = state.notifications.find(x=>x.id===b.dataset.validateNotif);
     if(!n) return;
     n.statut = 'Validée';
-    persist(); render(); toast(n.numero+' validée — prête pour la création d\'un ordre de travail');
+    logAudit('Notification '+n.numero+' validée'); persist(); render(); toast(n.numero+' validée — prête pour la création d\'un ordre de travail');
   }));
   document.querySelectorAll('[data-convert-notif]').forEach(b=>b.addEventListener('click',()=>{
     const n = state.notifications.find(x=>x.id===b.dataset.convertNotif);
@@ -2816,7 +2894,7 @@ function attachHandlers(){
     n.statut = 'Convertie en OT';
     n.workOrderId = wo.id;
     const eq=[...state.fleet,...state.plantEquipment].find(x=>x.id===n.equipementId); if(eq) eq.statut='En maintenance';
-    persist(); render(); toast('Notification convertie en '+wo.numero);
+    logAudit('Notification '+n.numero+' convertie en '+wo.numero); persist(); render(); toast('Notification convertie en '+wo.numero);
   }));
 
   // Compteurs / mesures
@@ -2888,7 +2966,7 @@ function attachHandlers(){
     r.statut = 'Sortie validée';
     r.dateSortie = new Date().toISOString().slice(0,10);
     r.magasinier = currentUser ? currentUser.nomComplet : '';
-    persist(); render(); toast('Sortie validée, stock décrémenté');
+    logAudit('Sortie stock validée — réservation '+r.numero); persist(); render(); toast('Sortie validée, stock décrémenté');
   }));
   document.querySelectorAll('[data-del-resa]').forEach(b=>b.addEventListener('click',()=>{
     const r = state.reservations.find(x=>x.id===b.dataset.delResa);
@@ -2976,15 +3054,24 @@ function attachHandlers(){
   }));
 
   // Utilisateurs (admin)
-  document.querySelectorAll('[data-user-role]').forEach(sel=>sel.addEventListener('change', async (e)=>{
-    const uid_ = e.target.dataset.userRole;
-    const newRole = e.target.value;
-    try{
-      const { error } = await sb.from('user_roles').update({ role:newRole }).eq('user_id', uid_);
-      if(error) throw error;
-      const u = allUsers.find(x=>x.user_id===uid_); if(u) u.role = newRole;
-      toast('Rôle mis à jour');
-    }catch(err){ alert('Erreur : '+((err&&err.message)||String(err))); render(); }
+  document.querySelectorAll('[data-edit-user]').forEach(b=>b.addEventListener('click',()=>{
+    const u = allUsers.find(x=>x.user_id===b.dataset.editUser);
+    if(!u) return;
+    openModal('Modifier le profil — '+(u.identifiant||u.nom_complet), userEditForm(u), async (data)=>{
+      const modules = {};
+      MODULES_ACCES.forEach(m=>{ const el = document.querySelector(`#modal-form [data-uf-mod="${m.id}"]`); if(el) modules[m.id]=el.value; });
+      const updates = {
+        nom_complet: data.nom_complet, fonction: data.fonction, niveau_hierarchique: Number(data.niveau_hierarchique),
+        statut_compte: data.statut_compte, role: data.role, superieur_id: data.superieur_id||null,
+        niveau_approbation: data.niveau_approbation, modules
+      };
+      try{
+        const { error } = await sb.from('user_roles').update(updates).eq('user_id', u.user_id);
+        if(error) throw error;
+        Object.assign(u, updates);
+        closeModal(); render(); toast('Profil mis à jour');
+      }catch(err){ alert('Erreur : '+((err&&err.message)||String(err))); }
+    });
   }));
 
   // Postes responsables
@@ -3100,7 +3187,7 @@ async function init(){
     data = { fleet: seedFleet(), workOrders: [], fuelLogs: [], parts: [], pmPlans: [],
       locations: locs, plantEquipment: seedPlantEquipment(locs), notifications: [], measuringPoints: [],
       costCenters: seedCostCenters(), productionLogs: [], woCounter: 0, equipTypes: [...DEFAULT_EQUIP_TYPES], personnel: [], theme: { ...DEFAULT_THEME },
-      purchaseRequests: [], purchaseOrders: [], daCounter: 0, bcCounter: 0, reservations: [], resaCounter: 0, postes: [...DEFAULT_POSTES], avisCounter: 0, stockMovements: [] };
+      purchaseRequests: [], purchaseOrders: [], daCounter: 0, bcCounter: 0, reservations: [], resaCounter: 0, postes: [...DEFAULT_POSTES], avisCounter: 0, stockMovements: [], auditLog: [] };
   } else {
     // compatibilité ascendante : ajoute le module usine si absent d'un compte existant
     if(!data.locations || data.locations.length===0){
@@ -3126,6 +3213,7 @@ async function init(){
     data.postes = (data.postes && data.postes.length) ? data.postes : [...DEFAULT_POSTES];
     data.avisCounter = data.avisCounter || 0;
     data.stockMovements = data.stockMovements || [];
+    data.auditLog = data.auditLog || [];
     (data.parts||[]).forEach(p=>{
       if(p.fournisseurPrincipal===undefined) p.fournisseurPrincipal = p.fournisseur||'';
       if(!p.categorie) p.categorie = CATEGORIES_ARTICLE[4];
