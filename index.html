@@ -453,6 +453,7 @@ const STATUTS_STOCK = ["Libre","Réservé","En transit"];
 const NIVEAUX_CRITICITE = ["A","B","C"];
 const TYPES_MOUVEMENT = ["Achat","Retour","Réparation"];
 const TYPES_TRAVAIL = ["Inspection","Remplacement pièces","Intervention","Révision","Autre"];
+const WO_TYPES = ["Correctif","Préventif","Inspection","Amélioration"];
 const DA_STATUTS = ["Ouverte","Convertie en BC","Clôturée"];
 const BC_STATUTS = ["Émis","Réceptionné partiellement","Réceptionné"];
 const AFFECTATIONS = ["Flotte","Usine","Les deux"];
@@ -523,7 +524,12 @@ function woStatusBadges(w){
   const da = state.purchaseRequests.find(d=>d.workOrderId===w.id);
   if(da) tags.push({t: da.statut==='Clôturée' ? 'DA RÉCEPT.' : 'DA EN COURS', c: da.statut==='Clôturée' ? 'var(--success)' : 'var(--accent)'});
   if(w.statut==='Terminé') tags.push({t:'EN ATTENTE CLÔTURE', c:'var(--steel)'});
-  if(w.statut==='Clôturé') tags.push({t:'CLÔTURÉ', c:'var(--success)'});
+  if(w.statut==='Clôturé') tags.push({t:'CLÔTURÉ TECHN.', c:'var(--success)'});
+  if(w.permisTravail) tags.push({t:'PERMIS OK', c:'var(--success)'});
+  if(Number(w.cout)>0){
+    tags.push(w.budgetApprouve ? {t:'BUDGET APPROUVÉ', c:'var(--success)'} : {t:'BUDGET EN ATTENTE', c:'var(--accent)'});
+  }
+  if(w.clotureFinanciere) tags.push({t:'CLÔTURÉ FINANC.', c:'var(--success)'});
   return tags;
 }
 function woLinkedDA(woId){ return state.purchaseRequests.find(d=>d.workOrderId===woId) || null; }
@@ -1148,13 +1154,15 @@ function blankWO(){
   return { id:null, numero:null, equipementId: state.fleet[0]?.id||state.plantEquipment[0]?.id||'', type:'Correctif',
     typeTravail: TYPES_TRAVAIL[0], poste: state.postes[0], titre:'', description:'', priorite:'Normale', statut:'Ouvert',
     dateCreation:new Date().toISOString().slice(0,10), dateDebut:new Date().toISOString().slice(0,10), dateFin:'',
-    technicien:'', cout:0, operations:[], piecesUtilisees:[] };
+    technicien:'', cout:0, operations:[], piecesUtilisees:[],
+    permisTravail:false, consignation:'', budgetApprouve:false, approbateurBudget:'', clotureFinanciere:false, clotureFinancierePar:'', documents:[] };
 }
 function openWOEditor(id){
   woIsNew = (id==='new');
   woDraft = woIsNew ? blankWO() : JSON.parse(JSON.stringify(state.workOrders.find(x=>x.id===id)));
   if(!woDraft.operations) woDraft.operations=[];
   if(!woDraft.piecesUtilisees) woDraft.piecesUtilisees=[];
+  if(!woDraft.documents) woDraft.documents=[];
   currentView = 'wo-edit';
   render();
 }
@@ -1194,7 +1202,7 @@ function viewWOEdit(){
       <label class="field"><span>Type de travail</span><select id="wo-f-typetravail">${TYPES_TRAVAIL.map(t=>`<option ${w.typeTravail===t?'selected':''}>${t}</option>`).join('')}</select></label>
       <label class="field span2"><span>Libellé</span><input id="wo-f-titre" value="${esc(w.titre)}" placeholder="Remplacement flexible hydraulique"/></label>
       <label class="field span2"><span>Description</span><textarea id="wo-f-desc" rows="2">${esc(w.description)}</textarea></label>
-      <label class="field"><span>Type</span><select id="wo-f-type"><option ${w.type==='Correctif'?'selected':''}>Correctif</option><option ${w.type==='Préventif'?'selected':''}>Préventif</option></select></label>
+      <label class="field"><span>Type</span><select id="wo-f-type">${WO_TYPES.map(t=>`<option ${w.type===t?'selected':''}>${t}</option>`).join('')}</select></label>
       <label class="field"><span>Poste responsable principal</span><select id="wo-f-poste">${state.postes.map(p=>`<option ${w.poste===p?'selected':''}>${p}</option>`).join('')}</select></label>
       <label class="field"><span>Priorité</span><select id="wo-f-priorite">${WO_PRIORITES.map(p=>`<option ${w.priorite===p?'selected':''}>${p}</option>`).join('')}</select></label>
       <label class="field"><span>Statut</span><select id="wo-f-statut">${WO_STATUTS.filter(s=> s!=='Clôturé' || !(currentUser&&currentUser.role==='technicien')).map(s=>`<option ${w.statut===s?'selected':''}>${s}</option>`).join('')}</select></label>
@@ -1208,6 +1216,47 @@ function viewWOEdit(){
     </div>
   </div>
 
+  <div class="plate p16" style="margin-bottom:16px;">
+    <h3 class="oswald" style="text-transform:uppercase;font-size:13px;margin:0 0 12px;color:var(--muted);">Sécurité / HSE</h3>
+    <div class="formgrid">
+      <label class="field" style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" id="wo-f-permis" ${w.permisTravail?'checked':''} style="width:auto;"/><span>Permis de travail délivré</span></label>
+      <label class="field span2"><span>Consignation / autorisations</span><input id="wo-f-consignation" value="${esc(w.consignation)}" placeholder="Ex: LOTO ligne 3, cadenas n°12"/></label>
+    </div>
+  </div>
+
+  <div class="plate p16" style="margin-bottom:16px;">
+    <h3 class="oswald" style="text-transform:uppercase;font-size:13px;margin:0 0 12px;color:var(--muted);">Documents / pièces jointes</h3>
+    <p style="font-size:11px;color:var(--muted);margin:0 0 12px;">Photos, rapports techniques, certificats — stockés en ligne, accessibles à toute l'équipe.</p>
+    <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:10px;">
+      ${w.documents.length===0?`<span style="font-size:12px;color:var(--muted);">Aucun document joint.</span>`:
+      w.documents.map((d,i)=>`<div class="between card-item" style="padding:6px 10px;">
+        <a href="${d.url}" target="_blank" rel="noopener" style="font-size:13px;color:var(--steel);text-decoration:underline;">${esc(d.name)}</a>
+        <div class="row"><span style="font-size:11px;color:var(--muted);">${d.uploadedAt||''}</span><button class="icon-btn" data-wo-doc-del="${i}">${ICONS.trash}</button></div>
+      </div>`).join('')}
+    </div>
+    <div class="row">
+      <input type="file" id="wo-doc-file" style="flex:1;font-size:12px;"/>
+      <button class="btn btn-ghost" id="wo-doc-add" type="button">${ICONS.plus} Téléverser</button>
+    </div>
+    <div id="wo-doc-status" style="font-size:11px;color:var(--muted);margin-top:6px;"></div>
+  </div>
+
+  ${!woIsNew && Number(w.cout)>0 ? `
+  <div class="plate p16" style="margin-bottom:16px;">
+    <h3 class="oswald" style="text-transform:uppercase;font-size:13px;margin:0 0 12px;color:var(--muted);">Approbation budget & clôture financière</h3>
+    <div class="row wrapwrap" style="gap:16px;">
+      <div>
+        <span style="font-size:12px;color:var(--muted);">Budget</span>
+        <div style="font-size:13px;color:${w.budgetApprouve?'var(--success)':'var(--accent)'};">${w.budgetApprouve?('Approuvé par '+esc(w.approbateurBudget)):'En attente d\'approbation'}</div>
+      </div>
+      ${canSuperviseEdit && !w.budgetApprouve ? `<button class="btn btn-ghost" id="wo-approve-budget" style="color:var(--success);border-color:var(--success);">${ICONS.check} Approuver le budget</button>` : ''}
+      <div style="margin-left:auto;">
+        <span style="font-size:12px;color:var(--muted);">Clôture financière</span>
+        <div style="font-size:13px;color:${w.clotureFinanciere?'var(--success)':'var(--muted)'};">${w.clotureFinanciere?('Clôturé par '+esc(w.clotureFinancierePar)):'Non clôturé'}</div>
+      </div>
+      ${canSuperviseEdit && w.statut==='Clôturé' && !w.clotureFinanciere ? `<button class="btn btn-ghost" id="wo-close-financial" style="color:var(--success);border-color:var(--success);">${ICONS.check} Clôturer financièrement</button>` : ''}
+    </div>
+  </div>` : ''}
   <div class="plate p16" style="margin-bottom:16px;">
     <h3 class="oswald" style="text-transform:uppercase;font-size:13px;margin:0 0 4px;color:var(--muted);">Opérations effectuées</h3>
     <p style="font-size:11px;color:var(--muted);margin:0 0 12px;">Une tâche peut réunir plusieurs corps de métier — ajoute un intervenant par poste, avec ses heures.</p>
@@ -1294,6 +1343,54 @@ function wireWOEditor(){
   const closeBtn = document.getElementById('wo-close-toolbar');
   if(closeBtn) closeBtn.addEventListener('click', ()=>{ if(confirm('Clôturer '+w.numero+' ?')) quickTransition('Clôturé'); });
 
+  const approveBudgetBtn = document.getElementById('wo-approve-budget');
+  if(approveBudgetBtn) approveBudgetBtn.addEventListener('click', ()=>{
+    w.budgetApprouve = true;
+    w.approbateurBudget = currentUser ? currentUser.nomComplet : '';
+    const idx = state.workOrders.findIndex(x=>x.id===w.id);
+    if(idx>-1) state.workOrders[idx] = {...w};
+    persist(); toast('Budget approuvé'); render();
+  });
+  const closeFinancialBtn = document.getElementById('wo-close-financial');
+  if(closeFinancialBtn) closeFinancialBtn.addEventListener('click', ()=>{
+    if(!confirm('Confirmer la clôture financière de '+w.numero+' ?')) return;
+    w.clotureFinanciere = true;
+    w.clotureFinancierePar = currentUser ? currentUser.nomComplet : '';
+    const idx = state.workOrders.findIndex(x=>x.id===w.id);
+    if(idx>-1) state.workOrders[idx] = {...w};
+    persist(); toast('Ordre clôturé financièrement'); render();
+  });
+
+  const docAddBtn = document.getElementById('wo-doc-add');
+  if(docAddBtn) docAddBtn.addEventListener('click', async ()=>{
+    const fileInput = document.getElementById('wo-doc-file');
+    const statusEl = document.getElementById('wo-doc-status');
+    const file = fileInput.files[0];
+    if(!file){ if(statusEl) statusEl.textContent = 'Choisis un fichier d\'abord.'; return; }
+    if(statusEl) statusEl.textContent = 'Téléversement en cours…';
+    docAddBtn.disabled = true;
+    try{
+      const path = Date.now()+'_'+uid()+'_'+file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+      const { error: upErr } = await sb.storage.from('documents').upload(path, file);
+      if(upErr) throw upErr;
+      const { data: urlData } = sb.storage.from('documents').getPublicUrl(path);
+      w.documents.push({ name:file.name, url:urlData.publicUrl, path, uploadedAt:new Date().toISOString().slice(0,10), uploadedBy: currentUser?currentUser.nomComplet:'' });
+      if(statusEl) statusEl.textContent = '';
+      fileInput.value = '';
+      render();
+    }catch(err){
+      if(statusEl) statusEl.textContent = 'Échec : '+((err&&err.message)||String(err))+' — vérifie que le bucket "documents" existe dans Supabase.';
+      docAddBtn.disabled = false;
+    }
+  });
+  document.querySelectorAll('[data-wo-doc-del]').forEach(b=>b.addEventListener('click', async ()=>{
+    const i = Number(b.dataset.woDocDel);
+    const doc = w.documents[i];
+    if(!confirm('Supprimer "'+doc.name+'" ?')) return;
+    try{ if(doc.path) await sb.storage.from('documents').remove([doc.path]); }catch(e){}
+    w.documents.splice(i,1); render();
+  }));
+
   const opAdd = document.getElementById('wo-op-add');
   if(opAdd) opAdd.addEventListener('click', ()=>{
     const input = document.getElementById('wo-op-input');
@@ -1368,6 +1465,8 @@ function wireWOEditor(){
     w.dateFin = document.getElementById('wo-f-fin').value;
     w.technicien = document.getElementById('wo-f-tech').value;
     w.cout = Number(document.getElementById('wo-f-cout').value)||0;
+    const permisEl = document.getElementById('wo-f-permis'); if(permisEl) w.permisTravail = permisEl.checked;
+    const consigEl = document.getElementById('wo-f-consignation'); if(consigEl) w.consignation = consigEl.value;
     w.dateCreation = w.dateCreation || w.dateDebut;
     if(!w.titre || !w.equipementId){ alert('Libellé et équipement requis'); return; }
     if((w.statut==='Terminé' || w.statut==='Clôturé') && !w.dateFin) w.dateFin = new Date().toISOString().slice(0,10);
@@ -3025,6 +3124,13 @@ async function init(){
       if(!w.piecesUtilisees) w.piecesUtilisees = [];
       // ancien format : pièces déjà décomptées directement, on les marque réservées pour ne pas les re-réserver
       w.piecesUtilisees = w.piecesUtilisees.map(pu => pu.reserved===undefined ? {...pu, id:pu.id||uid(), reserved:true, reservationId:null} : pu);
+      if(w.permisTravail===undefined) w.permisTravail = false;
+      if(w.consignation===undefined) w.consignation = '';
+      if(w.budgetApprouve===undefined) w.budgetApprouve = false;
+      if(w.approbateurBudget===undefined) w.approbateurBudget = '';
+      if(w.clotureFinanciere===undefined) w.clotureFinanciere = false;
+      if(w.clotureFinancierePar===undefined) w.clotureFinancierePar = '';
+      if(!w.documents) w.documents = [];
     });
   }
   state = data;
