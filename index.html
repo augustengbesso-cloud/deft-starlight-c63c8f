@@ -429,12 +429,12 @@ function drawDonut(canvas, segments){
 }
 const DEFAULT_EQUIP_TYPES = ["Pelleteuse","Tombereau","Foreuse","Groupe électrogène","Ligne de production","Machine industrielle","Convoyeur","Emballeuse","Autre"];
 const STATUTS = ["Opérationnel","En maintenance","En panne","À l'arrêt"];
-const WO_STATUTS = ["Ouvert","En cours","Terminé"];
+const WO_STATUTS = ["Ouvert","En cours","Terminé","Clôturé"];
 const WO_PRIORITES = ["Basse","Normale","Haute","Urgente"];
 const SITES = ["CIGRAC","Usine"];
 const LOCATION_TYPES = ["Site","Atelier","Ligne","Machine"];
 const PM_TYPES = ["Date","Heures","Kilométrage"];
-const NOTIF_STATUTS = ["Nouvelle","En traitement","Convertie en OT","Clôturée"];
+const NOTIF_STATUTS = ["Nouvelle","Validée","En traitement","Convertie en OT","Clôturée"];
 const NOTIF_PRIORITES = ["Basse","Normale","Haute","Urgente"];
 const POINT_TYPES = ["Compteur (heures/km)","Température","Vibration","Pression","Autre mesure"];
 const DEFAULT_POSTES = ["Électricien","Mécanicien","Soudeur","Hydraulicien","Automaticien","Chaudronnier","Opérateur","Autre"];
@@ -510,7 +510,8 @@ function woStatusBadges(w){
   if(w.piecesUtilisees && w.piecesUtilisees.length) tags.push({t:'COMPOSANTS', c:'var(--steel)'});
   const da = state.purchaseRequests.find(d=>d.workOrderId===w.id);
   if(da) tags.push({t: da.statut==='Clôturée' ? 'DA RÉCEPT.' : 'DA EN COURS', c: da.statut==='Clôturée' ? 'var(--success)' : 'var(--accent)'});
-  if(w.statut==='Terminé') tags.push({t:'CLÔTURÉ', c:'var(--success)'});
+  if(w.statut==='Terminé') tags.push({t:'EN ATTENTE CLÔTURE', c:'var(--steel)'});
+  if(w.statut==='Clôturé') tags.push({t:'CLÔTURÉ', c:'var(--success)'});
   return tags;
 }
 function woLinkedDA(woId){ return state.purchaseRequests.find(d=>d.workOrderId===woId) || null; }
@@ -597,7 +598,7 @@ function computeKpis(){
   const coutMaintenance = state.workOrders.reduce((a,w)=>a+Number(w.cout||0),0);
   const coutCarburant = state.fuelLogs.reduce((a,f)=>a+Number(f.cout||0),0);
   const litresTotal = state.fuelLogs.reduce((a,f)=>a+Number(f.quantite||0),0);
-  const ouverts = state.workOrders.filter(w=>w.statut!=="Terminé").length;
+  const ouverts = state.workOrders.filter(w=>w.statut==="Ouvert"||w.statut==="En cours").length;
   const partsBas = state.parts.filter(p=>Number(p.quantite)<=Number(p.seuil)).length;
 
   const totalPlant = state.plantEquipment.length || 1;
@@ -670,7 +671,7 @@ function drawDashboardCharts(){
   const muted = getComputedStyle(document.documentElement).getPropertyValue('--muted').trim() || '#8B939A';
   drawBarChart(document.getElementById('chart-maint-cost'), months.map(monthLabel), maintByMonth, accent);
   drawBarChart(document.getElementById('chart-fuel-cost'), months.map(monthLabel), fuelByMonth, steel);
-  const woColors = { 'Ouvert':muted, 'En cours':accent, 'Terminé':success };
+  const woColors = { 'Ouvert':muted, 'En cours':accent, 'Terminé':steel, 'Clôturé':success };
   drawDonut(document.getElementById('chart-wo-status'), WO_STATUTS.map(s=>({label:s, value: state.workOrders.filter(w=>w.statut===s).length || 0.0001, color: woColors[s]})));
   const persColors = [accent, steel, success];
   drawDonut(document.getElementById('chart-personnel'), AFFECTATIONS.map((a,i)=>({label:a, value: state.personnel.filter(p=>p.statut==='Actif'&&p.affectation===a).length || 0.0001, color: persColors[i%3]})));
@@ -733,7 +734,7 @@ function viewDashboard(){
         <div style="display:flex;flex-direction:column;gap:6px;">
           ${WO_STATUTS.map(s=>{
             const n = state.workOrders.filter(w=>w.statut===s).length;
-            const c = s==='Terminé'?'var(--success)':s==='En cours'?'var(--accent)':'var(--muted)';
+            const c = s==='Clôturé'?'var(--success)':s==='Terminé'?'var(--steel)':s==='En cours'?'var(--accent)':'var(--muted)';
             return `<div class="row"><span class="led" style="background:${c}"></span><span style="font-size:12px;color:var(--muted);">${s} : <span style="color:var(--text)">${n}</span></span></div>`;
           }).join('')}
         </div>
@@ -769,7 +770,7 @@ function viewDashboard(){
       ${recentWO.length===0?`<div class="empty">${ICONS.wrench}<span>Aucun ordre de travail créé.</span></div>`:
         `<div style="display:flex;flex-direction:column;gap:6px;">
         ${recentWO.map(w=>`<div class="between card-item">
-          <div class="row"><span class="led" style="background:${w.statut==='Terminé'?'var(--success)':w.statut==='En cours'?'var(--accent)':'var(--muted)'}"></span><span>${esc(w.titre)}</span></div>
+          <div class="row"><span class="led" style="background:${w.statut==='Clôturé'?'var(--success)':w.statut==='Terminé'?'var(--steel)':w.statut==='En cours'?'var(--accent)':'var(--muted)'}"></span><span>${esc(w.titre)}</span></div>
           <span style="color:var(--muted);font-size:12px;">${em[w.equipementId]?.code||'—'}</span>
         </div>`).join('')}
         </div>`}
@@ -919,7 +920,7 @@ function viewWO(){
   <div class="plate p14" style="gap:10px;display:flex;flex-direction:column;">
     <div class="between wrapwrap" style="gap:12px;">
       <div class="row" style="min-width:0;">
-        <span class="led" style="background:${w.statut==='Terminé'?'var(--success)':w.statut==='En cours'?'var(--accent)':'var(--muted)'}"></span>
+        <span class="led" style="background:${w.statut==='Clôturé'?'var(--success)':w.statut==='Terminé'?'var(--steel)':w.statut==='En cours'?'var(--accent)':'var(--muted)'}"></span>
         <div>
           <div class="row" style="flex-wrap:wrap;">
             <span class="mono" style="font-size:11px;color:var(--muted);">${w.numero||'—'}</span>
@@ -936,8 +937,9 @@ function viewWO(){
         </div>
       </div>
       <div class="row">
-        <span style="font-size:12px;color:${w.statut==='Terminé'?'var(--success)':w.statut==='En cours'?'var(--accent)':'var(--muted)'}">${w.statut}</span>
+        <span style="font-size:12px;color:${w.statut==='Clôturé'?'var(--success)':w.statut==='Terminé'?'var(--steel)':w.statut==='En cours'?'var(--accent)':'var(--muted)'}">${w.statut}</span>
         ${w.cout>0?`<span class="mono" style="font-size:12px;color:var(--muted);">${fmt(w.cout)} FCFA</span>`:''}
+        ${!isTech && w.statut==='Terminé' ? `<button class="btn btn-ghost" style="font-size:11px;padding:3px 8px;color:var(--success);" data-close-wo="${w.id}">${ICONS.check} Clôturer</button>`:''}
         <button class="icon-btn" data-open-wo="${w.id}">${ICONS.edit}</button>
         ${isTech?'':`<button class="icon-btn" data-del-wo="${w.id}">${ICONS.trash}</button>`}
       </div>
@@ -1002,7 +1004,7 @@ function viewWOEdit(){
       <label class="field"><span>Type</span><select id="wo-f-type"><option ${w.type==='Correctif'?'selected':''}>Correctif</option><option ${w.type==='Préventif'?'selected':''}>Préventif</option></select></label>
       <label class="field"><span>Poste responsable</span><select id="wo-f-poste">${state.postes.map(p=>`<option ${w.poste===p?'selected':''}>${p}</option>`).join('')}</select></label>
       <label class="field"><span>Priorité</span><select id="wo-f-priorite">${WO_PRIORITES.map(p=>`<option ${w.priorite===p?'selected':''}>${p}</option>`).join('')}</select></label>
-      <label class="field"><span>Statut</span><select id="wo-f-statut">${WO_STATUTS.map(s=>`<option ${w.statut===s?'selected':''}>${s}</option>`).join('')}</select></label>
+      <label class="field"><span>Statut</span><select id="wo-f-statut">${WO_STATUTS.filter(s=> s!=='Clôturé' || !(currentUser&&currentUser.role==='technicien')).map(s=>`<option ${w.statut===s?'selected':''}>${s}</option>`).join('')}</select></label>
       <label class="field"><span>Date début</span><input type="date" id="wo-f-debut" value="${w.dateDebut||w.dateCreation||''}"/></label>
       <label class="field"><span>Date fin</span><input type="date" id="wo-f-fin" value="${w.dateFin||''}"/></label>
       <label class="field"><span>Technicien</span>
@@ -1085,7 +1087,8 @@ function wireWOEditor(){
     w.cout = Number(document.getElementById('wo-f-cout').value)||0;
     w.dateCreation = w.dateCreation || w.dateDebut;
     if(!w.titre || !w.equipementId){ alert('Libellé et équipement requis'); return; }
-    if(w.statut==='Terminé' && !w.dateFin) w.dateFin = new Date().toISOString().slice(0,10);
+    if((w.statut==='Terminé' || w.statut==='Clôturé') && !w.dateFin) w.dateFin = new Date().toISOString().slice(0,10);
+    const eqForStatus = [...state.fleet,...state.plantEquipment].find(x=>x.id===w.equipementId);
 
     if(woIsNew){
       state.woCounter = (state.woCounter||0)+1;
@@ -1096,11 +1099,18 @@ function wireWOEditor(){
         const pt = state.parts.find(p=>p.id===pu.partId);
         if(pt) pt.quantite = Math.max(0, Number(pt.quantite) - Number(pu.quantite));
       });
-      if(w.statut!=='Terminé'){ const eq=[...state.fleet,...state.plantEquipment].find(x=>x.id===w.equipementId); if(eq) eq.statut='En maintenance'; }
+      if(eqForStatus){
+        if(w.statut==='Terminé' || w.statut==='Clôturé') eqForStatus.statut='Opérationnel';
+        else eqForStatus.statut='En maintenance';
+      }
       persist(); currentView='wo'; woDraft=null; render(); toast('Ordre de travail '+w.numero+' créé');
     } else {
       const idx = state.workOrders.findIndex(x=>x.id===w.id);
       if(idx>-1) state.workOrders[idx] = w;
+      if(eqForStatus){
+        if(w.statut==='Terminé' || w.statut==='Clôturé') eqForStatus.statut='Opérationnel';
+        else if(w.statut!=='Ouvert' || eqForStatus.statut!=='En panne') eqForStatus.statut='En maintenance';
+      }
       persist(); currentView='wo'; woDraft=null; render(); toast('Ordre de travail mis à jour');
     }
   };
@@ -1427,11 +1437,13 @@ function prodForm(p){
 /* ============ NOTIFICATIONS ============ */
 function viewNotif(){
   const em = equipMap();
+  const isTech = currentUser && currentUser.role==='technicien';
+  const canSupervise = currentUser && (currentUser.role==='admin' || currentUser.role==='planificateur');
   const allEquip = [...state.fleet, ...state.plantEquipment];
   const sorted = [...state.notifications].sort((a,b)=>(b.dateCreation||'').localeCompare(a.dateCreation||''));
   return `
   <div class="headrow">
-    <div><h1>Notifications</h1><p class="subtitle" style="margin:0;">Signalement de pannes/anomalies avant ouverture d'un OT</p></div>
+    <div><h1>Notifications</h1><p class="subtitle" style="margin:0;">Détection (technicien) → Validation (superviseur) → Ordre de travail (planificateur)</p></div>
     <button class="btn btn-accent" data-open-modal="notif-new">${ICONS.plus} Nouvelle notification</button>
   </div>
   ${sorted.length===0?`<div class="plate p16"><div class="empty">${ICONS.bell}<span>Aucune notification.</span></div></div>`:
@@ -1441,7 +1453,7 @@ function viewNotif(){
     return `
   <div class="plate p14 between wrapwrap" style="gap:12px;">
     <div class="row" style="min-width:0;">
-      <span class="led" style="background:${n.statut==='Clôturée'||n.statut==='Convertie en OT'?'var(--success)':n.priorite==='Urgente'?'var(--danger)':'var(--accent)'}"></span>
+      <span class="led" style="background:${n.statut==='Clôturée'||n.statut==='Convertie en OT'?'var(--success)':n.statut==='Validée'?'var(--steel)':n.priorite==='Urgente'?'var(--danger)':'var(--accent)'}"></span>
       <div>
         <div class="row" style="flex-wrap:wrap;">
           <span class="mono" style="font-size:11px;color:var(--muted);">${n.numero||'—'}</span>
@@ -1452,9 +1464,10 @@ function viewNotif(){
       </div>
     </div>
     <div class="row">
-      ${n.statut!=='Convertie en OT' && n.statut!=='Clôturée' ? `<button class="btn btn-ghost" style="font-size:11px;padding:4px 8px;" data-convert-notif="${n.id}">${ICONS.convert} Convertir en OT</button>` : ''}
-      <button class="icon-btn" data-edit-notif="${n.id}">${ICONS.edit}</button>
-      <button class="icon-btn" data-del-notif="${n.id}">${ICONS.trash}</button>
+      ${canSupervise && n.statut==='Nouvelle' ? `<button class="btn btn-ghost" style="font-size:11px;padding:4px 8px;color:var(--steel);" data-validate-notif="${n.id}">${ICONS.check} Valider</button>` : ''}
+      ${canSupervise && n.statut==='Validée' ? `<button class="btn btn-ghost" style="font-size:11px;padding:4px 8px;" data-convert-notif="${n.id}">${ICONS.convert} Convertir en OT</button>` : ''}
+      ${!isTech?`<button class="icon-btn" data-edit-notif="${n.id}">${ICONS.edit}</button>`:''}
+      ${!isTech?`<button class="icon-btn" data-del-notif="${n.id}">${ICONS.trash}</button>`:''}
     </div>
   </div>`;}).join('')}
   </div>`}`;
@@ -1923,6 +1936,15 @@ function attachHandlers(){
     state.workOrders = state.workOrders.filter(x=>x.id!==b.dataset.delWo);
     persist(); render(); toast('Ordre de travail supprimé');
   }));
+  document.querySelectorAll('[data-close-wo]').forEach(b=>b.addEventListener('click',()=>{
+    const w = state.workOrders.find(x=>x.id===b.dataset.closeWo);
+    if(!w) return;
+    if(!confirm('Clôturer techniquement et financièrement '+w.numero+' ?')) return;
+    w.statut = 'Clôturé';
+    if(!w.dateFin) w.dateFin = new Date().toISOString().slice(0,10);
+    const eq = equipMap()[w.equipementId]; if(eq) eq.statut='Opérationnel';
+    persist(); render(); toast(w.numero+' clôturé');
+  }));
   if(currentView==='wo-edit') wireWOEditor();
 
   // PM
@@ -2076,6 +2098,12 @@ function attachHandlers(){
     if(!confirm('Supprimer cette notification ?')) return;
     state.notifications = state.notifications.filter(x=>x.id!==b.dataset.delNotif);
     persist(); render(); toast('Notification supprimée');
+  }));
+  document.querySelectorAll('[data-validate-notif]').forEach(b=>b.addEventListener('click',()=>{
+    const n = state.notifications.find(x=>x.id===b.dataset.validateNotif);
+    if(!n) return;
+    n.statut = 'Validée';
+    persist(); render(); toast(n.numero+' validée — prête pour la création d\'un ordre de travail');
   }));
   document.querySelectorAll('[data-convert-notif]').forEach(b=>b.addEventListener('click',()=>{
     const n = state.notifications.find(x=>x.id===b.dataset.convertNotif);
