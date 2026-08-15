@@ -808,6 +808,7 @@ function viewDashboard(){
 /* ============ FLEET ============ */
 let fleetSearch = '';
 let partsSubTab = 'catalogue';
+let partsSearch = '';
 function viewFleet(){
   const filtered = state.fleet.filter(e=>`${e.code} ${e.nom} ${e.type}`.toLowerCase().includes(fleetSearch.toLowerCase()));
   return `
@@ -1501,11 +1502,17 @@ function viewParts(){
   <div class="headrow">
     <div><h1>Pièces & stock</h1><p class="subtitle" style="margin:0;">${state.parts.length} références</p></div>
     <div class="row">
+      <div class="row" style="position:relative;">
+        ${ICONS.search}
+        <input id="parts-search" placeholder="Rechercher par code article ou désignation…" style="width:260px;padding-left:8px;" value="${esc(partsSearch)}"/>
+      </div>
       <button class="btn btn-ghost" id="parts-import-btn">${ICONS.plus} Importer Excel</button>
       <input type="file" id="parts-import-file" accept=".xlsx,.xls,.csv" style="display:none;"/>
       <button class="btn btn-accent" data-open-modal="part-new">${ICONS.plus} Nouvelle pièce</button>
     </div>
   </div>`;
+  const q = partsSearch.trim().toLowerCase();
+  const filteredParts = q ? state.parts.filter(p=>(p.ref||'').toLowerCase().includes(q) || (p.nom||'').toLowerCase().includes(q)) : state.parts;
   const pm = Object.fromEntries(state.parts.map(p=>[p.id,p]));
   const wom = Object.fromEntries(state.workOrders.map(w=>[w.id,w]));
   const pending = state.reservations.filter(r=>(r.statut||'En attente')==='En attente').sort((a,b)=>(a.dateCreation||'').localeCompare(b.dateCreation||''));
@@ -1524,16 +1531,18 @@ function viewParts(){
     </div>
   </div>` : '';
 
-  let body = '';
-  if(partsSubTab==='catalogue') body = viewPartsCatalogue();
-  else if(partsSubTab==='stock') body = viewPartsStock();
-  else if(partsSubTab==='seuils') body = viewPartsSeuils();
-  else if(partsSubTab==='mouvements') body = viewPartsMouvements();
-  else if(partsSubTab==='couts') body = viewPartsCouts();
-  else if(partsSubTab==='fournisseurs') body = viewPartsFournisseurs();
-  else if(partsSubTab==='critiques') body = viewPartsCritiques();
+  const searchNote = q ? `<p style="font-size:12px;color:var(--muted);margin:-8px 0 12px;">${filteredParts.length} résultat(s) pour "${esc(partsSearch)}"</p>` : '';
 
-  return header + pendingPanel + partsSubNav() + body;
+  let body = '';
+  if(partsSubTab==='catalogue') body = viewPartsCatalogue(filteredParts);
+  else if(partsSubTab==='stock') body = viewPartsStock(filteredParts);
+  else if(partsSubTab==='seuils') body = viewPartsSeuils(filteredParts);
+  else if(partsSubTab==='mouvements') body = viewPartsMouvements();
+  else if(partsSubTab==='couts') body = viewPartsCouts(filteredParts);
+  else if(partsSubTab==='fournisseurs') body = viewPartsFournisseurs(filteredParts);
+  else if(partsSubTab==='critiques') body = viewPartsCritiques(filteredParts);
+
+  return header + pendingPanel + partsSubNav() + searchNote + body;
 }
 
 function partsEmptyState(){
@@ -1541,9 +1550,9 @@ function partsEmptyState(){
 }
 
 /* --- 1. Catalogue des articles --- */
-function viewPartsCatalogue(){
-  if(state.parts.length===0) return partsEmptyState();
-  const sorted = [...state.parts].sort((a,b)=>(a.nom||'').localeCompare(b.nom||''));
+function viewPartsCatalogue(list){
+  if(list.length===0) return partsEmptyState();
+  const sorted = [...list].sort((a,b)=>(a.nom||'').localeCompare(b.nom||''));
   return `<div class="plate" style="overflow:hidden;">
   <table><thead><tr><th>Code article</th><th>Désignation</th><th>Catégorie</th><th>Fournisseur principal</th><th>Code SAP/MM</th><th></th></tr></thead>
   <tbody>
@@ -1559,9 +1568,9 @@ function viewPartsCatalogue(){
 }
 
 /* --- 2. Stock actuel --- */
-function viewPartsStock(){
-  if(state.parts.length===0) return partsEmptyState();
-  const sorted = [...state.parts].sort((a,b)=>(a.nom||'').localeCompare(b.nom||''));
+function viewPartsStock(list){
+  if(list.length===0) return partsEmptyState();
+  const sorted = [...list].sort((a,b)=>(a.nom||'').localeCompare(b.nom||''));
   return `<div class="plate" style="overflow:hidden;">
   <table><thead><tr><th>Code article</th><th>Désignation</th><th class="right">Qté dispo.</th><th>Localisation</th><th>Statut</th><th>Dernier mouvement</th></tr></thead>
   <tbody>
@@ -1577,9 +1586,9 @@ function viewPartsStock(){
 }
 
 /* --- 3. Seuils et alertes --- */
-function viewPartsSeuils(){
-  if(state.parts.length===0) return partsEmptyState();
-  const sorted = [...state.parts].sort((a,b)=> (Number(a.quantite)-Number(a.seuil)) - (Number(b.quantite)-Number(b.seuil)) );
+function viewPartsSeuils(list){
+  if(list.length===0) return partsEmptyState();
+  const sorted = [...list].sort((a,b)=> (Number(a.quantite)-Number(a.seuil)) - (Number(b.quantite)-Number(b.seuil)) );
   return `<div class="plate" style="overflow:hidden;">
   <table><thead><tr><th>Code article</th><th>Désignation</th><th class="right">Qté</th><th class="right">Seuil min</th><th class="right">Seuil max</th><th class="right">Pt réappro</th><th>Alerte</th></tr></thead>
   <tbody>
@@ -1636,10 +1645,10 @@ function mvtForm(m){
 }
 
 /* --- 5. Coûts et valorisation --- */
-function viewPartsCouts(){
-  if(state.parts.length===0) return partsEmptyState();
+function viewPartsCouts(list){
+  if(list.length===0) return partsEmptyState();
   const ccm = Object.fromEntries(state.costCenters.map(c=>[c.id,c]));
-  const sorted = [...state.parts].sort((a,b)=> (Number(b.quantite)*Number(b.coutUnitaire)) - (Number(a.quantite)*Number(a.coutUnitaire)) );
+  const sorted = [...list].sort((a,b)=> (Number(b.quantite)*Number(b.coutUnitaire)) - (Number(a.quantite)*Number(a.coutUnitaire)) );
   const totalValeur = state.parts.reduce((a,p)=>a+Number(p.quantite)*Number(p.coutUnitaire),0);
   return `
   <div class="plate p16" style="margin-bottom:16px;max-width:320px;">
@@ -1661,9 +1670,9 @@ function viewPartsCouts(){
 }
 
 /* --- 6. Fournisseurs et contrats --- */
-function viewPartsFournisseurs(){
-  if(state.parts.length===0) return partsEmptyState();
-  const sorted = [...state.parts].filter(p=>p.fournisseurPrincipal||p.fournisseur).sort((a,b)=>(a.fournisseurPrincipal||a.fournisseur||'').localeCompare(b.fournisseurPrincipal||b.fournisseur||''));
+function viewPartsFournisseurs(list){
+  if(list.length===0) return partsEmptyState();
+  const sorted = [...list].filter(p=>p.fournisseurPrincipal||p.fournisseur).sort((a,b)=>(a.fournisseurPrincipal||a.fournisseur||'').localeCompare(b.fournisseurPrincipal||b.fournisseur||''));
   return `${sorted.length===0?`<div class="plate p16"><div class="empty">${ICONS.package}<span>Aucun fournisseur renseigné.</span></div></div>`:
   `<div class="plate" style="overflow:hidden;">
   <table><thead><tr><th>Article</th><th>Fournisseur principal</th><th>Alternatifs</th><th>Délai livraison</th><th>Conditions</th></tr></thead>
@@ -1679,8 +1688,8 @@ function viewPartsFournisseurs(){
 }
 
 /* --- 7. Pièces critiques / stratégiques --- */
-function viewPartsCritiques(){
-  const critiques = state.parts.filter(p=>p.critique).sort((a,b)=>(a.niveauCriticite||'C').localeCompare(b.niveauCriticite||'C'));
+function viewPartsCritiques(list){
+  const critiques = list.filter(p=>p.critique).sort((a,b)=>(a.niveauCriticite||'C').localeCompare(b.niveauCriticite||'C'));
   return `${critiques.length===0?`<div class="plate p16"><div class="empty">${ICONS.alert}<span>Aucune pièce marquée critique. Coche "Pièce critique" dans la fiche article.</span></div></div>`:
   `<div class="plate" style="overflow:hidden;">
   <table><thead><tr><th>Niveau</th><th>Code article</th><th>Désignation</th><th class="right">Stock</th><th>MTBF</th><th>MTTR</th><th>Politique stock tampon</th></tr></thead>
@@ -2431,6 +2440,8 @@ function attachHandlers(){
     partsImportFile.addEventListener('change', (e)=>{ if(e.target.files[0]) readExcelFile(e.target.files[0], importPartsRows); });
   }
   document.querySelectorAll('[data-parts-tab]').forEach(b=>b.addEventListener('click',()=>{ partsSubTab=b.dataset.partsTab; render(); }));
+  const ps = document.getElementById('parts-search');
+  if(ps) ps.addEventListener('input', e=>{ partsSearch=e.target.value; render(); const el=document.getElementById('parts-search'); if(el){ el.focus(); el.selectionStart = el.value.length; } });
   const pn = document.querySelector('[data-open-modal="part-new"]');
   if(pn) pn.addEventListener('click', ()=>{
     const p = {id:null, ref:'', nom:'', categorie:CATEGORIES_ARTICLE[0], fournisseurPrincipal:'', codeSAP:'',
