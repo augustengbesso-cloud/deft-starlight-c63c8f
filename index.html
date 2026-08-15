@@ -877,6 +877,11 @@ function findCol(row, names){
     const k = keys.find(k=>k.trim().toLowerCase()===n.toLowerCase());
     if(k!==undefined && row[k]!=='') return row[k];
   }
+  // repli : correspondance partielle (ex: "Nom ou désignation" contient "nom")
+  for(const n of names){
+    const k = keys.find(k=>k.trim().toLowerCase().includes(n.toLowerCase()));
+    if(k!==undefined && row[k]!=='') return row[k];
+  }
   return '';
 }
 function importFleetRows(rows){
