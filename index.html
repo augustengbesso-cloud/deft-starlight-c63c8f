@@ -175,7 +175,7 @@ const NIVEAUX_HIER = [1,2,3,4,5];
 const STATUTS_COMPTE = ["Actif","Inactif"];
 const NIVEAUX_APPROBATION = ["Technique","Financière","Stratégique"];
 const MODULES_ACCES = [
-  {id:'maintenance', label:'Maintenance (OT, Préventif, Notifications)'},
+  {id:'maintenance', label:'Maintenance (OT, Préventif, Demandes d\'intervention)'},
   {id:'stock', label:'Stock / Pièces de rechange'},
   {id:'achats', label:'Achats (DA / BC)'},
   {id:'rh', label:'RH'},
@@ -583,7 +583,7 @@ const NAV = [
   ]},
   { section:'Maintenance', items:[
     {id:'wo', label:'Ordres de travail', icon:'wrench'},
-    {id:'notif', label:'Notifications', icon:'bell'},
+    {id:'notif', label:"Demandes d'intervention", icon:'bell'},
   ]},
   { section:'Flotte', items:[
     {id:'fleet', label:'Flotte', icon:'truck'},
@@ -764,7 +764,7 @@ function viewDashboard(){
   <div class="grid grid-kpi" style="margin-bottom:20px;">
     ${kpiCard('Disponibilité usine', k.disponibilitePlant,'%','factory', k.disponibilitePlant>=80?'var(--success)':'var(--danger)', `${k.totalPlant} machines suivies`)}
     ${kpiCard('OEE moyen', k.oeeMoyen!==null?k.oeeMoyen.toFixed(1):'—','%','activity', k.oeeMoyen!==null&&k.oeeMoyen>=75?'var(--success)':'var(--accent)','Basé sur relevés production')}
-    ${kpiCard('Notifications ouvertes', k.notifOuvertes,'','bell', k.notifOuvertes?'var(--accent)':'var(--success)','Pannes/anomalies non traitées')}
+    ${kpiCard("Demandes d'intervention ouvertes", k.notifOuvertes,'','bell', k.notifOuvertes?'var(--accent)':'var(--success)','Pannes/anomalies non traitées')}
     ${kpiCard('Demandes d\'achat ouvertes', k.daOuvertes,'','cart', k.daOuvertes?'var(--accent)':'var(--success)','En attente de commande')}
     ${kpiCard('BC en attente', k.bcEnAttente,'','receipt', k.bcEnAttente?'var(--accent)':'var(--success)','Non réceptionnés')}
   </div>
@@ -2123,10 +2123,10 @@ function viewNotif(){
   const sorted = [...state.notifications].sort((a,b)=>(b.dateCreation||'').localeCompare(a.dateCreation||''));
   return `
   <div class="headrow">
-    <div><h1>Notifications</h1><p class="subtitle" style="margin:0;">Détection (technicien) → Validation (superviseur) → Ordre de travail (planificateur)</p></div>
-    <button class="btn btn-accent" data-open-modal="notif-new">${ICONS.plus} Nouvelle notification</button>
+    <div><h1>Demandes d'intervention</h1><p class="subtitle" style="margin:0;">Détection (technicien) → Validation (superviseur) → Ordre de travail (planificateur)</p></div>
+    <button class="btn btn-accent" data-open-modal="notif-new">${ICONS.plus} Nouvelle demande</button>
   </div>
-  ${sorted.length===0?`<div class="plate p16"><div class="empty">${ICONS.bell}<span>Aucune notification.</span></div></div>`:
+  ${sorted.length===0?`<div class="plate p16"><div class="empty">${ICONS.bell}<span>Aucune demande.</span></div></div>`:
   `<div style="display:flex;flex-direction:column;gap:8px;">
   ${sorted.map(n=>{
     const linkedWO = n.workOrderId ? state.workOrders.find(w=>w.id===n.workOrderId) : null;
@@ -2153,18 +2153,25 @@ function viewNotif(){
   </div>`}`;
 }
 function notifForm(n){
-  const allEquip = [...state.fleet.map(e=>({...e,grp:'Flotte'})), ...state.plantEquipment.map(e=>({...e,grp:'Usine'}))];
+  // Filtre les équipements proposés selon l'affectation du déclarant (fiche Personnel liée par nom au compte connecté)
+  const monPersonnel = currentUser ? state.personnel.find(p=>p.nom && p.nom.trim().toLowerCase()===currentUser.nomComplet.trim().toLowerCase()) : null;
+  const affectation = monPersonnel ? monPersonnel.affectation : null; // 'Flotte' | 'Usine' | 'Les deux' | null (non lié -> tout voir)
+  let allEquip;
+  if(affectation==='Flotte') allEquip = state.fleet.map(e=>({...e,grp:'Flotte'}));
+  else if(affectation==='Usine') allEquip = state.plantEquipment.map(e=>({...e,grp:'Usine'}));
+  else allEquip = [...state.fleet.map(e=>({...e,grp:'Flotte'})), ...state.plantEquipment.map(e=>({...e,grp:'Usine'}))];
   const opts = allEquip.map(e=>`<option value="${e.id}" ${n.equipementId===e.id?'selected':''}>[${e.grp}] ${e.code} — ${e.nom}</option>`).join('');
   return `
   <div class="formgrid">
-    <label class="field span2"><span>Équipement</span><select data-f="equipementId">${opts}</select></label>
+    <label class="field span2"><span>Équipement</span><select data-f="equipementId">${opts||'<option value="">Aucun équipement disponible</option>'}</select></label>
     <label class="field"><span>Type</span><select data-f="type"><option ${n.type==='Panne'?'selected':''}>Panne</option><option ${n.type==='Anomalie'?'selected':''}>Anomalie</option><option ${n.type==='Amélioration'?'selected':''}>Amélioration</option></select></label>
     <label class="field"><span>Priorité</span><select data-f="priorite">${NOTIF_PRIORITES.map(p=>`<option ${n.priorite===p?'selected':''}>${p}</option>`).join('')}</select></label>
     <label class="field span2"><span>Description</span><textarea data-f="description" rows="3">${esc(n.description)}</textarea></label>
-    <label class="field"><span>Déclarant</span><input data-f="declarant" value="${esc(n.declarant)}"/></label>
+    <label class="field"><span>Déclarant</span><input data-f="declarant" value="${esc(n.declarant)||(currentUser?currentUser.nomComplet:'')}"/></label>
     <label class="field"><span>Statut</span><select data-f="statut">${NOTIF_STATUTS.filter(s=>s!=='Convertie en OT').map(s=>`<option ${n.statut===s?'selected':''}>${s}</option>`).join('')}</select></label>
     <label class="field"><span>Date</span><input type="date" data-f="dateCreation" value="${n.dateCreation||''}"/></label>
-  </div>`;
+  </div>
+  ${affectation && affectation!=='Les deux' ? `<p style="font-size:11px;color:var(--muted);margin-top:10px;">Liste filtrée sur "${affectation}" d'après ta fiche Personnel (${esc(monPersonnel.nom)}).</p>` : ''}`;
 }
 
 /* ============ COMPTEURS / MESURES ============ */
@@ -2855,32 +2862,37 @@ function attachHandlers(){
   // Notifications
   const notifn = document.querySelector('[data-open-modal="notif-new"]');
   if(notifn) notifn.addEventListener('click', ()=>{
-    const allEquip = [...state.fleet, ...state.plantEquipment];
+    const monPersonnel = currentUser ? state.personnel.find(p=>p.nom && p.nom.trim().toLowerCase()===currentUser.nomComplet.trim().toLowerCase()) : null;
+    const affectation = monPersonnel ? monPersonnel.affectation : null;
+    let allEquip;
+    if(affectation==='Flotte') allEquip = state.fleet;
+    else if(affectation==='Usine') allEquip = state.plantEquipment;
+    else allEquip = [...state.fleet, ...state.plantEquipment];
     const n = {id:null, equipementId: allEquip[0]?.id||'', type:'Panne', priorite:'Normale', description:'', declarant:'', statut:'Nouvelle', dateCreation:new Date().toISOString().slice(0,10), workOrderId:null};
-    openModal('Nouvelle notification', notifForm(n), (data)=>{
+    openModal("Nouvelle demande d'intervention", notifForm(n), (data)=>{
       if(!data.description||!data.equipementId){ alert('Description et équipement requis'); return; }
       state.avisCounter = (state.avisCounter||0)+1;
       state.notifications.push({...data, id:uid(), numero:'AV-'+String(state.avisCounter).padStart(4,'0'), workOrderId:null});
-      persist(); closeModal(); render(); toast('Notification créée');
+      persist(); closeModal(); render(); toast('Demande créée');
     });
   });
   document.querySelectorAll('[data-edit-notif]').forEach(b=>b.addEventListener('click',()=>{
     const n = state.notifications.find(x=>x.id===b.dataset.editNotif);
-    openModal('Modifier la notification', notifForm(n), (data)=>{
+    openModal('Modifier la demande', notifForm(n), (data)=>{
       Object.assign(n, data);
-      persist(); closeModal(); render(); toast('Notification mise à jour');
+      persist(); closeModal(); render(); toast('Demande mise à jour');
     });
   }));
   document.querySelectorAll('[data-del-notif]').forEach(b=>b.addEventListener('click',()=>{
-    if(!confirm('Supprimer cette notification ?')) return;
+    if(!confirm('Supprimer cette demande ?')) return;
     state.notifications = state.notifications.filter(x=>x.id!==b.dataset.delNotif);
-    persist(); render(); toast('Notification supprimée');
+    persist(); render(); toast('Demande supprimée');
   }));
   document.querySelectorAll('[data-validate-notif]').forEach(b=>b.addEventListener('click',()=>{
     const n = state.notifications.find(x=>x.id===b.dataset.validateNotif);
     if(!n) return;
     n.statut = 'Validée';
-    logAudit('Notification '+n.numero+' validée'); persist(); render(); toast(n.numero+' validée — prête pour la création d\'un ordre de travail');
+    logAudit('Demande '+n.numero+' validée'); persist(); render(); toast(n.numero+' validée — prête pour la création d\'un ordre de travail');
   }));
   document.querySelectorAll('[data-convert-notif]').forEach(b=>b.addEventListener('click',()=>{
     const n = state.notifications.find(x=>x.id===b.dataset.convertNotif);
@@ -2897,7 +2909,7 @@ function attachHandlers(){
     n.statut = 'Convertie en OT';
     n.workOrderId = wo.id;
     const eq=[...state.fleet,...state.plantEquipment].find(x=>x.id===n.equipementId); if(eq) eq.statut='En maintenance';
-    logAudit('Notification '+n.numero+' convertie en '+wo.numero); persist(); render(); toast('Notification convertie en '+wo.numero);
+    logAudit('Demande '+n.numero+' convertie en '+wo.numero); persist(); render(); toast('Notification convertie en '+wo.numero);
   }));
 
   // Compteurs / mesures
