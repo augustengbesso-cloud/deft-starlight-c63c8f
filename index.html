@@ -940,6 +940,39 @@ function matchUnite(raw){
   };
   return aliases[r] || 'Pièce (PCE)';
 }
+function exportPartsToExcel(){
+  if(state.parts.length===0){ alert("Aucune pièce à exporter."); return; }
+  const rows = state.parts.map(p=>({
+    'Code article': p.ref||'',
+    'Nom ou désignation': p.nom||'',
+    'Catégorie': p.categorie||'',
+    'Unité': (p.unite||'Pièce (PCE)').match(/\(([^)]+)\)/)?.[1] || p.unite || 'PCE',
+    'Fournisseur principal': p.fournisseurPrincipal||'',
+    'Code SAP': p.codeSAP||'',
+    'Quantité': p.quantite||0,
+    'Seuil minimum': p.seuil||0,
+    'Seuil maximum': p.seuilMax||0,
+    'Point de réapprovisionnement': p.pointReappro||0,
+    'Coût unitaire': p.coutUnitaire||0,
+    'Localisation': p.localisation||'',
+    'Statut stock': p.statutStock||'Libre',
+    'Fournisseurs alternatifs': p.fournisseursAlternatifs||'',
+    'Délai livraison': p.delaiLivraison||0,
+    'Conditions': p.conditions||'',
+    'Critique': p.critique?'Oui':'Non',
+    'Niveau criticité': p.niveauCriticite||'C',
+    'MTBF': p.mtbf||0,
+    'MTTR': p.mttr||0,
+    'Politique stock tampon': p.politiqueStockTampon||''
+  }));
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Pieces ou Stocks');
+  const dateStr = new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb, '2NA-ERP_stock_'+dateStr+'.xlsx');
+  toast('Export généré — '+state.parts.length+' article(s)');
+}
+
 function importPartsRows(rows){
   let count=0;
   rows.forEach(r=>{
@@ -947,16 +980,35 @@ function importPartsRows(rows){
     if(!nom) return;
     const ref = String(findCol(r,['Code article','Code','Référence','Reference','Ref'])||'');
     const quantite = Number(findCol(r,['Quantité','Quantite','Stock']))||0;
-    const seuil = Number(findCol(r,["Seuil","Seuil d'alerte"]))||2;
+    const seuil = Number(findCol(r,["Seuil minimum","Seuil","Seuil d'alerte"]))||2;
+    const seuilMax = Number(findCol(r,['Seuil maximum','Seuil max']))||0;
+    const pointReappro = Number(findCol(r,["Point de réapprovisionnement",'Point réappro','Pt réappro']))||0;
     const coutUnitaire = Number(findCol(r,['Coût unitaire','Cout unitaire','Prix']))||0;
     const fournisseur = String(findCol(r,['Fournisseur principal','Fournisseur'])||'');
+    const fournisseursAlternatifs = String(findCol(r,['Fournisseurs alternatifs','Alternatifs'])||'');
+    const delaiLivraison = Number(findCol(r,['Délai livraison','Delai livraison']))||0;
+    const conditions = String(findCol(r,['Conditions'])||'');
     const categorie = String(findCol(r,['Catégorie','Categorie'])||CATEGORIES_ARTICLE[4]);
     const uniteRaw = String(findCol(r,['Unité','Unite','UM',"Unité de mesure",'Unite de mesure'])||'');
+    const codeSAP = String(findCol(r,['Code SAP','Code SAP/MM','Code MM'])||'');
+    const localisation = String(findCol(r,['Localisation'])||'');
+    const statutStockRaw = String(findCol(r,['Statut stock','Statut'])||'');
+    const critiqueRaw = String(findCol(r,['Critique','Pièce critique'])||'').trim().toLowerCase();
+    const niveauCriticite = String(findCol(r,['Niveau criticité','Niveau','Criticité'])||'');
+    const mtbf = Number(findCol(r,['MTBF']))||0;
+    const mttr = Number(findCol(r,['MTTR']))||0;
+    const politiqueStockTampon = String(findCol(r,['Politique stock tampon','Stock tampon'])||'');
     const existing = state.parts.find(p=>(ref && p.ref && p.ref.toLowerCase()===ref.toLowerCase()) || p.nom.toLowerCase()===nom.toLowerCase());
-    const obj = {ref, nom, quantite, seuil, coutUnitaire, fournisseurPrincipal:fournisseur,
+    const obj = {ref, nom, quantite, seuil, seuilMax, pointReappro, coutUnitaire,
+      fournisseurPrincipal:fournisseur, fournisseursAlternatifs, delaiLivraison, conditions, codeSAP,
       categorie: CATEGORIES_ARTICLE.includes(categorie)?categorie:CATEGORIES_ARTICLE[4],
       unite: matchUnite(uniteRaw) || (existing?existing.unite:'Pièce (PCE)'),
-      statutStock: existing?existing.statutStock:'Libre'};
+      localisation: localisation || (existing?existing.localisation:''),
+      statutStock: STATUTS_STOCK.includes(statutStockRaw)?statutStockRaw:(existing?existing.statutStock:'Libre'),
+      critique: critiqueRaw ? ['oui','yes','vrai','true','1','x'].includes(critiqueRaw) : (existing?existing.critique:false),
+      niveauCriticite: NIVEAUX_CRITICITE.includes(niveauCriticite)?niveauCriticite:(existing?existing.niveauCriticite:'C'),
+      mtbf: mtbf||(existing?existing.mtbf:0), mttr: mttr||(existing?existing.mttr:0),
+      politiqueStockTampon: politiqueStockTampon || (existing?existing.politiqueStockTampon:'')};
     if(existing) Object.assign(existing, obj); else state.parts.push({...obj, id:uid()});
     count++;
   });
@@ -1534,6 +1586,7 @@ function viewParts(){
         ${ICONS.search}
         <input id="parts-search" placeholder="Rechercher par code article ou désignation…" style="width:260px;padding-left:8px;" value="${esc(partsSearch)}"/>
       </div>
+      <button class="btn btn-ghost" id="parts-export-btn">${ICONS.receipt} Exporter Excel</button>
       <button class="btn btn-ghost" id="parts-import-btn">${ICONS.plus} Importer Excel</button>
       <input type="file" id="parts-import-file" accept=".xlsx,.xls,.csv" style="display:none;"/>
       <button class="btn btn-accent" data-open-modal="part-new">${ICONS.plus} Nouvelle pièce</button>
@@ -2468,6 +2521,8 @@ function attachHandlers(){
   }));
 
   // Parts
+  const partsExportBtn = document.getElementById('parts-export-btn');
+  if(partsExportBtn) partsExportBtn.addEventListener('click', exportPartsToExcel);
   const partsImportBtn = document.getElementById('parts-import-btn');
   const partsImportFile = document.getElementById('parts-import-file');
   if(partsImportBtn && partsImportFile){
