@@ -1,4 +1,4 @@
-const CACHE_NAME = "2na-erp-v2";
+const CACHE_NAME = "2na-erp-v3";
 const ASSETS = ["./", "./index.html", "./manifest.json", "./icon.svg"];
 
 self.addEventListener("install", (event) => {

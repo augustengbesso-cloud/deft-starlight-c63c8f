@@ -902,6 +902,10 @@ function importFleetRows(rows){
     if(existing) Object.assign(existing, obj); else state.fleet.push({...obj, id:uid()});
     count++;
   });
+  if(count===0 && rows.length>0){
+    alert("Aucune ligne importée sur "+rows.length+" lues.\n\nColonnes détectées dans ton fichier :\n"+Object.keys(rows[0]).join(", ")+"\n\nVérifie qu'une colonne contient le mot \"Code\".");
+    return;
+  }
   persist(); render(); toast(count+" engin(s) importé(s)/mis à jour");
 }
 function importPartsRows(rows){
@@ -919,6 +923,10 @@ function importPartsRows(rows){
     if(existing) Object.assign(existing, obj); else state.parts.push({...obj, id:uid()});
     count++;
   });
+  if(count===0 && rows.length>0){
+    alert("Aucune ligne importée sur "+rows.length+" lues.\n\nColonnes détectées dans ton fichier :\n"+Object.keys(rows[0]).join(", ")+"\n\nVérifie qu'une colonne contient le mot \"Nom\" ou \"Désignation\".");
+    return;
+  }
   persist(); render(); toast(count+" pièce(s) importée(s)/mise(s) à jour");
 }
 function importPersonnelRows(rows){
@@ -937,6 +945,10 @@ function importPersonnelRows(rows){
     if(existing) Object.assign(existing, obj); else state.personnel.push({...obj, id:uid()});
     count++;
   });
+  if(count===0 && rows.length>0){
+    alert("Aucune ligne importée sur "+rows.length+" lues.\n\nColonnes détectées dans ton fichier :\n"+Object.keys(rows[0]).join(", ")+"\n\nVérifie qu'une colonne contient le mot \"Nom\".");
+    return;
+  }
   persist(); render(); toast(count+" personne(s) importée(s)/mise(s) à jour");
 }
 
