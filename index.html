@@ -243,7 +243,7 @@ async function fetchUserRole(userId, email, nomComplet){
     if(data) return data;
   }catch(e){}
   const fresh = { user_id:userId, email, nom_complet: nomComplet||email, role:'technicien',
-    identifiant:'', fonction:'Technicien', niveau_hierarchique:1, statut_compte:'Actif', niveau_approbation:'Technique', modules:{} };
+    identifiant:'', fonction:'Technicien', niveau_hierarchique:1, statut_compte:'Actif', affectation:'Les deux', niveau_approbation:'Technique', modules:{} };
   try{ await sb.from('user_roles').insert(fresh); }catch(e){}
   return fresh;
 }
@@ -261,7 +261,7 @@ async function afterAuthSuccess(){
   }
   currentUser = { id: session.user.id, email: session.user.email, role: roleRow.role, nomComplet: roleRow.nom_complet || session.user.email,
     identifiant: roleRow.identifiant||'', fonction: roleRow.fonction||'Technicien', niveauHierarchique: roleRow.niveau_hierarchique||1,
-    statutCompte: roleRow.statut_compte||'Actif', superieurId: roleRow.superieur_id||null, niveauApprobation: roleRow.niveau_approbation||'Technique',
+    statutCompte: roleRow.statut_compte||'Actif', affectation: roleRow.affectation||'Les deux', superieurId: roleRow.superieur_id||null, niveauApprobation: roleRow.niveau_approbation||'Technique',
     modules: roleRow.modules||{} };
   try{ await sb.rpc('update_last_login'); }catch(e){}
   document.getElementById('auth-screen').style.display = 'none';
@@ -2154,8 +2154,7 @@ function viewNotif(){
 }
 function notifForm(n){
   // Filtre les équipements proposés selon l'affectation du déclarant (fiche Personnel liée par nom au compte connecté)
-  const monPersonnel = currentUser ? state.personnel.find(p=>p.nom && p.nom.trim().toLowerCase()===currentUser.nomComplet.trim().toLowerCase()) : null;
-  const affectation = monPersonnel ? monPersonnel.affectation : null; // 'Flotte' | 'Usine' | 'Les deux' | null (non lié -> tout voir)
+  const affectation = currentUser ? (currentUser.affectation||'Les deux') : 'Les deux'; // 'Flotte' | 'Usine' | 'Les deux'
   let allEquip;
   if(affectation==='Flotte') allEquip = state.fleet.map(e=>({...e,grp:'Flotte'}));
   else if(affectation==='Usine') allEquip = state.plantEquipment.map(e=>({...e,grp:'Usine'}));
@@ -2171,7 +2170,7 @@ function notifForm(n){
     <label class="field"><span>Statut</span><select data-f="statut">${NOTIF_STATUTS.filter(s=>s!=='Convertie en OT').map(s=>`<option ${n.statut===s?'selected':''}>${s}</option>`).join('')}</select></label>
     <label class="field"><span>Date</span><input type="date" data-f="dateCreation" value="${n.dateCreation||''}"/></label>
   </div>
-  ${affectation && affectation!=='Les deux' ? `<p style="font-size:11px;color:var(--muted);margin-top:10px;">Liste filtrée sur "${affectation}" d'après ta fiche Personnel (${esc(monPersonnel.nom)}).</p>` : ''}`;
+  ${affectation && affectation!=='Les deux' ? `<p style="font-size:11px;color:var(--muted);margin-top:10px;">Liste filtrée sur "${affectation}" d'après ton profil utilisateur (réglable dans "Utilisateurs" par un admin).</p>` : ''}`;
 }
 
 /* ============ COMPTEURS / MESURES ============ */
@@ -2319,9 +2318,9 @@ function viewUsers(){
     <button class="btn btn-accent" id="user-create-btn">${ICONS.plus} Créer un utilisateur</button>
   </div>
   <div class="plate" style="overflow:hidden;margin-bottom:16px;">
-  <table><thead><tr><th>Identifiant</th><th>Nom</th><th>Fonction</th><th>Niv.</th><th>Statut</th><th>Rôle</th><th>Supérieur</th><th>Dernière connexion</th><th></th></tr></thead>
+  <table><thead><tr><th>Identifiant</th><th>Nom</th><th>Fonction</th><th>Niv.</th><th>Statut</th><th>Rôle</th><th>Affectation</th><th>Supérieur</th><th>Dernière connexion</th><th></th></tr></thead>
   <tbody>
-  ${allUsers.length===0?`<tr><td colspan="9" style="padding:20px;text-align:center;color:var(--muted);">Chargement des comptes…</td></tr>`:
+  ${allUsers.length===0?`<tr><td colspan="10" style="padding:20px;text-align:center;color:var(--muted);">Chargement des comptes…</td></tr>`:
   allUsers.map(u=>`<tr>
     <td class="mono" style="color:var(--muted);">${esc(u.identifiant)||'—'}</td>
     <td>${esc(u.nom_complet||'—')}</td>
@@ -2329,6 +2328,7 @@ function viewUsers(){
     <td class="mono" style="color:var(--muted);">${u.niveau_hierarchique||1}</td>
     <td><span class="badge" style="color:${u.statut_compte==='Inactif'?'var(--danger)':'var(--success)'};border-color:${u.statut_compte==='Inactif'?'var(--danger)':'var(--success)'};">${u.statut_compte||'Actif'}</span></td>
     <td style="color:var(--text);">${ROLE_LABELS[u.role]||u.role}</td>
+    <td style="color:var(--muted);">${esc(u.affectation)||'Les deux'}</td>
     <td style="color:var(--muted);font-size:12px;">${u.superieur_id&&um[u.superieur_id]?esc(um[u.superieur_id].nom_complet):'—'}</td>
     <td style="color:var(--muted);font-size:12px;">${u.derniere_connexion?new Date(u.derniere_connexion).toLocaleString('fr-FR'):'Jamais'}</td>
     <td><button class="icon-btn" data-edit-user="${u.user_id}">${ICONS.edit}</button></td>
@@ -2356,6 +2356,7 @@ function userEditForm(u){
     <label class="field"><span>Niveau hiérarchique (1-5)</span><select data-f="niveau_hierarchique">${NIVEAUX_HIER.map(n=>`<option value="${n}" ${Number(u.niveau_hierarchique)===n?'selected':''}>${n}</option>`).join('')}</select></label>
     <label class="field"><span>Statut</span><select data-f="statut_compte">${STATUTS_COMPTE.map(s=>`<option ${u.statut_compte===s?'selected':''}>${s}</option>`).join('')}</select></label>
     <label class="field"><span>Rôle applicatif</span><select data-f="role" ${u.user_id===currentUser.id?'disabled title="Tu ne peux pas changer ton propre rôle"':''}>${Object.keys(ROLE_LABELS).map(r=>`<option value="${r}" ${u.role===r?'selected':''}>${ROLE_LABELS[r]}</option>`).join('')}</select></label>
+    <label class="field"><span>Affectation (équipements visibles)</span><select data-f="affectation">${AFFECTATIONS.map(a=>`<option ${(u.affectation||'Les deux')===a?'selected':''}>${a}</option>`).join('')}</select></label>
     <label class="field span2"><span>Supérieur hiérarchique direct</span><select data-f="superieur_id"><option value="">— Aucun —</option>${others.map(o=>`<option value="${o.user_id}" ${u.superieur_id===o.user_id?'selected':''}>${esc(o.nom_complet)} (${esc(o.identifiant)||o.email})</option>`).join('')}</select></label>
     <label class="field span2"><span>Niveau d'approbation</span><select data-f="niveau_approbation">${NIVEAUX_APPROBATION.map(n=>`<option ${u.niveau_approbation===n?'selected':''}>${n}</option>`).join('')}</select></label>
   </div>
@@ -2862,8 +2863,7 @@ function attachHandlers(){
   // Notifications
   const notifn = document.querySelector('[data-open-modal="notif-new"]');
   if(notifn) notifn.addEventListener('click', ()=>{
-    const monPersonnel = currentUser ? state.personnel.find(p=>p.nom && p.nom.trim().toLowerCase()===currentUser.nomComplet.trim().toLowerCase()) : null;
-    const affectation = monPersonnel ? monPersonnel.affectation : null;
+    const affectation = currentUser ? (currentUser.affectation||'Les deux') : 'Les deux';
     let allEquip;
     if(affectation==='Flotte') allEquip = state.fleet;
     else if(affectation==='Usine') allEquip = state.plantEquipment;
@@ -3103,7 +3103,7 @@ function attachHandlers(){
       MODULES_ACCES.forEach(m=>{ const el = document.querySelector(`#modal-form [data-uf-mod="${m.id}"]`); if(el) modules[m.id]=el.value; });
       const updates = {
         nom_complet: data.nom_complet, fonction: data.fonction, niveau_hierarchique: Number(data.niveau_hierarchique),
-        statut_compte: data.statut_compte, role: data.role, superieur_id: data.superieur_id||null,
+        statut_compte: data.statut_compte, role: data.role, affectation: data.affectation, superieur_id: data.superieur_id||null,
         niveau_approbation: data.niveau_approbation, modules
       };
       try{
