@@ -147,6 +147,7 @@ td{padding:9px 12px;border-bottom:1px solid var(--border);}
 <div id="toast-root"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ============ SUPABASE (multi-device sync) ============ */
 const SUPABASE_URL = "https://hfeggflrcbhzvyyejvqf.supabase.co";
@@ -809,6 +810,8 @@ function viewFleet(){
     <div class="row">
       <input id="fleet-search" placeholder="Rechercher…" style="width:180px;" value="${esc(fleetSearch)}"/>
       <button class="btn btn-ghost" data-open-types="1">${ICONS.layers} Familles</button>
+      <button class="btn btn-ghost" id="fleet-import-btn">${ICONS.plus} Importer Excel</button>
+      <input type="file" id="fleet-import-file" accept=".xlsx,.xls,.csv" style="display:none;"/>
       <button class="btn btn-accent" data-open-modal="fleet-new">${ICONS.plus} Nouvel engin</button>
     </div>
   </div>
@@ -853,6 +856,84 @@ function fleetForm(e){
 }
 
 /* ============ Gestion des types d'équipement (partagée Flotte + Usine) ============ */
+/* ============ IMPORT EXCEL / CSV ============ */
+function readExcelFile(file, onRows){
+  const reader = new FileReader();
+  reader.onload = (e)=>{
+    try{
+      const data = new Uint8Array(e.target.result);
+      const wb = XLSX.read(data, {type:'array'});
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet, {defval:''});
+      onRows(rows);
+    }catch(err){ alert("Erreur de lecture du fichier : "+err.message); }
+  };
+  reader.readAsArrayBuffer(file);
+}
+function findCol(row, names){
+  const keys = Object.keys(row);
+  for(const n of names){
+    const k = keys.find(k=>k.trim().toLowerCase()===n.toLowerCase());
+    if(k!==undefined && row[k]!=='') return row[k];
+  }
+  return '';
+}
+function importFleetRows(rows){
+  let count=0;
+  rows.forEach(r=>{
+    const code = String(findCol(r,['Code'])||'').trim();
+    if(!code) return;
+    const nom = String(findCol(r,['Nom','Désignation','Designation'])||code);
+    const type = String(findCol(r,["Famille","Famille d'équipement",'Type'])||state.equipTypes[0]);
+    if(!state.equipTypes.includes(type)) state.equipTypes.push(type);
+    const statut = String(findCol(r,['Statut'])||'Opérationnel');
+    const heures = Number(findCol(r,['Heures','Heures compteur']))||0;
+    const km = Number(findCol(r,['Kilométrage','KM','Km']))||0;
+    const ccCode = String(findCol(r,['Centre de coût','Centre de cout'])||'').trim();
+    const cc = state.costCenters.find(c=>c.code.toLowerCase()===ccCode.toLowerCase());
+    const existing = state.fleet.find(e=>e.code.toLowerCase()===code.toLowerCase());
+    const obj = { code, nom, type, statut: STATUTS.includes(statut)?statut:'Opérationnel', heures, km, dernierEntretien:'', prochainEntretien:'', conso100h: existing?existing.conso100h:15, centreCoutId: cc?cc.id:(existing?existing.centreCoutId:null) };
+    if(existing) Object.assign(existing, obj); else state.fleet.push({...obj, id:uid()});
+    count++;
+  });
+  persist(); render(); toast(count+" engin(s) importé(s)/mis à jour");
+}
+function importPartsRows(rows){
+  let count=0;
+  rows.forEach(r=>{
+    const nom = String(findCol(r,['Nom','Désignation','Designation'])||'').trim();
+    if(!nom) return;
+    const ref = String(findCol(r,['Référence','Reference','Ref'])||'');
+    const quantite = Number(findCol(r,['Quantité','Quantite','Stock']))||0;
+    const seuil = Number(findCol(r,["Seuil","Seuil d'alerte"]))||2;
+    const coutUnitaire = Number(findCol(r,['Coût unitaire','Cout unitaire','Prix']))||0;
+    const fournisseur = String(findCol(r,['Fournisseur'])||'');
+    const existing = state.parts.find(p=>(ref && p.ref && p.ref.toLowerCase()===ref.toLowerCase()) || p.nom.toLowerCase()===nom.toLowerCase());
+    const obj = {ref, nom, quantite, seuil, coutUnitaire, fournisseur};
+    if(existing) Object.assign(existing, obj); else state.parts.push({...obj, id:uid()});
+    count++;
+  });
+  persist(); render(); toast(count+" pièce(s) importée(s)/mise(s) à jour");
+}
+function importPersonnelRows(rows){
+  let count=0;
+  rows.forEach(r=>{
+    const nom = String(findCol(r,['Nom','Nom complet'])||'').trim();
+    if(!nom) return;
+    const poste = String(findCol(r,['Poste','Métier','Metier'])||state.postes[0]);
+    if(!state.postes.includes(poste)) state.postes.push(poste);
+    const affectation = String(findCol(r,['Affectation'])||AFFECTATIONS[0]);
+    const statut = String(findCol(r,['Statut'])||'Actif');
+    const telephone = String(findCol(r,['Téléphone','Telephone','Tel'])||'');
+    const dateEmbauche = String(findCol(r,['Date embauche',"Date d'embauche"])||'');
+    const existing = state.personnel.find(p=>p.nom.toLowerCase()===nom.toLowerCase());
+    const obj = { nom, poste, affectation: AFFECTATIONS.includes(affectation)?affectation:AFFECTATIONS[0], statut: PERSONNEL_STATUTS.includes(statut)?statut:'Actif', telephone, dateEmbauche };
+    if(existing) Object.assign(existing, obj); else state.personnel.push({...obj, id:uid()});
+    count++;
+  });
+  persist(); render(); toast(count+" personne(s) importée(s)/mise(s) à jour");
+}
+
 function openTypesModal(){
   renderTypesModal();
 }
@@ -978,9 +1059,14 @@ function viewWOEdit(){
   const linkedNotif = w.id ? state.notifications.find(n=>n.workOrderId===w.id) : null;
   const badges = w.id ? woStatusBadges(w) : [{t:'NOUVEAU', c:'var(--muted)'}];
 
+  const isTechEdit = currentUser && currentUser.role==='technicien';
+  const canSuperviseEdit = currentUser && (currentUser.role==='admin' || currentUser.role==='planificateur');
+
   return `
   <div class="wo-toolbar">
     <button class="btn btn-ghost" id="wo-back">${ICONS.close} Retour à la liste</button>
+    ${!woIsNew && canSuperviseEdit && w.statut==='Ouvert' ? `<button class="btn btn-ghost" style="color:var(--accent);border-color:var(--accent);" id="wo-launch">${ICONS.activity} Lancer</button>` : ''}
+    ${!woIsNew && canSuperviseEdit && w.statut==='Terminé' ? `<button class="btn btn-ghost" style="color:var(--success);border-color:var(--success);" id="wo-close-toolbar">${ICONS.check} Clôturer techniquement et financièrement</button>` : ''}
     <div class="row" style="margin-left:auto;">
       <button class="btn btn-accent" id="wo-save">${ICONS.check} Enregistrer</button>
     </div>
@@ -1053,6 +1139,23 @@ function wireWOEditor(){
   const back = ()=>{ currentView='wo'; woDraft=null; render(); };
   const backBtn = document.getElementById('wo-back'); if(backBtn) backBtn.addEventListener('click', back);
   const backBtn2 = document.getElementById('wo-back-2'); if(backBtn2) backBtn2.addEventListener('click', back);
+
+  function quickTransition(newStatut){
+    w.statut = newStatut;
+    if((newStatut==='Terminé'||newStatut==='Clôturé') && !w.dateFin) w.dateFin = new Date().toISOString().slice(0,10);
+    const idx = state.workOrders.findIndex(x=>x.id===w.id);
+    if(idx>-1) state.workOrders[idx] = {...w};
+    const eq = equipMap()[w.equipementId];
+    if(eq){
+      if(newStatut==='Terminé' || newStatut==='Clôturé') eq.statut='Opérationnel';
+      else if(newStatut==='En cours') eq.statut='En maintenance';
+    }
+    persist(); toast('Statut : '+newStatut); render();
+  }
+  const launchBtn = document.getElementById('wo-launch');
+  if(launchBtn) launchBtn.addEventListener('click', ()=>quickTransition('En cours'));
+  const closeBtn = document.getElementById('wo-close-toolbar');
+  if(closeBtn) closeBtn.addEventListener('click', ()=>{ if(confirm('Clôturer '+w.numero+' ?')) quickTransition('Clôturé'); });
 
   const opAdd = document.getElementById('wo-op-add');
   if(opAdd) opAdd.addEventListener('click', ()=>{
@@ -1287,7 +1390,11 @@ function viewParts(){
   return `
   <div class="headrow">
     <div><h1>Pièces & stock</h1><p class="subtitle" style="margin:0;">${state.parts.length} références</p></div>
-    <button class="btn btn-accent" data-open-modal="part-new">${ICONS.plus} Nouvelle pièce</button>
+    <div class="row">
+      <button class="btn btn-ghost" id="parts-import-btn">${ICONS.plus} Importer Excel</button>
+      <input type="file" id="parts-import-file" accept=".xlsx,.xls,.csv" style="display:none;"/>
+      <button class="btn btn-accent" data-open-modal="part-new">${ICONS.plus} Nouvelle pièce</button>
+    </div>
   </div>
   ${sorted.length===0?`<div class="plate p16"><div class="empty">${ICONS.package}<span>Aucune pièce enregistrée.</span></div></div>`:
   `<div class="plate" style="overflow:hidden;">
@@ -1579,7 +1686,11 @@ function viewPersonnel(){
   return `
   <div class="headrow">
     <div><h1>Personnel</h1><p class="subtitle" style="margin:0;">${state.personnel.length} personnes · par métier et affectation</p></div>
-    <button class="btn btn-accent" data-open-modal="personnel-new">${ICONS.plus} Nouvelle personne</button>
+    <div class="row">
+      <button class="btn btn-ghost" id="personnel-import-btn">${ICONS.plus} Importer Excel</button>
+      <input type="file" id="personnel-import-file" accept=".xlsx,.xls,.csv" style="display:none;"/>
+      <button class="btn btn-accent" data-open-modal="personnel-new">${ICONS.plus} Nouvelle personne</button>
+    </div>
   </div>
   ${sorted.length===0?`<div class="plate p16"><div class="empty">${ICONS.users}<span>Aucun personnel enregistré.</span></div></div>`:
   `<div class="grid grid-fleet">
@@ -1903,6 +2014,12 @@ function attachHandlers(){
   // Fleet
   const fs = document.getElementById('fleet-search');
   if(fs) fs.addEventListener('input', e=>{ fleetSearch=e.target.value; render(); document.getElementById('fleet-search').focus(); document.getElementById('fleet-search').selectionStart = document.getElementById('fleet-search').value.length; });
+  const fleetImportBtn = document.getElementById('fleet-import-btn');
+  const fleetImportFile = document.getElementById('fleet-import-file');
+  if(fleetImportBtn && fleetImportFile){
+    fleetImportBtn.addEventListener('click', ()=>fleetImportFile.click());
+    fleetImportFile.addEventListener('change', (e)=>{ if(e.target.files[0]) readExcelFile(e.target.files[0], importFleetRows); });
+  }
   const bo = document.querySelector('[data-open-modal="fleet-new"]');
   if(bo) bo.addEventListener('click', ()=>{
     const e = {id:null, code:"", nom:"", type:state.equipTypes[0], statut:"Opérationnel", heures:0, dernierEntretien:"", prochainEntretien:"", conso100h:15, centreCoutId:""};
@@ -1982,6 +2099,12 @@ function attachHandlers(){
   }));
 
   // Parts
+  const partsImportBtn = document.getElementById('parts-import-btn');
+  const partsImportFile = document.getElementById('parts-import-file');
+  if(partsImportBtn && partsImportFile){
+    partsImportBtn.addEventListener('click', ()=>partsImportFile.click());
+    partsImportFile.addEventListener('change', (e)=>{ if(e.target.files[0]) readExcelFile(e.target.files[0], importPartsRows); });
+  }
   const pn = document.querySelector('[data-open-modal="part-new"]');
   if(pn) pn.addEventListener('click', ()=>{
     const p = {id:null, ref:'', nom:'', quantite:0, seuil:2, coutUnitaire:0, fournisseur:''};
@@ -2313,6 +2436,12 @@ function attachHandlers(){
   });
 
   // Personnel
+  const personnelImportBtn = document.getElementById('personnel-import-btn');
+  const personnelImportFile = document.getElementById('personnel-import-file');
+  if(personnelImportBtn && personnelImportFile){
+    personnelImportBtn.addEventListener('click', ()=>personnelImportFile.click());
+    personnelImportFile.addEventListener('change', (e)=>{ if(e.target.files[0]) readExcelFile(e.target.files[0], importPersonnelRows); });
+  }
   const pern = document.querySelector('[data-open-modal="personnel-new"]');
   if(pern) pern.addEventListener('click', ()=>{
     const p = {id:null, nom:'', poste:state.postes[0], affectation:AFFECTATIONS[0], statut:'Actif', telephone:'', dateEmbauche:''};
