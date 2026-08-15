@@ -340,12 +340,15 @@ async function loadRemote(){
     return { ok:false, error: (e && e.message) ? e.message : String(e) };
   }
 }
+let isSaving = false;
 async function saveRemote(){
+  isSaving = true;
   try{
     const { error } = await sb.from('erp_data').upsert({ id:'main', data: state, updated_at: new Date().toISOString() });
     if(error){ setSyncStatus(false, 'écriture: '+error.message); return; }
     setSyncStatus(true, 'enregistré');
   }catch(e){ setSyncStatus(false, 'écriture: '+((e&&e.message)||String(e))); }
+  finally{ isSaving = false; }
 }
 function persist(){
   saveLocalCache();
@@ -366,14 +369,16 @@ function startPolling(){
   if(pollTimer) clearInterval(pollTimer);
   pollTimer = setInterval(async ()=>{
     const modalOpen = document.getElementById('modal-root').innerHTML.trim() !== '';
-    if(modalOpen) return;
+    if(modalOpen || isSaving) return;
     const res = await loadRemote();
+    if(isSaving) return; // une sauvegarde a démarré pendant le chargement -> on ignore ce cycle pour ne pas écraser
     if(res.ok){
       const stamp = res.updatedAt ? new Date(res.updatedAt).toLocaleTimeString('fr-FR') : '?';
       setSyncStatus(true, 'donnée du serveur: '+stamp);
       const changed = JSON.stringify(res.payload) !== JSON.stringify(state);
       if(changed){
         state = res.payload;
+        applyTheme(state.theme);
         saveLocalCache();
         render();
       }
@@ -3187,6 +3192,7 @@ document.getElementById('refresh-btn').addEventListener('click', async ()=>{
   const res = await loadRemote();
   if(res.ok){
     state = res.payload;
+    applyTheme(state.theme);
     saveLocalCache();
     render();
     const stamp = res.updatedAt ? new Date(res.updatedAt).toLocaleTimeString('fr-FR') : '?';
