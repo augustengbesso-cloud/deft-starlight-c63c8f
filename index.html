@@ -37,7 +37,7 @@ nav{flex:1;padding:12px 8px;display:flex;flex-direction:column;gap:2px;}
 .sidebar-foot{padding:12px 16px;font-size:10px;color:var(--muted);border-top:1px solid var(--border);}
 /* Main */
 #main{flex:1;min-width:0;overflow-y:auto;height:100vh;}
-.wrap{max-width:1100px;margin:0 auto;padding:24px;}
+.wrap{max-width:1500px;margin:0;padding:24px 32px;}
 h1{font-family:'Oswald',sans-serif;text-transform:uppercase;letter-spacing:.03em;font-size:24px;margin:0 0 2px;}
 .subtitle{color:var(--muted);font-size:14px;margin:0 0 20px;}
 .headrow{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:16px;}
@@ -102,7 +102,11 @@ td{padding:9px 12px;border-bottom:1px solid var(--border);}
 .badge-danger{background:var(--danger);color:#fff;}
 #topbar{display:flex;align-items:center;gap:8px;padding:8px 16px;border-bottom:1px solid var(--border);background:#101315;position:sticky;top:0;z-index:10;}
 #sync-text{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60vw;}
-#refresh-btn{margin-left:auto;padding:5px 10px;font-size:12px;flex-shrink:0;}
+#refresh-btn{padding:5px 10px;font-size:12px;flex-shrink:0;}
+#logout-btn-top{padding:5px 10px;font-size:12px;flex-shrink:0;}
+#topbar-actions{margin-left:auto;display:flex;gap:6px;align-items:center;}
+#user-info-top{font-size:12px;color:var(--muted);}
+#user-info-top b{color:var(--text);font-weight:500;}
 @media(max-width:700px){
   #sidebar{width:64px;}
   .brand-sub, .navbtn span.label, .sidebar-foot, .nav-section{display:none;}
@@ -131,14 +135,17 @@ td{padding:9px 12px;border-bottom:1px solid var(--border);}
     <nav id="nav"></nav>
     <div class="sidebar-foot">
       <div id="fleet-count"></div>
-      <div id="user-info" class="row" style="margin-top:8px;justify-content:space-between;"></div>
     </div>
   </aside>
   <main id="main">
     <div id="topbar">
+      <span id="user-info-top"></span>
       <span class="led" id="sync-dot" style="background:var(--muted)"></span>
       <span id="sync-text">Connexion…</span>
-      <button class="btn btn-ghost" id="refresh-btn">Actualiser</button>
+      <div id="topbar-actions">
+        <button class="btn btn-ghost" id="refresh-btn">Actualiser</button>
+        <button class="btn btn-ghost" id="logout-btn-top">Déconnexion</button>
+      </div>
     </div>
     <div class="wrap" id="content"></div>
   </main>
@@ -190,18 +197,14 @@ function renderAuthScreen(){
     <div class="brand-row" style="justify-content:center;margin-bottom:20px;">
       <span class="dot"></span><span class="brand-title" style="font-size:16px;">2NA · ERP</span>
     </div>
-    <div class="auth-tabs">
-      <div class="auth-tab ${authTab==='login'?'active':''}" data-auth-tab="login">Connexion</div>
-      <div class="auth-tab ${authTab==='signup'?'active':''}" data-auth-tab="signup">Créer un compte</div>
-    </div>
+    <h3 class="oswald" style="text-align:center;text-transform:uppercase;font-size:14px;color:var(--muted);margin:0 0 20px;">Connexion</h3>
     <div class="auth-error">${esc(authError)}</div>
-    ${authTab==='signup'?`<label class="auth-field"><span>Nom complet</span><input id="auth-nom" placeholder="Kouassi Jean"/></label>`:''}
-    <label class="auth-field"><span>Identifiant</span><input id="auth-id" placeholder="Ex: USR004" style="text-transform:uppercase;"/></label>
+    <label class="auth-field"><span>Identifiant</span><input id="auth-id" placeholder="Ex: USR001" style="text-transform:uppercase;"/></label>
     <label class="auth-field"><span>Mot de passe</span><input id="auth-pass" type="password" placeholder="••••••••"/></label>
-    <button class="btn btn-accent" id="auth-submit" style="width:100%;justify-content:center;margin-top:6px;">${authTab==='login'?'Se connecter':'Créer mon compte'}</button>
-    ${authTab==='signup'?`<p style="font-size:11px;color:var(--muted);margin-top:12px;">Choisis un identifiant unique (ex: USR004). Ton compte sera créé avec un accès limité (technicien) jusqu'à ce qu'un administrateur t'attribue ton rôle réel dans "Utilisateurs".</p>`:''}
+    <button class="btn btn-accent" id="auth-submit" style="width:100%;justify-content:center;margin-top:6px;">Se connecter</button>
+    <p style="font-size:11px;color:var(--muted);margin-top:12px;">Pas encore de compte ? Un administrateur doit t'en créer un dans le module "Utilisateurs".</p>
   </div>`;
-  document.querySelectorAll('[data-auth-tab]').forEach(t=>t.addEventListener('click',()=>{ authTab=t.dataset.authTab; authError=''; renderAuthScreen(); }));
+  authTab = 'login';
   document.getElementById('auth-submit').addEventListener('click', handleAuthSubmit);
   [document.getElementById('auth-id'), document.getElementById('auth-pass')].forEach(inp=>{
     inp.addEventListener('keydown', e=>{ if(e.key==='Enter') handleAuthSubmit(); });
@@ -218,26 +221,14 @@ async function handleAuthSubmit(){
   const email = identifiantToEmail(identifiant);
   btn.disabled = true; btn.textContent = '...';
   try{
-    if(authTab==='login'){
-      const { error } = await sb.auth.signInWithPassword({ email, password: pass });
-      if(error) throw error;
-    } else {
-      const nom = document.getElementById('auth-nom').value.trim();
-      if(!nom){ authError = 'Nom complet requis'; renderAuthScreen(); return; }
-      pendingNomComplet = nom;
-      const { data, error } = await sb.auth.signUp({ email, password: pass });
-      if(error) throw error;
-      if(data.user && data.session){
-        try{ await sb.from('user_roles').insert({ user_id: data.user.id, email, nom_complet: nom, role: 'technicien',
-          identifiant, fonction:'Technicien', niveau_hierarchique:1, statut_compte:'Actif', niveau_approbation:'Technique', modules:{} }); }catch(e){}
-      }
-    }
+    const { error } = await sb.auth.signInWithPassword({ email, password: pass });
+    if(error) throw error;
     await afterAuthSuccess();
   }catch(e){
     authError = (e && e.message) ? traduireErreurAuth(e.message) : String(e);
     renderAuthScreen();
   }
-  btn.disabled = false; btn.textContent = authTab==='login'?'Se connecter':'Créer mon compte';
+  btn.disabled = false; btn.textContent = 'Se connecter';
 }
 function traduireErreurAuth(msg){
   if(/Invalid login credentials/i.test(msg)) return 'Identifiant ou mot de passe incorrect';
@@ -640,11 +631,12 @@ function renderNav(){
   `;}).join('');
   nav.querySelectorAll('[data-nav]').forEach(b=>b.addEventListener('click',()=>{ currentView=b.dataset.nav; render(); }));
   document.getElementById('fleet-count').textContent = `${state.fleet.length} engins · ${state.plantEquipment.length} machines`;
-  const ui = document.getElementById('user-info');
-  if(ui && currentUser){
-    ui.innerHTML = `<div style="min-width:0;"><div style="font-size:12px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(currentUser.nomComplet)}</div><div style="font-size:10px;color:var(--muted);">${ROLE_LABELS[currentUser.role]||currentUser.role}</div></div><button class="icon-btn" id="logout-btn" title="Déconnexion">${ICONS.close}</button>`;
-    const lb = document.getElementById('logout-btn'); if(lb) lb.addEventListener('click', handleLogout);
+  const uiTop = document.getElementById('user-info-top');
+  if(uiTop && currentUser){
+    uiTop.innerHTML = `<b>${esc(currentUser.nomComplet)}</b> · ${ROLE_LABELS[currentUser.role]||currentUser.role}`;
   }
+  const lbTop = document.getElementById('logout-btn-top');
+  if(lbTop) lbTop.addEventListener('click', handleLogout);
 }
 
 /* ============ KPIs ============ */
@@ -3126,14 +3118,17 @@ function attachHandlers(){
   }));
 
   // Apparence / thème
-  document.querySelectorAll('[data-theme-key]').forEach(inp=>inp.addEventListener('input', (e)=>{
-    const key = e.target.dataset.themeKey;
-    const val = e.target.value;
-    state.theme = { ...DEFAULT_THEME, ...(state.theme||{}) };
-    state.theme[key] = val;
-    applyTheme(state.theme);
-    const label = e.target.nextElementSibling; if(label) label.textContent = val;
-  }));
+  document.querySelectorAll('[data-theme-key]').forEach(inp=>{
+    inp.addEventListener('input', (e)=>{
+      const key = e.target.dataset.themeKey;
+      const val = e.target.value;
+      state.theme = { ...DEFAULT_THEME, ...(state.theme||{}) };
+      state.theme[key] = val;
+      applyTheme(state.theme);
+      const label = e.target.nextElementSibling; if(label) label.textContent = val;
+    });
+    inp.addEventListener('change', ()=>{ persist(); toast('Couleur enregistrée'); });
+  });
   const themeSave = document.getElementById('theme-save');
   if(themeSave) themeSave.addEventListener('click', ()=>{ persist(); toast('Thème enregistré'); });
   const themeReset = document.getElementById('theme-reset');
