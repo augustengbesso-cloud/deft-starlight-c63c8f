@@ -2315,8 +2315,10 @@ async function loadAllUsers(){
 function viewUsers(){
   const um = Object.fromEntries(allUsers.map(u=>[u.user_id,u]));
   return `
-  <h1>Utilisateurs</h1>
-  <p class="subtitle">Gestion des comptes, rôles, hiérarchie et accès — réservé aux administrateurs</p>
+  <div class="headrow">
+    <div><h1>Utilisateurs</h1><p class="subtitle" style="margin:0;">Gestion des comptes, rôles, hiérarchie et accès — réservé aux administrateurs</p></div>
+    <button class="btn btn-accent" id="user-create-btn">${ICONS.plus} Créer un utilisateur</button>
+  </div>
   <div class="plate" style="overflow:hidden;margin-bottom:16px;">
   <table><thead><tr><th>Identifiant</th><th>Nom</th><th>Fonction</th><th>Niv.</th><th>Statut</th><th>Rôle</th><th>Supérieur</th><th>Dernière connexion</th><th></th></tr></thead>
   <tbody>
@@ -2333,7 +2335,16 @@ function viewUsers(){
     <td><button class="icon-btn" data-edit-user="${u.user_id}">${ICONS.edit}</button></td>
   </tr>`).join('')}
   </tbody></table></div>
-  <p style="font-size:11px;color:var(--muted);">Nouveaux comptes créés via "Créer un compte" arrivent avec le rôle Technicien par défaut — clique le crayon pour définir fonction, niveau, rôle, hiérarchie et accès par module.</p>`;
+  <p style="font-size:11px;color:var(--muted);">Un compte créé ici arrive en rôle Technicien par défaut — clique le crayon pour définir sa fonction, son niveau, son rôle réel, sa hiérarchie et ses accès.</p>`;
+}
+function userCreateForm(){
+  return `
+  <div class="formgrid">
+    <label class="field span2"><span>Identifiant</span><input data-f="identifiant" placeholder="Ex: USR005" style="text-transform:uppercase;"/></label>
+    <label class="field span2"><span>Nom complet</span><input data-f="nomComplet" placeholder="Kouassi Jean"/></label>
+    <label class="field span2"><span>Mot de passe temporaire</span><input data-f="motDePasse" type="text" placeholder="À communiquer à la personne, min. 6 caractères"/></label>
+  </div>
+  <p style="font-size:11px;color:var(--muted);margin-top:10px;">⚠️ La création va temporairement te connecter en tant que ce nouveau compte. Tu seras redirigé vers l'écran de connexion — reconnecte-toi avec ton identifiant admin, puis va dans "Utilisateurs" pour attribuer le rôle final.</p>`;
 }
 function userEditForm(u){
   const others = allUsers.filter(x=>x.user_id!==u.user_id);
@@ -3054,6 +3065,32 @@ function attachHandlers(){
   }));
 
   // Utilisateurs (admin)
+  const userCreateBtn = document.getElementById('user-create-btn');
+  if(userCreateBtn) userCreateBtn.addEventListener('click', ()=>{
+    openModal('Créer un utilisateur', userCreateForm(), async (data)=>{
+      const identifiant = (data.identifiant||'').trim().toUpperCase();
+      const nomComplet = (data.nomComplet||'').trim();
+      const pass = data.motDePasse||'';
+      if(!identifiant || !nomComplet || pass.length<6){ alert('Identifiant, nom complet et mot de passe (6 caractères min.) requis'); return; }
+      const email = identifiantToEmail(identifiant);
+      const adminIdentifiant = currentUser.identifiant;
+      try{
+        const { data: signData, error } = await sb.auth.signUp({ email, password: pass });
+        if(error) throw error;
+        if(signData.user){
+          await sb.from('user_roles').insert({ user_id: signData.user.id, email, nom_complet: nomComplet, role:'technicien',
+            identifiant, fonction:'Technicien', niveau_hierarchique:1, statut_compte:'Actif', niveau_approbation:'Technique', modules:{} });
+        }
+        await sb.auth.signOut();
+        currentUser = null;
+        closeModal();
+        document.getElementById('app').style.display = 'none';
+        authTab = 'login'; authError = 'Compte '+identifiant+' créé. Reconnecte-toi avec ton identifiant admin ('+(adminIdentifiant||'')+') pour continuer.';
+        renderAuthScreen();
+      }catch(err){ alert('Erreur : '+((err&&err.message)?traduireErreurAuth(err.message):String(err))); }
+    });
+  });
+
   document.querySelectorAll('[data-edit-user]').forEach(b=>b.addEventListener('click',()=>{
     const u = allUsers.find(x=>x.user_id===b.dataset.editUser);
     if(!u) return;
