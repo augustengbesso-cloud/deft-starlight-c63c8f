@@ -440,7 +440,8 @@ const NOTIF_PRIORITES = ["Basse","Normale","Haute","Urgente"];
 const POINT_TYPES = ["Compteur (heures/km)","Température","Vibration","Pression","Autre mesure"];
 const DEFAULT_POSTES = ["Électricien","Mécanicien","Soudeur","Hydraulicien","Automaticien","Chaudronnier","Opérateur","Autre"];
 const DA_TYPES = ["Via Ordre de Travail","Service / Centre de coût","Service / Ordre interne"];
-const RESA_TYPES = ["Centre de coût","Ordre interne (véhicule)"];
+const RESA_TYPES = ["Centre de coût","Ordre interne (véhicule)","Ordre de travail"];
+const RESA_STATUTS = ["En attente","Sortie validée"];
 const TYPES_TRAVAIL = ["Inspection","Remplacement pièces","Intervention","Révision","Autre"];
 const DA_STATUTS = ["Ouverte","Convertie en BC","Clôturée"];
 const BC_STATUTS = ["Émis","Réceptionné partiellement","Réceptionné"];
@@ -1055,9 +1056,9 @@ function viewWOEdit(){
   const w = woDraft;
   const allEquip = [...state.fleet.map(e=>({...e,grp:'Flotte'})), ...state.plantEquipment.map(e=>({...e,grp:'Usine'}))];
   const equipOpts = allEquip.map(e=>`<option value="${e.id}" ${w.equipementId===e.id?'selected':''}>[${e.grp}] ${e.code} — ${e.nom}</option>`).join('');
-  const partOpts = state.parts.map(p=>`<option value="${p.id}">${esc(p.ref||p.nom)} — ${esc(p.nom)} (stock: ${p.quantite})</option>`).join('');
   const linkedNotif = w.id ? state.notifications.find(n=>n.workOrderId===w.id) : null;
   const badges = w.id ? woStatusBadges(w) : [{t:'NOUVEAU', c:'var(--muted)'}];
+  const resaMap = Object.fromEntries(state.reservations.map(r=>[r.id,r]));
 
   const isTechEdit = currentUser && currentUser.role==='technicien';
   const canSuperviseEdit = currentUser && (currentUser.role==='admin' || currentUser.role==='planificateur');
@@ -1088,12 +1089,12 @@ function viewWOEdit(){
       <label class="field span2"><span>Libellé</span><input id="wo-f-titre" value="${esc(w.titre)}" placeholder="Remplacement flexible hydraulique"/></label>
       <label class="field span2"><span>Description</span><textarea id="wo-f-desc" rows="2">${esc(w.description)}</textarea></label>
       <label class="field"><span>Type</span><select id="wo-f-type"><option ${w.type==='Correctif'?'selected':''}>Correctif</option><option ${w.type==='Préventif'?'selected':''}>Préventif</option></select></label>
-      <label class="field"><span>Poste responsable</span><select id="wo-f-poste">${state.postes.map(p=>`<option ${w.poste===p?'selected':''}>${p}</option>`).join('')}</select></label>
+      <label class="field"><span>Poste responsable principal</span><select id="wo-f-poste">${state.postes.map(p=>`<option ${w.poste===p?'selected':''}>${p}</option>`).join('')}</select></label>
       <label class="field"><span>Priorité</span><select id="wo-f-priorite">${WO_PRIORITES.map(p=>`<option ${w.priorite===p?'selected':''}>${p}</option>`).join('')}</select></label>
       <label class="field"><span>Statut</span><select id="wo-f-statut">${WO_STATUTS.filter(s=> s!=='Clôturé' || !(currentUser&&currentUser.role==='technicien')).map(s=>`<option ${w.statut===s?'selected':''}>${s}</option>`).join('')}</select></label>
       <label class="field"><span>Date début</span><input type="date" id="wo-f-debut" value="${w.dateDebut||w.dateCreation||''}"/></label>
       <label class="field"><span>Date fin</span><input type="date" id="wo-f-fin" value="${w.dateFin||''}"/></label>
-      <label class="field"><span>Technicien</span>
+      <label class="field"><span>Responsable OT</span>
         <input id="wo-f-tech" list="wo-personnel-list" value="${esc(w.technicien)}" placeholder="Choisir ou saisir un nom"/>
         <datalist id="wo-personnel-list">${state.personnel.filter(p=>p.statut==='Actif').map(p=>`<option value="${esc(p.nom)}">${esc(p.poste)}</option>`).join('')}</datalist>
       </label>
@@ -1102,29 +1103,59 @@ function viewWOEdit(){
   </div>
 
   <div class="plate p16" style="margin-bottom:16px;">
-    <h3 class="oswald" style="text-transform:uppercase;font-size:13px;margin:0 0 12px;color:var(--muted);">Opérations effectuées</h3>
-    <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:10px;">
-      ${w.operations.length===0?`<span style="font-size:12px;color:var(--muted);">Aucune opération ajoutée.</span>`:
-      w.operations.map((op,i)=>`<div class="between card-item" style="padding:6px 10px;"><span style="font-size:13px;">${esc(op)}</span><button class="icon-btn" data-wo-op-del="${i}">${ICONS.trash}</button></div>`).join('')}
+    <h3 class="oswald" style="text-transform:uppercase;font-size:13px;margin:0 0 4px;color:var(--muted);">Opérations effectuées</h3>
+    <p style="font-size:11px;color:var(--muted);margin:0 0 12px;">Une tâche peut réunir plusieurs corps de métier — ajoute un intervenant par poste, avec ses heures.</p>
+    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:12px;">
+      ${w.operations.length===0?`<span style="font-size:12px;color:var(--muted);">Aucune tâche ajoutée.</span>`:
+      w.operations.map((op,oi)=>`
+      <div class="card-item" style="padding:10px 12px;">
+        <div class="between" style="margin-bottom:8px;">
+          <span style="font-size:13px;font-weight:500;">${esc(op.description)}</span>
+          <button class="icon-btn" data-wo-op-del="${oi}">${ICONS.trash}</button>
+        </div>
+        ${op.affectations.length===0?`<span style="font-size:11px;color:var(--muted);">Aucun intervenant affecté.</span>`:
+        `<div style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px;">
+          ${op.affectations.map((af,ai)=>`<div class="between" style="font-size:12px;background:var(--panel);border-radius:4px;padding:5px 8px;">
+            <span><span class="badge">${esc(af.poste)}</span> ${esc(af.technicien)||'—'} <span style="color:var(--muted);">· ${af.heureDebut||'--:--'} → ${af.heureFin||'--:--'}</span></span>
+            <button class="icon-btn" data-wo-aff-del="${oi}:${ai}">${ICONS.trash}</button>
+          </div>`).join('')}
+        </div>`}
+        <div class="row wrapwrap" style="gap:6px;">
+          <select id="wo-aff-poste-${oi}" style="flex:1;min-width:110px;">${state.postes.map(p=>`<option>${p}</option>`).join('')}</select>
+          <input id="wo-aff-tech-${oi}" list="wo-personnel-list" placeholder="Technicien" style="flex:1;min-width:120px;"/>
+          <input type="time" id="wo-aff-debut-${oi}" style="width:100px;"/>
+          <input type="time" id="wo-aff-fin-${oi}" style="width:100px;"/>
+          <button class="btn btn-ghost" data-wo-aff-add="${oi}" type="button" style="font-size:11px;">${ICONS.plus} Intervenant</button>
+        </div>
+      </div>`).join('')}
     </div>
     <div class="row">
-      <input id="wo-op-input" placeholder="Ex: Remplacement du roulement avant" style="flex:1;"/>
-      <button class="btn btn-ghost" id="wo-op-add" type="button">${ICONS.plus} Ajouter</button>
+      <input id="wo-op-input" placeholder="Nouvelle tâche, ex: Remplacement du roulement avant" style="flex:1;"/>
+      <button class="btn btn-ghost" id="wo-op-add" type="button">${ICONS.plus} Ajouter une tâche</button>
     </div>
   </div>
 
   <div class="plate p16" style="margin-bottom:16px;">
-    <h3 class="oswald" style="text-transform:uppercase;font-size:13px;margin:0 0 12px;color:var(--muted);">Composants utilisés</h3>
+    <h3 class="oswald" style="text-transform:uppercase;font-size:13px;margin:0 0 4px;color:var(--muted);">Composants / pièces de rechange</h3>
+    <p style="font-size:11px;color:var(--muted);margin:0 0 12px;">Saisis le code article — la désignation s'affiche automatiquement. Une réservation est générée à l'enregistrement ; le magasinier valide la sortie dans "Pièces / Stock".</p>
     <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:10px;">
       ${w.piecesUtilisees.length===0?`<span style="font-size:12px;color:var(--muted);">Aucune pièce ajoutée.</span>`:
       w.piecesUtilisees.map((pu,i)=>{ const pt=state.parts.find(p=>p.id===pu.partId);
-      return `<div class="between card-item" style="padding:6px 10px;"><span style="font-size:13px;">${pt?esc(pt.nom):'Pièce supprimée'} × ${pu.quantite}</span><button class="icon-btn" data-wo-part-del="${i}">${ICONS.trash}</button></div>`;}).join('')}
+        const resa = pu.reservationId ? resaMap[pu.reservationId] : null;
+        const statusTxt = resa ? (resa.statut||'En attente') : (pu.reserved ? 'Réservé' : 'À réserver à l\'enregistrement');
+        const statusColor = resa && resa.statut==='Sortie validée' ? 'var(--success)' : 'var(--accent)';
+        return `<div class="between card-item" style="padding:6px 10px;">
+          <span style="font-size:13px;">${pt?esc(pt.nom):'Pièce supprimée'} <span class="mono" style="color:var(--muted);font-size:11px;">${pt&&pt.ref?'('+esc(pt.ref)+')':''}</span> × ${pu.quantite} <span style="color:${statusColor};font-size:11px;margin-left:6px;">● ${statusTxt}</span></span>
+          <button class="icon-btn" data-wo-part-del="${i}">${ICONS.trash}</button>
+        </div>`;}).join('')}
     </div>
     ${state.parts.length===0?`<span style="font-size:12px;color:var(--muted);">Aucune pièce en stock — ajoute-en dans "Pièces / Stock".</span>`:
-    `<div class="row">
-      <select id="wo-part-select" style="flex:1;">${partOpts}</select>
+    `<div class="row wrapwrap" style="gap:6px;">
+      <input id="wo-part-code" list="wo-parts-list" placeholder="Code article" style="width:140px;"/>
+      <datalist id="wo-parts-list">${state.parts.map(p=>`<option value="${esc(p.ref||p.id)}">${esc(p.nom)}</option>`).join('')}</datalist>
+      <span id="wo-part-preview" style="font-size:12px;color:var(--muted);align-self:center;flex:1;min-width:120px;">—</span>
       <input id="wo-part-qty" type="number" value="1" min="1" style="width:70px;"/>
-      <button class="btn btn-ghost" id="wo-part-add" type="button">${ICONS.plus} Ajouter</button>
+      <button class="btn btn-ghost" id="wo-part-add" type="button">${ICONS.plus} Réserver</button>
     </div>`}
   </div>
 
@@ -1160,20 +1191,63 @@ function wireWOEditor(){
   const opAdd = document.getElementById('wo-op-add');
   if(opAdd) opAdd.addEventListener('click', ()=>{
     const input = document.getElementById('wo-op-input');
-    if(input.value.trim()){ w.operations.push(input.value.trim()); render(); }
+    if(input.value.trim()){ w.operations.push({id:uid(), description:input.value.trim(), affectations:[]}); render(); }
   });
   document.querySelectorAll('[data-wo-op-del]').forEach(b=>b.addEventListener('click',()=>{
     w.operations.splice(Number(b.dataset.woOpDel),1); render();
   }));
+  w.operations.forEach((op,oi)=>{
+    const affAdd = document.getElementById('wo-aff-add-'+oi) || document.querySelector(`[data-wo-aff-add="${oi}"]`);
+    if(affAdd) affAdd.addEventListener('click', ()=>{
+      const poste = document.getElementById('wo-aff-poste-'+oi).value;
+      const technicien = document.getElementById('wo-aff-tech-'+oi).value.trim();
+      const heureDebut = document.getElementById('wo-aff-debut-'+oi).value;
+      const heureFin = document.getElementById('wo-aff-fin-'+oi).value;
+      if(!technicien){ alert('Nom du technicien requis'); return; }
+      op.affectations.push({id:uid(), poste, technicien, heureDebut, heureFin});
+      render();
+    });
+  });
+  document.querySelectorAll('[data-wo-aff-del]').forEach(b=>b.addEventListener('click',()=>{
+    const [oi,ai] = b.dataset.woAffDel.split(':').map(Number);
+    w.operations[oi].affectations.splice(ai,1); render();
+  }));
+
+  const partCodeInput = document.getElementById('wo-part-code');
+  const partPreview = document.getElementById('wo-part-preview');
+  if(partCodeInput && partPreview){
+    partCodeInput.addEventListener('input', ()=>{
+      const val = partCodeInput.value.trim().toLowerCase();
+      const pt = state.parts.find(p=>(p.ref||'').toLowerCase()===val);
+      partPreview.textContent = pt ? (pt.nom+' — stock: '+pt.quantite) : (val?'Article introuvable':'—');
+      partPreview.style.color = pt ? 'var(--text)' : 'var(--muted)';
+    });
+  }
   const partAddBtn = document.getElementById('wo-part-add');
   if(partAddBtn) partAddBtn.addEventListener('click', ()=>{
-    const partId = document.getElementById('wo-part-select').value;
+    const code = document.getElementById('wo-part-code').value.trim().toLowerCase();
+    const pt = state.parts.find(p=>(p.ref||'').toLowerCase()===code);
     const qty = Number(document.getElementById('wo-part-qty').value)||1;
-    if(partId){ w.piecesUtilisees.push({partId, quantite:qty}); render(); }
+    if(!pt){ alert("Code article introuvable dans le stock"); return; }
+    w.piecesUtilisees.push({id:uid(), partId:pt.id, quantite:qty, reserved:false, reservationId:null});
+    render();
   });
   document.querySelectorAll('[data-wo-part-del]').forEach(b=>b.addEventListener('click',()=>{
     w.piecesUtilisees.splice(Number(b.dataset.woPartDel),1); render();
   }));
+
+  function reservePendingParts(){
+    w.piecesUtilisees.forEach(pu=>{
+      if(pu.reserved) return;
+      state.resaCounter = (state.resaCounter||0)+1;
+      const resa = { id:uid(), numero:'RES-'+String(state.resaCounter).padStart(4,'0'), type:'Ordre de travail',
+        costCenterId:null, equipementId:w.equipementId, workOrderId:w.id, partId:pu.partId, quantite:pu.quantite,
+        receptionnaire:w.technicien||'', dateCreation:new Date().toISOString().slice(0,10), statut:'En attente' };
+      state.reservations.push(resa);
+      pu.reserved = true;
+      pu.reservationId = resa.id;
+    });
+  }
 
   const saveHandler = ()=>{
     w.equipementId = document.getElementById('wo-f-equip').value;
@@ -1198,16 +1272,14 @@ function wireWOEditor(){
       w.numero = 'OT-'+String(state.woCounter).padStart(4,'0');
       w.id = uid();
       state.workOrders.push(w);
-      w.piecesUtilisees.forEach(pu=>{
-        const pt = state.parts.find(p=>p.id===pu.partId);
-        if(pt) pt.quantite = Math.max(0, Number(pt.quantite) - Number(pu.quantite));
-      });
+      reservePendingParts();
       if(eqForStatus){
         if(w.statut==='Terminé' || w.statut==='Clôturé') eqForStatus.statut='Opérationnel';
         else eqForStatus.statut='En maintenance';
       }
       persist(); currentView='wo'; woDraft=null; render(); toast('Ordre de travail '+w.numero+' créé');
     } else {
+      reservePendingParts();
       const idx = state.workOrders.findIndex(x=>x.id===w.id);
       if(idx>-1) state.workOrders[idx] = w;
       if(eqForStatus){
@@ -1387,6 +1459,9 @@ function fuelForm(f){
 /* ============ PARTS ============ */
 function viewParts(){
   const sorted = [...state.parts].sort((a,b)=> (Number(a.quantite)-Number(a.seuil)) - (Number(b.quantite)-Number(b.seuil)) );
+  const pm = Object.fromEntries(state.parts.map(p=>[p.id,p]));
+  const wom = Object.fromEntries(state.workOrders.map(w=>[w.id,w]));
+  const pending = state.reservations.filter(r=>(r.statut||'En attente')==='En attente').sort((a,b)=>(a.dateCreation||'').localeCompare(b.dateCreation||''));
   return `
   <div class="headrow">
     <div><h1>Pièces & stock</h1><p class="subtitle" style="margin:0;">${state.parts.length} références</p></div>
@@ -1396,6 +1471,20 @@ function viewParts(){
       <button class="btn btn-accent" data-open-modal="part-new">${ICONS.plus} Nouvelle pièce</button>
     </div>
   </div>
+  ${pending.length>0?`
+  <div class="plate p16" style="margin-bottom:16px;border-left:3px solid var(--accent);">
+    <h3 class="oswald" style="text-transform:uppercase;font-size:13px;margin:0 0 10px;color:var(--accent);">${ICONS.receipt} Réservations en attente de sortie (${pending.length})</h3>
+    <div style="display:flex;flex-direction:column;gap:6px;">
+      ${pending.map(r=>`<div class="between card-item" style="padding:8px 12px;">
+        <div>
+          <span class="mono" style="font-size:11px;color:var(--muted);">${r.numero}</span>
+          <span style="font-size:13px;margin-left:8px;">${pm[r.partId]?esc(pm[r.partId].nom):'Pièce supprimée'} × ${fmt(r.quantite)}</span>
+          <span style="font-size:11px;color:var(--muted);margin-left:8px;">${r.workOrderId?('OT '+(wom[r.workOrderId]?.numero||'—')):r.type}</span>
+        </div>
+        <button class="btn btn-ghost" style="font-size:11px;padding:3px 8px;color:var(--success);" data-validate-resa="${r.id}">${ICONS.check} Valider sortie</button>
+      </div>`).join('')}
+    </div>
+  </div>`:''}
   ${sorted.length===0?`<div class="plate p16"><div class="empty">${ICONS.package}<span>Aucune pièce enregistrée.</span></div></div>`:
   `<div class="plate" style="overflow:hidden;">
   <table><thead><tr><th>Référence</th><th>Désignation</th><th class="right">Qté</th><th class="right">Seuil</th><th class="right">Coût unit.</th><th>Fournisseur</th><th></th></tr></thead>
@@ -1809,24 +1898,29 @@ function viewResa(){
   const em = equipMap();
   const ccm = Object.fromEntries(state.costCenters.map(c=>[c.id,c]));
   const pm = Object.fromEntries(state.parts.map(p=>[p.id,p]));
+  const wom = Object.fromEntries(state.workOrders.map(w=>[w.id,w]));
   const sorted = [...state.reservations].sort((a,b)=>(b.dateCreation||'').localeCompare(a.dateCreation||''));
   return `
   <div class="headrow">
-    <div><h1>Réservations directes</h1><p class="subtitle" style="margin:0;">Consommables réservés hors ordre de travail (carburant, fournitures...)</p></div>
+    <div><h1>Réservations</h1><p class="subtitle" style="margin:0;">Consommables réservés (OT ou directes) — en attente de sortie magasin</p></div>
     <button class="btn btn-accent" data-open-modal="resa-new">${ICONS.plus} Nouvelle réservation</button>
   </div>
   ${sorted.length===0?`<div class="plate p16"><div class="empty">${ICONS.layers}<span>Aucune réservation.</span></div></div>`:
   `<div class="plate" style="overflow:hidden;">
-  <table><thead><tr><th>N°</th><th>Type</th><th>Article</th><th class="right">Qté</th><th>Affectation</th><th>Date</th><th></th></tr></thead>
+  <table><thead><tr><th>N°</th><th>Type</th><th>Article</th><th class="right">Qté</th><th>Affectation</th><th>Statut</th><th>Date</th><th></th></tr></thead>
   <tbody>
   ${sorted.map(r=>`<tr>
     <td class="mono" style="color:var(--muted);">${r.numero}</td>
     <td><span class="badge">${r.type}</span></td>
-    <td>${pm[r.partId]?esc(pm[r.partId].nom):'—'}</td>
+    <td>${pm[r.partId]?esc(pm[r.partId].nom):'Pièce supprimée'}</td>
     <td class="right mono">${fmt(r.quantite)}</td>
-    <td style="color:var(--muted);font-size:12px;">${r.type==='Centre de coût'?(ccm[r.costCenterId]?.code||'—'):(em[r.equipementId]?.code||'—')}</td>
+    <td style="color:var(--muted);font-size:12px;">${r.workOrderId?(wom[r.workOrderId]?.numero||'—'):r.type==='Centre de coût'?(ccm[r.costCenterId]?.code||'—'):(em[r.equipementId]?.code||'—')}</td>
+    <td style="font-size:12px;color:${r.statut==='Sortie validée'?'var(--success)':'var(--accent)'};">${r.statut||'En attente'}</td>
     <td style="color:var(--muted);font-size:12px;">${r.dateCreation||''}</td>
-    <td><div class="row" style="justify-content:flex-end;"><button class="icon-btn" data-del-resa="${r.id}">${ICONS.trash}</button></div></td>
+    <td><div class="row" style="justify-content:flex-end;">
+      ${(r.statut||'En attente')==='En attente'?`<button class="btn btn-ghost" style="font-size:11px;padding:3px 8px;color:var(--success);" data-validate-resa="${r.id}">${ICONS.check} Valider sortie</button>`:''}
+      <button class="icon-btn" data-del-resa="${r.id}">${ICONS.trash}</button>
+    </div></td>
   </tr>`).join('')}
   </tbody></table></div>`}`;
 }
@@ -2293,7 +2387,7 @@ function attachHandlers(){
     persist(); render(); toast('Centre de coût supprimé');
   }));
 
-  // Réservations directes
+  // Réservations
   const resan = document.querySelector('[data-open-modal="resa-new"]');
   if(resan) resan.addEventListener('click', ()=>{
     const r = {id:null, numero:null, type:RESA_TYPES[0], costCenterId:'', equipementId:'', partId: state.parts[0]?.id||'', quantite:1, receptionnaire:'', dateCreation:new Date().toISOString().slice(0,10)};
@@ -2302,14 +2396,25 @@ function attachHandlers(){
       state.resaCounter = (state.resaCounter||0)+1;
       const qty = Number(data.quantite)||1;
       state.reservations.push({...data, id:uid(), numero:'RES-'+String(state.resaCounter).padStart(4,'0'),
-        costCenterId:data.costCenterId||null, equipementId:data.equipementId||null, quantite:qty});
-      const pt = state.parts.find(p=>p.id===data.partId);
-      if(pt) pt.quantite = Math.max(0, Number(pt.quantite) - qty);
-      persist(); closeModal(); render(); toast('Réservation enregistrée, stock décrémenté');
+        costCenterId:data.costCenterId||null, equipementId:data.equipementId||null, workOrderId:null, quantite:qty, statut:'En attente'});
+      persist(); closeModal(); render(); toast('Réservation créée — en attente de sortie magasin');
     });
   });
+  document.querySelectorAll('[data-validate-resa]').forEach(b=>b.addEventListener('click',()=>{
+    const r = state.reservations.find(x=>x.id===b.dataset.validateResa);
+    if(!r) return;
+    if(!confirm('Confirmer la sortie magasin de '+r.numero+' ?')) return;
+    const pt = state.parts.find(p=>p.id===r.partId);
+    if(pt) pt.quantite = Math.max(0, Number(pt.quantite) - Number(r.quantite));
+    r.statut = 'Sortie validée';
+    r.dateSortie = new Date().toISOString().slice(0,10);
+    r.magasinier = currentUser ? currentUser.nomComplet : '';
+    persist(); render(); toast('Sortie validée, stock décrémenté');
+  }));
   document.querySelectorAll('[data-del-resa]').forEach(b=>b.addEventListener('click',()=>{
-    if(!confirm('Supprimer cette réservation ? (le stock ne sera pas réajusté automatiquement)')) return;
+    const r = state.reservations.find(x=>x.id===b.dataset.delResa);
+    const warn = r && r.statut==='Sortie validée' ? ' Le stock déjà sorti ne sera pas réajusté.' : '';
+    if(!confirm('Supprimer cette réservation ?'+warn)) return;
     state.reservations = state.reservations.filter(x=>x.id!==b.dataset.delResa);
     persist(); render(); toast('Réservation supprimée');
   }));
@@ -2548,10 +2653,14 @@ async function init(){
     data.woCounter = data.woCounter || 0;
     (data.workOrders||[]).sort((a,b)=>(a.dateCreation||'').localeCompare(b.dateCreation||'')).forEach(w=>{
       if(!w.numero){ data.woCounter++; w.numero = 'OT-'+String(data.woCounter).padStart(4,'0'); }
-      if(!w.poste) w.poste = state.postes[0];
+      if(!w.poste) w.poste = data.postes[0];
       if(!w.dateDebut) w.dateDebut = w.dateCreation || '';
       if(!w.operations) w.operations = [];
+      // ancien format : simple liste de textes -> nouvelles tâches avec intervenants
+      w.operations = w.operations.map(op => typeof op === 'string' ? { id:uid(), description:op, affectations:[] } : op);
       if(!w.piecesUtilisees) w.piecesUtilisees = [];
+      // ancien format : pièces déjà décomptées directement, on les marque réservées pour ne pas les re-réserver
+      w.piecesUtilisees = w.piecesUtilisees.map(pu => pu.reserved===undefined ? {...pu, id:pu.id||uid(), reserved:true, reservationId:null} : pu);
     });
   }
   state = data;
