@@ -553,25 +553,29 @@ const NAV = [
   { section:'Vue d\'ensemble', items:[
     {id:'dashboard', label:'Tableau de bord', icon:'gauge'},
   ]},
-  { section:'Flotte (CIGRAC)', items:[
-    {id:'fleet', label:'Flotte', icon:'truck'},
+  { section:'Maintenance', items:[
     {id:'wo', label:'Ordres de travail', icon:'wrench'},
+    {id:'notif', label:'Notifications', icon:'bell'},
+  ]},
+  { section:'Flotte', items:[
+    {id:'fleet', label:'Flotte', icon:'truck'},
     {id:'pm', label:'Préventif', icon:'calendar'},
     {id:'fuel', label:'Carburant', icon:'fuel'},
-    {id:'parts', label:'Pièces / Stock', icon:'package'},
+    {id:'measures', label:'Compteurs / mesures', icon:'ruler'},
   ]},
   { section:'Usine (Production)', items:[
     {id:'floc', label:'Emplacements', icon:'layers'},
     {id:'plant', label:'Équipements usine', icon:'factory'},
     {id:'production', label:'Production / OEE', icon:'activity'},
-    {id:'notif', label:'Notifications', icon:'bell'},
-    {id:'measures', label:'Compteurs / mesures', icon:'ruler'},
+  ]},
+  { section:'Stock', items:[
+    {id:'parts', label:'Pièces / Stock', icon:'package'},
+    {id:'resa', label:'Réservations', icon:'layers'},
   ]},
   { section:'RH', items:[
     {id:'personnel', label:'Personnel', icon:'users'},
   ]},
   { section:'Achats', items:[
-    {id:'resa', label:'Réservations', icon:'layers'},
     {id:'da', label:'Demandes d\'achat', icon:'cart'},
     {id:'bc', label:'Bons de commande', icon:'receipt'},
   ]},
@@ -718,7 +722,6 @@ function viewDashboard(){
 
   return `
   <h1>Tableau de bord</h1>
-  <p class="subtitle">Vue d'ensemble flotte CIGRAC & usine de production</p>
   <div class="grid grid-kpi" style="margin-bottom:12px;">
     ${kpiCard('Disponibilité flotte', k.disponibilite,'%','gauge', k.disponibilite>=80?'var(--success)':'var(--danger)', `${k.total} engins suivis`)}
     ${kpiCard('MTTR', k.mttrH.toFixed(1),'h','wrench','var(--steel)','Temps moyen de réparation')}
