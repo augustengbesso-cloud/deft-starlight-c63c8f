@@ -1129,12 +1129,16 @@ let woFilter = 'Tous';
 function viewWO(){
   const em = equipMap();
   const isTech = currentUser && currentUser.role==='technicien';
-  const base = isTech ? state.workOrders.filter(w=>w.technicien===currentUser.nomComplet) : state.workOrders;
+  const base = isTech ? state.workOrders.filter(w=>{
+    if(w.technicien===currentUser.nomComplet) return true;
+    const linkedNotif = state.notifications.find(n=>n.workOrderId===w.id);
+    return !!(linkedNotif && linkedNotif.declarant===currentUser.nomComplet);
+  }) : state.workOrders;
   const visible = woFilter==='Tous' ? base : base.filter(w=>w.statut===woFilter);
   const sorted = [...visible].sort((a,b)=>(b.dateCreation||'').localeCompare(a.dateCreation||''));
   return `
   <div class="headrow">
-    <div><h1>${isTech?'Mes ordres de travail':'Ordres de travail'}</h1><p class="subtitle" style="margin:0;">${isTech?'Ordres qui te sont assignés':'Maintenance corrective et préventive'}</p></div>
+    <div><h1>${isTech?'Mes ordres de travail':'Ordres de travail'}</h1><p class="subtitle" style="margin:0;">${isTech?'Ordres qui te sont assignés, et ceux issus de tes demandes d\'intervention':'Maintenance corrective et préventive'}</p></div>
     <div class="row">
       <select id="wo-filter">
         <option ${woFilter==='Tous'?'selected':''}>Tous</option>
