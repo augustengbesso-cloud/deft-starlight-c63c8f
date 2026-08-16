@@ -1131,6 +1131,34 @@ function closeTypesModal(){ document.getElementById('modal-root').innerHTML=''; 
 
 /* ============ WORK ORDERS ============ */
 let woFilter = 'Tous';
+let woSearch = '';
+let woFilterFamille = 'Tous';
+let woFilterEquip = 'Tous';
+let woFilterType = 'Tous';
+function exportWOToExcel(){
+  const em = equipMap();
+  const rows = state.workOrders.map(w=>{
+    const eq = em[w.equipementId];
+    const linkedNotif = state.notifications.find(n=>n.workOrderId===w.id);
+    const dureeTotaleMin = (w.operations||[]).reduce((a,op)=>a+(op.affectations||[]).reduce((a2,af)=>a2+(af.dureeMin!=null?af.dureeMin:(dureeAffectation(af)||0)),0),0);
+    return {
+      'N° OT': w.numero||'', 'Libellé': w.titre||'', 'Description': w.description||'',
+      'Type': w.type||'', 'Nature (type travail)': w.typeTravail||'', 'Poste responsable': w.poste||'',
+      'Équipement': eq?eq.code:'', 'Désignation équipement': eq?eq.nom:'', 'Famille équipement': eq?eq.type:'',
+      'Priorité': w.priorite||'', 'Statut': w.statut||'',
+      'Date création': w.dateCreation||'', 'Date début': w.dateDebut||'', 'Date fin': w.dateFin||'',
+      'Technicien principal': w.technicien||'', 'Durée main d\'œuvre (h)': dureeTotaleMin?Math.round(dureeTotaleMin/6)/10:0,
+      'Coût (FCFA)': Number(w.cout||0), 'Nb pièces utilisées': (w.piecesUtilisees||[]).length,
+      'Avis lié': linkedNotif?(linkedNotif.numero||''):'', 'Permis de travail': w.permisTravail?'Oui':'Non', 'Consignation': w.consignation||'',
+      'Budget approuvé': w.budgetApprouve?'Oui':'Non', 'Clôture financière': w.clotureFinanciere?'Oui':'Non',
+    };
+  });
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Ordres de travail');
+  const dateStr = new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb, '2NA-ERP_ordres_de_travail_'+dateStr+'.xlsx');
+}
 function viewWO(){
   const em = equipMap();
   const isTech = currentUser && currentUser.role==='technicien';
@@ -1139,18 +1167,45 @@ function viewWO(){
     const linkedNotif = state.notifications.find(n=>n.workOrderId===w.id);
     return !!(linkedNotif && linkedNotif.declarant===currentUser.nomComplet);
   }) : state.workOrders;
-  const visible = woFilter==='Tous' ? base : base.filter(w=>w.statut===woFilter);
+  let visible = woFilter==='Tous' ? base : base.filter(w=>w.statut===woFilter);
+  if(woFilterFamille!=='Tous') visible = visible.filter(w=>(em[w.equipementId]?.type)===woFilterFamille);
+  if(woFilterEquip!=='Tous') visible = visible.filter(w=>w.equipementId===woFilterEquip);
+  if(woFilterType!=='Tous') visible = visible.filter(w=>w.type===woFilterType);
+  const q = woSearch.trim().toLowerCase();
+  if(q) visible = visible.filter(w=>`${w.numero||''} ${w.titre||''} ${w.description||''} ${em[w.equipementId]?.code||''} ${em[w.equipementId]?.nom||''} ${w.technicien||''}`.toLowerCase().includes(q));
   const sorted = [...visible].sort((a,b)=>(b.dateCreation||'').localeCompare(a.dateCreation||''));
+  const equipOptions = [...state.fleet, ...state.plantEquipment].sort((a,b)=>a.code.localeCompare(b.code));
+  const typesOT = [...new Set(state.workOrders.map(w=>w.type).filter(Boolean))];
   return `
   <div class="headrow">
     <div><h1>${isTech?'Mes ordres de travail':'Ordres de travail'}</h1><p class="subtitle" style="margin:0;">${isTech?'Ordres qui te sont assignés, et ceux issus de tes demandes d\'intervention':'Maintenance corrective et préventive'}</p></div>
     <div class="row">
-      <select id="wo-filter">
-        <option ${woFilter==='Tous'?'selected':''}>Tous</option>
-        ${WO_STATUTS.map(s=>`<option ${woFilter===s?'selected':''}>${s}</option>`).join('')}
-      </select>
+      ${isTech?'':`<button class="btn btn-ghost" id="wo-export-excel">${ICONS.receipt} Exporter Excel</button>`}
       ${isTech?'':`<button class="btn btn-accent" data-open-wo="new">${ICONS.plus} Nouvel OT</button>`}
     </div>
+  </div>
+  <div class="plate p14" style="margin-bottom:12px;">
+    <div class="row wrapwrap" style="gap:8px;">
+      <input id="wo-search" placeholder="Rechercher : N° OT, libellé, équipement, technicien..." value="${esc(woSearch)}" style="flex:2;min-width:200px;"/>
+      <select id="wo-filter" style="flex:1;min-width:130px;">
+        <option value="Tous" ${woFilter==='Tous'?'selected':''}>Tous statuts</option>
+        ${WO_STATUTS.map(s=>`<option ${woFilter===s?'selected':''}>${s}</option>`).join('')}
+      </select>
+      <select id="wo-filter-famille" style="flex:1;min-width:140px;">
+        <option value="Tous">Toutes familles</option>
+        ${state.equipTypes.map(t=>`<option value="${esc(t)}" ${woFilterFamille===t?'selected':''}>${esc(t)}</option>`).join('')}
+      </select>
+      <select id="wo-filter-equip" style="flex:1;min-width:150px;">
+        <option value="Tous">Tous équipements</option>
+        ${equipOptions.map(e=>`<option value="${e.id}" ${woFilterEquip===e.id?'selected':''}>${e.code} — ${esc(e.nom)}</option>`).join('')}
+      </select>
+      <select id="wo-filter-type" style="flex:1;min-width:140px;">
+        <option value="Tous">Tous types</option>
+        ${typesOT.map(t=>`<option value="${esc(t)}" ${woFilterType===t?'selected':''}>${esc(t)}</option>`).join('')}
+      </select>
+      ${(woSearch||woFilter!=='Tous'||woFilterFamille!=='Tous'||woFilterEquip!=='Tous'||woFilterType!=='Tous')?`<button class="btn btn-ghost" id="wo-filter-reset" type="button">${ICONS.close} Réinitialiser</button>`:''}
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-top:8px;">${sorted.length} ordre(s) affiché(s) sur ${base.length}</div>
   </div>
   ${sorted.length===0?`<div class="plate p16"><div class="empty">${ICONS.wrench}<span>Aucun ordre de travail.</span></div></div>`:
   `<div style="display:flex;flex-direction:column;gap:8px;">
@@ -2925,6 +2980,18 @@ function attachHandlers(){
   // Work orders
   const wf = document.getElementById('wo-filter');
   if(wf) wf.addEventListener('change', e=>{ woFilter=e.target.value; render(); });
+  const wSearch = document.getElementById('wo-search');
+  if(wSearch) wSearch.addEventListener('input', e=>{ woSearch=e.target.value; render(); const el=document.getElementById('wo-search'); if(el){ el.focus(); el.selectionStart = el.value.length; } });
+  const wFamille = document.getElementById('wo-filter-famille');
+  if(wFamille) wFamille.addEventListener('change', e=>{ woFilterFamille=e.target.value; render(); });
+  const wEquip = document.getElementById('wo-filter-equip');
+  if(wEquip) wEquip.addEventListener('change', e=>{ woFilterEquip=e.target.value; render(); });
+  const wType = document.getElementById('wo-filter-type');
+  if(wType) wType.addEventListener('change', e=>{ woFilterType=e.target.value; render(); });
+  const wReset = document.getElementById('wo-filter-reset');
+  if(wReset) wReset.addEventListener('click', ()=>{ woFilter='Tous'; woSearch=''; woFilterFamille='Tous'; woFilterEquip='Tous'; woFilterType='Tous'; render(); });
+  const wExport = document.getElementById('wo-export-excel');
+  if(wExport) wExport.addEventListener('click', exportWOToExcel);
   document.querySelectorAll('[data-open-wo]').forEach(b=>b.addEventListener('click',()=>{
     openWOEditor(b.dataset.openWo);
   }));
