@@ -338,9 +338,13 @@ function loadLocalCache(){
 }
 function saveLocalCache(){ try{ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }catch(e){} }
 
+function normalizeState(){
+  if(!Array.isArray(state.typesTravail) || state.typesTravail.length===0) state.typesTravail = ["Inspection","Remplacement pièces","Intervention","Révision","Autre"];
+  if(!Array.isArray(state.woTypes) || state.woTypes.length===0) state.woTypes = ["Panne / Correctif","Préventif","Inspection","Amélioration"];
+  if(!Array.isArray(state.woPriorites) || state.woPriorites.length===0) state.woPriorites = ["Basse","Normale","Haute","Urgente"];
+}
 async function loadRemote(){
   try{
-    const { data, error } = await sb.from('erp_data').select('data, updated_at').eq('id','main').maybeSingle();
     if(error) return { ok:false, error: error.message || JSON.stringify(error) };
     if(!data) return { ok:false, error: "Aucune ligne trouvée (id='main') dans la table erp_data" };
     return { ok:true, payload: data.data, updatedAt: data.updated_at };
@@ -385,7 +389,7 @@ function startPolling(){
       setSyncStatus(true, 'donnée du serveur: '+stamp);
       const changed = JSON.stringify(res.payload) !== JSON.stringify(state);
       if(changed){
-        state = res.payload;
+        state = res.payload; normalizeState();
         applyTheme(state.theme);
         saveLocalCache();
         render();
@@ -466,8 +470,8 @@ function drawDonut(canvas, segments){
 }
 const DEFAULT_EQUIP_TYPES = ["Pelleteuse","Tombereau","Foreuse","Groupe électrogène","Ligne de production","Machine industrielle","Convoyeur","Emballeuse","Autre"];
 const STATUTS = ["Opérationnel","En maintenance","En panne","À l'arrêt"];
-const WO_STATUTS = ["Créé","Confirmé","En cours","Suspendu","Terminé","Clôturé","Annulé"];
-const WO_STATUTS_ACTIFS = ["Créé","Confirmé","En cours","Suspendu"]; // comptent comme "ouverts" dans les KPI
+const WO_STATUTS = ["Créé","Confirmé partiel","Confirmé","En cours","Suspendu","Terminé","Clôturé","Annulé"];
+const WO_STATUTS_ACTIFS = ["Créé","Confirmé partiel","Confirmé","En cours","Suspendu"]; // comptent comme "ouverts" dans les KPI
 const WO_PRIORITES = ["Basse","Normale","Haute","Urgente"];
 const SITES = ["CIGRAC","Usine"];
 const LOCATION_TYPES = ["Site","Atelier","Ligne","Machine"];
@@ -541,7 +545,7 @@ function seedFleet(){
   }));
 }
 
-let state = { fleet: [], workOrders: [], fuelLogs: [], parts: [], pmPlans: [], locations: [], plantEquipment: [], notifications: [], measuringPoints: [], costCenters: [], productionLogs: [], woCounter: 0, equipTypes: [...DEFAULT_EQUIP_TYPES], personnel: [], purchaseRequests: [], purchaseOrders: [], daCounter: 0, bcCounter: 0, reservations: [], resaCounter: 0, postes: [...DEFAULT_POSTES], avisCounter: 0, stockMovements: [], auditLog: [] };
+let state = { fleet: [], workOrders: [], fuelLogs: [], parts: [], pmPlans: [], locations: [], plantEquipment: [], notifications: [], measuringPoints: [], costCenters: [], productionLogs: [], woCounter: 0, equipTypes: [...DEFAULT_EQUIP_TYPES], personnel: [], purchaseRequests: [], purchaseOrders: [], daCounter: 0, bcCounter: 0, reservations: [], resaCounter: 0, postes: [...DEFAULT_POSTES], avisCounter: 0, stockMovements: [], auditLog: [], typesTravail: ["Inspection","Remplacement pièces","Intervention","Révision","Autre"], woTypes: ["Panne / Correctif","Préventif","Inspection","Amélioration"], woPriorites: ["Basse","Normale","Haute","Urgente"] };
 let currentView = 'dashboard';
 
 /* ============ HELPERS ============ */
@@ -559,11 +563,11 @@ function logAudit(action){
   if(state.auditLog.length>500) state.auditLog.length = 500;
 }
 function woStatutColor(statut){
-  return { 'Créé':'var(--muted)', 'Confirmé':'var(--steel)', 'En cours':'var(--accent)', 'Suspendu':'var(--accent)', 'Terminé':'var(--steel)', 'Clôturé':'var(--success)', 'Annulé':'var(--danger)' }[statut] || 'var(--muted)';
+  return { 'Créé':'var(--muted)', 'Confirmé partiel':'var(--accent)', 'Confirmé':'var(--steel)', 'En cours':'var(--accent)', 'Suspendu':'var(--accent)', 'Terminé':'var(--steel)', 'Clôturé':'var(--success)', 'Annulé':'var(--danger)' }[statut] || 'var(--muted)';
 }
 function woStatusBadges(w){
   // Reproduit l'esprit du bandeau "statut système" SAP (LANC/DANP/DELN...) à partir de l'état réel de l'OT
-  const statutColors = { 'Créé':'var(--muted)', 'Confirmé':'var(--steel)', 'En cours':'var(--accent)', 'Suspendu':'var(--accent)', 'Terminé':'var(--steel)', 'Clôturé':'var(--success)', 'Annulé':'var(--danger)' };
+  const statutColors = { 'Créé':'var(--muted)', 'Confirmé partiel':'var(--accent)', 'Confirmé':'var(--steel)', 'En cours':'var(--accent)', 'Suspendu':'var(--accent)', 'Terminé':'var(--steel)', 'Clôturé':'var(--success)', 'Annulé':'var(--danger)' };
   const tags = [{t: w.statut.toUpperCase(), c: statutColors[w.statut]||'var(--muted)'}];
   if(w.operations && w.operations.length) tags.push({t:'OPÉR. SAISIES', c:'var(--steel)'});
   if(w.piecesUtilisees && w.piecesUtilisees.length) tags.push({t:'COMPOSANTS', c:'var(--steel)'});
@@ -749,7 +753,7 @@ function drawDashboardCharts(){
   const danger = getComputedStyle(document.documentElement).getPropertyValue('--danger').trim() || '#E5533C';
   drawBarChart(document.getElementById('chart-maint-cost'), months.map(monthLabel), maintByMonth, accent);
   drawBarChart(document.getElementById('chart-fuel-cost'), months.map(monthLabel), fuelByMonth, steel);
-  const woColors = { 'Créé':muted, 'Confirmé':steel, 'En cours':accent, 'Suspendu':accent, 'Terminé':steel, 'Clôturé':success, 'Annulé':danger };
+  const woColors = { 'Créé':muted, 'Confirmé partiel':accent, 'Confirmé':steel, 'En cours':accent, 'Suspendu':accent, 'Terminé':steel, 'Clôturé':success, 'Annulé':danger };
   const woFiltered = state.workOrders.filter(w=>matchesFilter(w.equipementId));
   drawDonut(document.getElementById('chart-wo-status'), WO_STATUTS.map(s=>({label:s, value: woFiltered.filter(w=>w.statut===s).length || 0.0001, color: woColors[s]})));
   const persColors = [accent, steel, success];
@@ -1308,7 +1312,7 @@ function fmtDuree(mins){
 }
 function blankWO(){
   return { id:null, numero:null, categorieEquipement:'', equipementId:'', type:'Panne / Correctif',
-    typeTravail: TYPES_TRAVAIL[0], poste: state.postes[0], titre:'', description:'', priorite:'Normale', statut:'Créé',
+    typeTravail: state.typesTravail[0], poste: state.postes[0], titre:'', description:'', priorite:'Normale', statut:'Créé',
     dateCreation:new Date().toISOString().slice(0,10), dateDebut:new Date().toISOString().slice(0,10), dateFin:'',
     technicien:'', cout:0, operations:[], piecesUtilisees:[],
     permisTravail:false, consignation:'', budgetApprouve:false, approbateurBudget:'', clotureFinanciere:false, clotureFinancierePar:'', documents:[],
@@ -1359,17 +1363,20 @@ function viewWOEdit(){
   return `
   <div class="wo-toolbar wrapwrap">
     <button class="btn btn-ghost" id="wo-back">${ICONS.close} Retour à la liste</button>
-    ${!woIsNew && canSuperviseEdit && s==='Créé' ? `<button class="btn btn-ghost" style="color:var(--steel);border-color:var(--steel);" id="wo-confirm">${ICONS.check} Confirmer</button>` : ''}
+    ${!woIsNew && canSuperviseEdit && (s==='Créé'||s==='Confirmé partiel') ? `<button class="btn btn-ghost" style="color:var(--steel);border-color:var(--steel);" id="wo-confirm">${ICONS.check} Confirmer${s==='Confirmé partiel'?' (suite)':''}</button>` : ''}
+    ${!woIsNew && canSuperviseEdit && (s==='Confirmé partiel'||s==='Confirmé') ? `<button class="btn btn-ghost" style="color:var(--muted);" id="wo-deconfirm">${ICONS.close} Déconfirmer</button>` : ''}
     ${!woIsNew && canSuperviseEdit && s==='Confirmé' ? `<button class="btn btn-ghost" style="color:var(--accent);border-color:var(--accent);" id="wo-launch">${ICONS.activity} Lancer</button>` : ''}
     ${!woIsNew && isTechEdit && w.technicien===currentUser.nomComplet && s==='Confirmé' ? `<button class="btn btn-ghost" style="color:var(--accent);border-color:var(--accent);" id="wo-launch">${ICONS.activity} Exécuter</button>` : ''}
     ${canExecute && s==='En cours' ? `<button class="btn btn-ghost" style="color:var(--steel);border-color:var(--steel);" id="wo-finish">${ICONS.check} Marquer terminé</button>` : ''}
     ${!woIsNew && canSuperviseEdit && s==='Terminé' ? `<button class="btn btn-ghost" style="color:var(--success);border-color:var(--success);" id="wo-close-toolbar">${ICONS.check} Clôturer technique</button>` : ''}
-    ${!woIsNew && canSuperviseEdit && ['Créé','Confirmé','En cours'].includes(s) ? `<button class="btn btn-ghost" style="color:var(--muted);" id="wo-suspend">${ICONS.close} Suspendre</button>` : ''}
+    ${!woIsNew && canSuperviseEdit && ['Créé','Confirmé partiel','Confirmé','En cours'].includes(s) ? `<button class="btn btn-ghost" style="color:var(--muted);" id="wo-suspend">${ICONS.close} Suspendre</button>` : ''}
     ${!woIsNew && canSuperviseEdit && s==='Suspendu' ? `<button class="btn btn-ghost" style="color:var(--accent);border-color:var(--accent);" id="wo-reopen">${ICONS.activity} Réouvrir</button>` : ''}
-    ${!woIsNew && canSuperviseEdit && s==='Clôturé' ? `<button class="btn btn-ghost" style="color:var(--accent);border-color:var(--accent);" id="wo-reopen">${ICONS.activity} Réouvrir</button>` : ''}
+    ${!woIsNew && canSuperviseEdit && s==='Clôturé' ? `<button class="btn btn-ghost" style="color:var(--accent);border-color:var(--accent);" id="wo-reopen">${ICONS.activity} Déclôturer</button>` : ''}
     ${!woIsNew && canSuperviseEdit && !finalStates.includes(s) ? `<button class="btn btn-ghost" style="color:var(--danger);border-color:var(--danger);" id="wo-cancel">${ICONS.trash} Annuler</button>` : ''}
     ${!woIsNew && canSuperviseEdit && !finalStates.includes(s) ? `<button class="btn btn-ghost" id="wo-transfer">${ICONS.users} Transférer</button>` : ''}
     ${!woIsNew && isAdminEdit && s==='Clôturé' && w.clotureFinanciere && !w.archive ? `<button class="btn btn-ghost" style="color:var(--success);border-color:var(--success);" id="wo-archive">${ICONS.receipt} Archiver</button>` : ''}
+    ${!woIsNew ? `<button class="btn btn-ghost" id="wo-workflow">${ICONS.layers} Workflow</button>` : ''}
+    ${!woIsNew ? `<button class="btn btn-ghost" id="wo-print-pdf">${ICONS.report} Imprimer PDF</button>` : ''}
     <div class="row" style="margin-left:auto;">
       ${woIsNew
         ? `<button class="btn btn-ghost" id="wo-cancel-new">${ICONS.close} Annuler</button>
@@ -1397,12 +1404,12 @@ function viewWOEdit(){
       <label class="field"><span>Catégorie</span><select id="wo-f-categorie"><option value="">— Choisir —</option>${CATEGORIES_EQUIPEMENT.map(c=>`<option ${w.categorieEquipement===c?'selected':''}>${c}</option>`).join('')}</select></label>
       <label class="field"><span>Équipement</span><select id="wo-f-equip">${equipOpts}</select></label>
       ${w.categorieEquipement==='Bâtiment' ? `<p style="font-size:11px;color:var(--muted);grid-column:1/-1;margin:-8px 0 0;">Module Bâtiments à venir — aucun équipement disponible pour l'instant.</p>` : ''}
-      <label class="field"><span>Type de travail <span style="color:var(--muted);font-weight:400;">(nature technique)</span></span><select id="wo-f-typetravail">${TYPES_TRAVAIL.map(t=>`<option ${w.typeTravail===t?'selected':''}>${t}</option>`).join('')}</select></label>
+      <label class="field"><span>Type de travail <span style="color:var(--muted);font-weight:400;">(nature technique)</span></span><select id="wo-f-typetravail">${state.typesTravail.map(t=>`<option ${w.typeTravail===t?'selected':''}>${t}</option>`).join('')}</select></label>
       <label class="field span2"><span>Libellé</span><input id="wo-f-titre" value="${esc(w.titre)}" placeholder="Remplacement flexible hydraulique"/></label>
       <label class="field span2"><span>Description</span><textarea id="wo-f-desc" rows="2">${esc(w.description)}</textarea></label>
-      <label class="field"><span>Type <span style="color:var(--muted);font-weight:400;">(catégorie de l'ordre)</span></span><select id="wo-f-type">${WO_TYPES.map(t=>`<option ${w.type===t?'selected':''}>${t}</option>`).join('')}</select></label>
+      <label class="field"><span>Type <span style="color:var(--muted);font-weight:400;">(catégorie de l'ordre)</span></span><select id="wo-f-type">${state.woTypes.map(t=>`<option ${w.type===t?'selected':''}>${t}</option>`).join('')}</select></label>
       <label class="field"><span>Poste responsable principal <span style="color:var(--muted);font-weight:400;">(corps de métier)</span></span><select id="wo-f-poste">${state.postes.map(p=>`<option ${w.poste===p?'selected':''}>${p}</option>`).join('')}</select></label>
-      <label class="field"><span>Priorité</span><select id="wo-f-priorite">${WO_PRIORITES.map(p=>`<option ${w.priorite===p?'selected':''}>${p}</option>`).join('')}</select></label>
+      <label class="field"><span>Priorité</span><select id="wo-f-priorite">${state.woPriorites.map(p=>`<option ${w.priorite===p?'selected':''}>${p}</option>`).join('')}</select></label>
       <label class="field"><span>Statut</span><select id="wo-f-statut" disabled title="Le statut se change uniquement via les boutons d'action en haut de page">${WO_STATUTS.map(s=>`<option ${w.statut===s?'selected':''}>${s}</option>`).join('')}</select></label>
       <label class="field"><span>Date début</span><input type="date" id="wo-f-debut" value="${w.dateDebut||w.dateCreation||''}"/></label>
       <label class="field"><span>Date fin</span><input type="date" id="wo-f-fin" value="${w.dateFin||''}"/></label>
@@ -1469,9 +1476,9 @@ function viewWOEdit(){
         const posteSelected = woOpFormOpen[op.id+'_poste'] || state.postes[0];
         const personnelForPoste = state.personnel.filter(p=>p.statut==='Actif' && p.poste===posteSelected);
         return `
-      <div class="card-item" style="padding:10px 12px;">
+      <div class="card-item" style="padding:10px 12px;${op.confirme?'border-color:var(--success);':''}">
         <div class="between" style="margin-bottom:8px;">
-          <span style="font-size:13px;font-weight:500;">${esc(op.description)}</span>
+          <span style="font-size:13px;font-weight:500;">${esc(op.description)} ${op.confirme?`<span class="badge" style="color:var(--success);border-color:var(--success);margin-left:6px;">${ICONS.check} Confirmée</span>`:''}</span>
           <button class="icon-btn" data-wo-op-del="${oi}">${ICONS.trash}</button>
         </div>
         ${op.affectations.length===0?`<span style="font-size:11px;color:var(--muted);">Aucun intervenant affecté.</span>`:
@@ -1591,7 +1598,16 @@ function wireWOEditor(){
     logAudit('OT '+w.numero+' → '+newStatut); persist(); toast('Statut : '+newStatut); render();
   }
   const confirmBtn = document.getElementById('wo-confirm');
-  if(confirmBtn) confirmBtn.addEventListener('click', ()=>quickTransition('Confirmé'));
+  if(confirmBtn) confirmBtn.addEventListener('click', ()=>{
+    if(!w.operations || w.operations.length===0){ alert("Ajoute au moins une opération avec ses intervenants dans l'onglet \"Opérations\" avant de confirmer."); return; }
+    openConfirmationPanel(w);
+  });
+  const deconfirmBtn = document.getElementById('wo-deconfirm');
+  if(deconfirmBtn) deconfirmBtn.addEventListener('click', ()=>openDeconfirmPanel(w));
+  const workflowBtn = document.getElementById('wo-workflow');
+  if(workflowBtn) workflowBtn.addEventListener('click', ()=>openWorkflowPanel(w));
+  const printPdfBtn = document.getElementById('wo-print-pdf');
+  if(printPdfBtn) printPdfBtn.addEventListener('click', ()=>exportSingleWOToPDF(w));
   const launchBtn = document.getElementById('wo-launch');
   if(launchBtn) launchBtn.addEventListener('click', ()=>quickTransition('En cours'));
   const finishBtn = document.getElementById('wo-finish');
@@ -1600,9 +1616,9 @@ function wireWOEditor(){
   if(closeBtn) closeBtn.addEventListener('click', ()=>{ if(confirm('Clôturer techniquement '+w.numero+' ?')) quickTransition('Clôturé'); });
   const suspendBtn = document.getElementById('wo-suspend');
   if(suspendBtn) suspendBtn.addEventListener('click', ()=>{
-    const motif = prompt('Motif de suspension (pièces manquantes, ressources...) :');
-    if(motif===null) return;
-    quickTransition('Suspendu', { statutAvantSuspension: w.statut, motifSuspension: motif });
+    promptModal('Suspendre '+w.numero, 'Motif de suspension (pièces manquantes, ressources...)', (motif)=>{
+      quickTransition('Suspendu', { statutAvantSuspension: w.statut, motifSuspension: motif });
+    }, {textarea:true});
   });
   const reopenBtn = document.getElementById('wo-reopen');
   if(reopenBtn) reopenBtn.addEventListener('click', ()=>{
@@ -1616,21 +1632,21 @@ function wireWOEditor(){
   });
   const cancelBtn = document.getElementById('wo-cancel');
   if(cancelBtn) cancelBtn.addEventListener('click', ()=>{
-    const motif = prompt('Motif d\'annulation :');
-    if(motif===null) return;
-    if(!confirm('Confirmer l\'annulation de '+w.numero+' ?')) return;
-    quickTransition('Annulé', { motifAnnulation: motif });
+    promptModal("Annuler "+w.numero, "Motif d'annulation", (motif)=>{
+      if(!confirm('Confirmer l\'annulation de '+w.numero+' ?')) return;
+      quickTransition('Annulé', { motifAnnulation: motif });
+    }, {textarea:true});
   });
   const transferBtn = document.getElementById('wo-transfer');
   if(transferBtn) transferBtn.addEventListener('click', ()=>{
-    const nouveauResp = prompt('Transférer à (nom du nouveau responsable) :', w.technicien||'');
-    if(nouveauResp===null || !nouveauResp.trim()) return;
-    const ancien = w.technicien||'—';
-    w.technicien = nouveauResp.trim();
-    const idx = state.workOrders.findIndex(x=>x.id===w.id);
-    if(idx>-1) state.workOrders[idx] = {...w};
-    logAudit('OT '+w.numero+' transféré de '+ancien+' à '+nouveauResp.trim());
-    persist(); toast('OT transféré à '+nouveauResp.trim()); render();
+    promptModal('Transférer '+w.numero, 'Nouveau responsable', (nouveauResp)=>{
+      const ancien = w.technicien||'—';
+      w.technicien = nouveauResp;
+      const idx = state.workOrders.findIndex(x=>x.id===w.id);
+      if(idx>-1) state.workOrders[idx] = {...w};
+      logAudit('OT '+w.numero+' transféré de '+ancien+' à '+nouveauResp);
+      persist(); toast('OT transféré à '+nouveauResp); render();
+    }, {defaultValue: w.technicien||'', placeholder:'Nom du nouveau responsable'});
   });
   const archiveBtn = document.getElementById('wo-archive');
   if(archiveBtn) archiveBtn.addEventListener('click', ()=>{
@@ -1693,7 +1709,7 @@ function wireWOEditor(){
   const opAdd = document.getElementById('wo-op-add');
   if(opAdd) opAdd.addEventListener('click', ()=>{
     const input = document.getElementById('wo-op-input');
-    if(input.value.trim()){ w.operations.push({id:uid(), description:input.value.trim(), affectations:[]}); render(); }
+    if(input.value.trim()){ w.operations.push({id:uid(), description:input.value.trim(), affectations:[], confirme:false}); render(); }
   });
   document.querySelectorAll('[data-wo-op-del]').forEach(b=>b.addEventListener('click',()=>{
     w.operations.splice(Number(b.dataset.woOpDel),1); render();
@@ -2704,6 +2720,47 @@ function viewAudit(){
   </tbody></table></div>`}`;
 }
 
+function editableListBlock(title, stateKey, prefix, placeholder){
+  const list = state[stateKey];
+  return `<div class="plate p16">
+    <h3 class="oswald" style="text-transform:uppercase;font-size:14px;margin:0 0 10px;">${title}</h3>
+    <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:10px;max-height:180px;overflow-y:auto;">
+      ${list.map((v,i)=>`<div class="between card-item" style="padding:6px 10px;"><span style="font-size:13px;">${esc(v)}</span><div class="row" style="gap:2px;">
+        <button class="icon-btn" data-elist-up="${prefix}:${i}" ${i===0?'disabled style="opacity:.3;"':''} title="Monter">${ICONS.arrowUp||'▲'}</button>
+        <button class="icon-btn" data-elist-down="${prefix}:${i}" ${i===list.length-1?'disabled style="opacity:.3;"':''} title="Descendre">${ICONS.arrowDown||'▼'}</button>
+        <button class="icon-btn" data-elist-del="${prefix}:${i}">${ICONS.trash}</button>
+      </div></div>`).join('')}
+    </div>
+    <div class="row">
+      <input id="elist-input-${prefix}" placeholder="${placeholder}" style="flex:1;"/>
+      <button class="btn btn-ghost" data-elist-add="${prefix}" type="button">${ICONS.plus} Ajouter</button>
+    </div>
+  </div>`;
+}
+const EDITABLE_LIST_KEYS = { 'wo-typetravail':'typesTravail', 'wo-type':'woTypes', 'wo-priorite':'woPriorites' };
+function wireEditableLists(){
+  document.querySelectorAll('[data-elist-add]').forEach(b=>b.addEventListener('click',()=>{
+    const prefix = b.dataset.elistAdd; const key = EDITABLE_LIST_KEYS[prefix];
+    const input = document.getElementById('elist-input-'+prefix);
+    const val = input.value.trim();
+    if(val && !state[key].includes(val)){ state[key].push(val); persist(); render(); }
+  }));
+  document.querySelectorAll('[data-elist-del]').forEach(b=>b.addEventListener('click',()=>{
+    const [prefix, iStr] = b.dataset.elistDel.split(':'); const key = EDITABLE_LIST_KEYS[prefix]; const i = Number(iStr);
+    if(state[key].length<=1){ alert('Il doit rester au moins une valeur dans la liste.'); return; }
+    const used = state.workOrders.some(w=>(prefix==='wo-typetravail'&&w.typeTravail===state[key][i])||(prefix==='wo-type'&&w.type===state[key][i])||(prefix==='wo-priorite'&&w.priorite===state[key][i]));
+    if(used && !confirm('Cette valeur est utilisée par au moins un ordre de travail. La supprimer quand même ?')) return;
+    state[key].splice(i,1); persist(); render();
+  }));
+  document.querySelectorAll('[data-elist-up]').forEach(b=>b.addEventListener('click',()=>{
+    const [prefix, iStr] = b.dataset.elistUp.split(':'); const key = EDITABLE_LIST_KEYS[prefix]; const i = Number(iStr);
+    if(i>0){ const arr=state[key]; [arr[i-1],arr[i]]=[arr[i],arr[i-1]]; persist(); render(); }
+  }));
+  document.querySelectorAll('[data-elist-down]').forEach(b=>b.addEventListener('click',()=>{
+    const [prefix, iStr] = b.dataset.elistDown.split(':'); const key = EDITABLE_LIST_KEYS[prefix]; const i = Number(iStr);
+    const arr=state[key]; if(i<arr.length-1){ [arr[i+1],arr[i]]=[arr[i],arr[i+1]]; persist(); render(); }
+  }));
+}
 function viewSettings(){
   const t = { ...DEFAULT_THEME, ...(state.theme||{}) };
   return `
@@ -2740,6 +2797,10 @@ function viewSettings(){
           <button class="btn btn-ghost" id="poste-add" type="button">${ICONS.plus} Ajouter</button>
         </div>
       </div>
+
+      ${editableListBlock('Types de travail (nature technique)', 'typesTravail', 'wo-typetravail', 'Nouveau type (ex: Lubrification)')}
+      ${editableListBlock("Types d'ordre (catégorie)", 'woTypes', 'wo-type', 'Nouveau type (ex: Amélioration continue)')}
+      ${editableListBlock('Priorités', 'woPriorites', 'wo-priorite', 'Nouvelle priorité (ex: Critique)')}
 
       <div class="plate p16">
         <h3 class="oswald" style="text-transform:uppercase;font-size:14px;margin:0 0 10px;">Autres référentiels</h3>
@@ -3203,7 +3264,276 @@ async function exportReportsToWord(){
   toast('Rapport Word généré');
 }
 
-/* ---------- Export PDF (jsPDF + autotable, 100% navigateur) ---------- */
+/* ---------- Confirmation / déconfirmation par opération (esprit SAP PM) ---------- */
+function syncWOToState(w){
+  const idx = state.workOrders.findIndex(x=>x.id===w.id);
+  if(idx>-1) state.workOrders[idx] = {...w};
+}
+function recomputeConfirmStatus(w){
+  const total = (w.operations||[]).length;
+  const confirmed = (w.operations||[]).filter(o=>o.confirme).length;
+  if(total===0) return;
+  w.statut = confirmed===0 ? 'Créé' : (confirmed<total ? 'Confirmé partiel' : 'Confirmé');
+}
+function openConfirmationPanel(w){
+  const root = document.getElementById('modal-root');
+  root.innerHTML = `
+  <div class="modal-overlay" id="wo-panel-overlay">
+    <div class="modal" style="max-width:760px;">
+      <div class="modal-head"><h3>Confirmation des opérations — ${w.numero||''}</h3><button class="icon-btn" id="wo-panel-close">${ICONS.close}</button></div>
+      <div class="modal-body">
+        <p style="font-size:12px;color:var(--muted);margin:0 0 14px;">Vérifie les heures réalisées par intervenant, ajuste-les si besoin, puis confirme chaque opération. L'OT passe en <strong>Confirmé partiel</strong> tant que toutes les opérations ne sont pas validées, puis en <strong>Confirmé</strong> une fois complet.</p>
+        <div style="display:flex;flex-direction:column;gap:10px;max-height:58vh;overflow-y:auto;">
+          ${(w.operations||[]).map((op,oi)=>`
+          <div class="card-item" style="padding:12px;${op.confirme?'border-color:var(--success);':''}">
+            <div class="between" style="margin-bottom:8px;">
+              <span style="font-size:13px;font-weight:500;">${esc(op.description)}</span>
+              ${op.confirme?`<span class="badge" style="color:var(--success);border-color:var(--success);">${ICONS.check} Confirmée — ${esc(op.confirmePar||'')}</span>`
+                :`<button class="btn btn-accent" style="font-size:11px;" data-confirm-op="${oi}">${ICONS.check} Confirmer cette opération</button>`}
+            </div>
+            ${(op.affectations||[]).length===0?`<span style="font-size:11px;color:var(--muted);">Aucun intervenant affecté — rien à confirmer pour cette tâche.</span>`:
+            `<div style="display:flex;flex-direction:column;gap:6px;">
+              ${op.affectations.map((af,ai)=>{
+                const mins = af.dureeMin!=null?af.dureeMin:dureeAffectation(af);
+                return `<div class="row wrapwrap" style="gap:8px;font-size:12px;background:var(--panel);border-radius:5px;padding:6px 8px;align-items:center;">
+                  <span class="badge">${esc(af.poste)}</span><span style="min-width:90px;">${esc(af.technicien)||'—'}</span>
+                  <input type="time" value="${af.heureDebut||''}" data-conf-debut="${oi}:${ai}" ${op.confirme?'disabled':''} style="width:92px;"/>
+                  <span style="color:var(--muted);">→</span>
+                  <input type="time" value="${af.heureFin||''}" data-conf-fin="${oi}:${ai}" ${op.confirme?'disabled':''} style="width:92px;"/>
+                  <strong style="color:var(--accent);margin-left:auto;" data-conf-duree="${oi}:${ai}">${fmtDuree(mins)}</strong>
+                </div>`;}).join('')}
+            </div>`}
+          </div>`).join('')}
+        </div>
+      </div>
+    </div>
+  </div>`;
+  wireWorkflowPanels(w, 'confirm');
+}
+function openDeconfirmPanel(w){
+  const root = document.getElementById('modal-root');
+  const confirmedOps = (w.operations||[]).map((op,oi)=>({op,oi})).filter(x=>x.op.confirme);
+  root.innerHTML = `
+  <div class="modal-overlay" id="wo-panel-overlay">
+    <div class="modal" style="max-width:680px;">
+      <div class="modal-head"><h3>Déconfirmation des opérations — ${w.numero||''}</h3><button class="icon-btn" id="wo-panel-close">${ICONS.close}</button></div>
+      <div class="modal-body">
+        <p style="font-size:12px;color:var(--muted);margin:0 0 14px;">Réservé aux responsables et planificateurs. Annule la confirmation d'une opération en cas d'erreur de saisie — l'OT repasse en <strong>Confirmé partiel</strong> ou <strong>Créé</strong> selon le nombre d'opérations restant confirmées.</p>
+        ${confirmedOps.length===0?`<div class="empty">${ICONS.check}<span>Aucune opération confirmée pour l'instant.</span></div>`:
+        `<div style="display:flex;flex-direction:column;gap:8px;max-height:55vh;overflow-y:auto;">
+          ${confirmedOps.map(({op,oi})=>`<div class="between card-item" style="padding:10px 12px;">
+            <div>
+              <div style="font-size:13px;font-weight:500;">${esc(op.description)}</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:2px;">Confirmée par ${esc(op.confirmePar||'—')}${op.dateConfirmation?' · '+new Date(op.dateConfirmation).toLocaleString('fr-FR'):''}</div>
+            </div>
+            <button class="btn btn-ghost" style="color:var(--danger);border-color:var(--danger);font-size:11px;" data-deconfirm-op="${oi}">${ICONS.close} Déconfirmer</button>
+          </div>`).join('')}
+        </div>`}
+      </div>
+    </div>
+  </div>`;
+  wireWorkflowPanels(w, 'deconfirm');
+}
+function wireWorkflowPanels(w, mode){
+  const closePanel = ()=>{ document.getElementById('modal-root').innerHTML=''; render(); };
+  const overlay = document.getElementById('wo-panel-overlay');
+  if(overlay) overlay.addEventListener('click', (e)=>{ if(e.target.id==='wo-panel-overlay') closePanel(); });
+  const closeBtn = document.getElementById('wo-panel-close');
+  if(closeBtn) closeBtn.addEventListener('click', closePanel);
+
+  document.querySelectorAll('[data-conf-debut]').forEach(inp=>inp.addEventListener('change', ()=>{
+    const [oi,ai] = inp.dataset.confDebut.split(':').map(Number);
+    w.operations[oi].affectations[ai].heureDebut = inp.value;
+    const mins = dureeAffectation(w.operations[oi].affectations[ai]);
+    const label = document.querySelector(`[data-conf-duree="${oi}:${ai}"]`); if(label) label.textContent = fmtDuree(mins);
+  }));
+  document.querySelectorAll('[data-conf-fin]').forEach(inp=>inp.addEventListener('change', ()=>{
+    const [oi,ai] = inp.dataset.confFin.split(':').map(Number);
+    w.operations[oi].affectations[ai].heureFin = inp.value;
+    const mins = dureeAffectation(w.operations[oi].affectations[ai]);
+    const label = document.querySelector(`[data-conf-duree="${oi}:${ai}"]`); if(label) label.textContent = fmtDuree(mins);
+  }));
+  document.querySelectorAll('[data-confirm-op]').forEach(btn=>btn.addEventListener('click', ()=>{
+    const oi = Number(btn.dataset.confirmOp);
+    const op = w.operations[oi];
+    (op.affectations||[]).forEach(af=>{ af.dureeMin = dureeAffectation(af); });
+    op.confirme = true;
+    op.confirmePar = currentUser ? currentUser.nomComplet : '';
+    op.dateConfirmation = new Date().toISOString();
+    recomputeConfirmStatus(w);
+    syncWOToState(w);
+    logAudit('OT '+w.numero+' — opération "'+op.description+'" confirmée par '+op.confirmePar);
+    persist(); toast('Opération confirmée');
+    openConfirmationPanel(w);
+  }));
+  document.querySelectorAll('[data-deconfirm-op]').forEach(btn=>btn.addEventListener('click', ()=>{
+    const oi = Number(btn.dataset.deconfirmOp);
+    const op = w.operations[oi];
+    if(!confirm('Déconfirmer l\'opération "'+op.description+'" ?')) return;
+    op.confirme = false; op.confirmePar=''; op.dateConfirmation=null;
+    recomputeConfirmStatus(w);
+    syncWOToState(w);
+    logAudit('OT '+w.numero+' — confirmation annulée sur "'+op.description+'" par '+(currentUser?currentUser.nomComplet:''));
+    persist(); toast('Opération déconfirmée');
+    openDeconfirmPanel(w);
+  }));
+}
+function openWorkflowPanel(w){
+  const em = equipMap();
+  const linkedNotif = state.notifications.find(n=>n.workOrderId===w.id);
+  const ops = w.operations||[];
+  const totalOps = ops.length, confirmedOps = ops.filter(o=>o.confirme).length;
+  const stages = [
+    { key:'Créé', label:'Création', done:true, info: 'Créé le '+(w.dateCreation||'—')+(linkedNotif?' · à partir de l\'avis '+(linkedNotif.numero||''):'') },
+    { key:'Confirmation', label:'Confirmation des opérations', done: w.statut!=='Créé',
+      info: totalOps===0 ? 'Aucune opération à confirmer' : `${confirmedOps} / ${totalOps} opération(s) confirmée(s)`,
+      pending: w.statut==='Créé' || w.statut==='Confirmé partiel' },
+    { key:'Exécution', label:'Exécution', done: ['En cours','Terminé','Clôturé'].includes(w.statut),
+      info: w.technicien ? 'Responsable : '+w.technicien : 'Aucun responsable assigné',
+      pending: w.statut==='Confirmé' },
+    { key:'Clôture', label:'Clôture technique & financière', done: w.statut==='Clôturé',
+      info: w.statut==='Clôturé' ? ('Clôturé le '+(w.dateFin||'—')+(w.clotureFinanciere?' · clôture financière validée par '+(w.clotureFinancierePar||''):' · clôture financière en attente')) : (w.statut==='Terminé' ? 'Prêt pour clôture technique' : 'En attente d\'exécution'),
+      pending: w.statut==='Terminé' },
+  ];
+  const root = document.getElementById('modal-root');
+  root.innerHTML = `
+  <div class="modal-overlay" id="wo-panel-overlay">
+    <div class="modal" style="max-width:640px;">
+      <div class="modal-head"><h3>Suivi du workflow — ${w.numero||''}</h3><button class="icon-btn" id="wo-panel-close">${ICONS.close}</button></div>
+      <div class="modal-body">
+        <div style="display:flex;flex-direction:column;gap:0;">
+          ${stages.map((st,i)=>`
+          <div class="row" style="align-items:flex-start;gap:12px;">
+            <div style="display:flex;flex-direction:column;align-items:center;">
+              <div style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:${st.done?'var(--success)':st.pending?'var(--accent)':'var(--panel2)'};color:${st.done||st.pending?'#14171A':'var(--muted)'};font-size:12px;font-weight:700;flex-shrink:0;">${st.done?'✓':(i+1)}</div>
+              ${i<stages.length-1?`<div style="width:2px;flex:1;min-height:28px;background:${st.done?'var(--success)':'var(--border)'};"></div>`:''}
+            </div>
+            <div style="padding-bottom:20px;">
+              <div style="font-size:13px;font-weight:600;color:${st.pending?'var(--accent)':'var(--text)'};">${st.label}${st.pending?' — en attente':''}</div>
+              <div style="font-size:11.5px;color:var(--muted);margin-top:2px;">${esc(st.info)}</div>
+            </div>
+          </div>`).join('')}
+        </div>
+        <div style="font-size:11px;color:var(--muted);border-top:1px solid var(--border);padding-top:10px;">Statut système actuel : <strong style="color:var(--text);">${w.statut}</strong></div>
+      </div>
+    </div>
+  </div>`;
+  const closePanel = ()=>{ document.getElementById('modal-root').innerHTML=''; };
+  document.getElementById('wo-panel-overlay').addEventListener('click', (e)=>{ if(e.target.id==='wo-panel-overlay') closePanel(); });
+  document.getElementById('wo-panel-close').addEventListener('click', closePanel);
+}
+function exportSingleWOToPDF(wOrId){
+  const w = typeof wOrId==='string' ? state.workOrders.find(x=>x.id===wOrId) : wOrId;
+  if(!w){ alert('Ordre de travail introuvable'); return; }
+  const em = equipMap();
+  const eq = em[w.equipementId];
+  const pm = Object.fromEntries(state.parts.map(p=>[p.id,p]));
+  const linkedNotif = state.notifications.find(n=>n.workOrderId===w.id);
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({unit:'mm',format:'a4'});
+  const pageW = doc.internal.pageSize.getWidth();
+  const marginL=15, marginR=15, usableW=pageW-marginL-marginR;
+  const NAVY=[31,54,99], ORANGE=[217,123,41], MUTED=[110,110,110];
+  let y=18;
+  function ensureSpace(h){ if(y+h>280){ doc.addPage(); y=18; } }
+  function sectionTitle(t){ ensureSpace(10); doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(...NAVY);
+    doc.text(t, marginL, y); doc.setDrawColor(...ORANGE); doc.setLineWidth(0.5); doc.line(marginL,y+1.5,pageW-marginR,y+1.5); y+=7; }
+  function kv(label, value, xOff, w2){
+    doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(...MUTED); doc.text(label, marginL+xOff, y);
+    doc.setFont('helvetica','bold'); doc.setFontSize(9.5); doc.setTextColor(30,30,30);
+    const lines = doc.splitTextToSize(String(value||'—'), w2);
+    doc.text(lines, marginL+xOff, y+4.2);
+    return lines.length;
+  }
+  // En-tête
+  doc.setFillColor(...NAVY); doc.rect(0,0,pageW,15,'F');
+  doc.setFont('helvetica','bold'); doc.setFontSize(14); doc.setTextColor(255,255,255);
+  doc.text('2NA ENTREPRISE — ORDRE DE TRAVAIL', marginL, 10);
+  doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(...ORANGE);
+  doc.text(w.numero||'—', pageW-marginR, 10, {align:'right'});
+  y = 22;
+  doc.setFont('helvetica','bold'); doc.setFontSize(15); doc.setTextColor(20,20,20);
+  doc.text(w.titre||'(sans titre)', marginL, y); y+=8;
+  doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(...MUTED);
+  doc.text('Statut : '+(w.statut||'—')+(linkedNotif?'   ·   Avis lié : '+(linkedNotif.numero||''):''), marginL, y); y+=8;
+
+  sectionTitle('Données générales');
+  const col1X=0, col2X=95, colW=88;
+  let l1 = kv('Équipement', eq?(eq.code+' — '+eq.nom):'—', col1X, colW);
+  let l2 = kv('Famille', eq?eq.type:'—', col2X, colW);
+  y += Math.max(l1,l2)*4.2+5;
+  l1 = kv('Type (catégorie)', w.type, col1X, colW);
+  l2 = kv('Type de travail', w.typeTravail, col2X, colW);
+  y += Math.max(l1,l2)*4.2+5;
+  l1 = kv('Poste responsable', w.poste, col1X, colW);
+  l2 = kv('Priorité', w.priorite, col2X, colW);
+  y += Math.max(l1,l2)*4.2+5;
+  l1 = kv('Responsable OT', w.technicien, col1X, colW);
+  l2 = kv('Date début / fin', (w.dateDebut||w.dateCreation||'—')+' → '+(w.dateFin||'en cours'), col2X, colW);
+  y += Math.max(l1,l2)*4.2+5;
+  l1 = kv('Coût (FCFA)', fmt(w.cout||0), col1X, colW);
+  l2 = kv('Créé le', w.dateCreation||'—', col2X, colW);
+  y += Math.max(l1,l2)*4.2+7;
+
+  if(w.description){
+    doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(...MUTED); doc.text('Description', marginL, y); y+=4.2;
+    doc.setFont('helvetica','normal'); doc.setFontSize(9.5); doc.setTextColor(30,30,30);
+    const lines = doc.splitTextToSize(w.description, usableW); ensureSpace(lines.length*4.2+4);
+    doc.text(lines, marginL, y); y+= lines.length*4.2+7;
+  }
+
+  sectionTitle('Opérations et intervenants');
+  if(!w.operations || w.operations.length===0){
+    doc.setFont('helvetica','italic'); doc.setFontSize(9.5); doc.setTextColor(...MUTED); doc.text('Aucune opération enregistrée.', marginL, y); y+=8;
+  } else {
+    const rows = [];
+    w.operations.forEach(op=>{
+      if(!op.affectations || op.affectations.length===0){ rows.push([op.description||'', '—','—','—','—']); }
+      else op.affectations.forEach((af,i)=>{
+        const mins = af.dureeMin!=null ? af.dureeMin : dureeAffectation(af);
+        rows.push([i===0?(op.description||''):'', af.poste||'', af.technicien||'', (af.heureDebut||'--:--')+' → '+(af.heureFin||'--:--'), fmtDuree(mins)]);
+      });
+    });
+    ensureSpace(14);
+    doc.autoTable({ startY:y, head:[['Tâche','Poste','Intervenant','Horaire','Durée']], body: rows,
+      margin:{left:marginL,right:marginR}, styles:{fontSize:8.5,cellPadding:2.2}, headStyles:{fillColor:NAVY,textColor:255,fontStyle:'bold'},
+      alternateRowStyles:{fillColor:[245,245,245]} });
+    y = doc.lastAutoTable.finalY + 8;
+  }
+
+  sectionTitle('Composants / pièces de rechange');
+  if(!w.piecesUtilisees || w.piecesUtilisees.length===0){
+    doc.setFont('helvetica','italic'); doc.setFontSize(9.5); doc.setTextColor(...MUTED); doc.text('Aucune pièce utilisée.', marginL, y); y+=8;
+  } else {
+    const rows = w.piecesUtilisees.map(pu=>{ const pt=pm[pu.partId];
+      return [pt?pt.nom:'Pièce supprimée', pt?pt.ref||'—':'—', fmt(pu.quantite)+(pt?' '+uniteAbrev(pt):''), pu.reserved?'Réservé':'À réserver'];
+    });
+    ensureSpace(14);
+    doc.autoTable({ startY:y, head:[['Article','Référence','Quantité','Statut']], body: rows,
+      margin:{left:marginL,right:marginR}, styles:{fontSize:8.5,cellPadding:2.2}, headStyles:{fillColor:NAVY,textColor:255,fontStyle:'bold'},
+      alternateRowStyles:{fillColor:[245,245,245]} });
+    y = doc.lastAutoTable.finalY + 8;
+  }
+
+  sectionTitle('Sécurité / HSE');
+  l1 = kv('Permis de travail', w.permisTravail?'Oui':'Non', col1X, colW);
+  l2 = kv('Consignation', w.consignation||'—', col2X, colW);
+  y += Math.max(l1,l2)*4.2+7;
+
+  if(Number(w.cout)>0){
+    sectionTitle('Budget & clôture');
+    l1 = kv('Budget approuvé', w.budgetApprouve?('Oui — '+(w.approbateurBudget||'')):'Non', col1X, colW);
+    l2 = kv('Clôture financière', w.clotureFinanciere?('Oui — '+(w.clotureFinancierePar||'')):'Non', col2X, colW);
+    y += Math.max(l1,l2)*4.2+7;
+  }
+
+  const pageCount = doc.internal.getNumberOfPages();
+  for(let i=1;i<=pageCount;i++){ doc.setPage(i); doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(150,150,150);
+    doc.text('2NA Entreprise — Ordre de travail '+(w.numero||''), marginL, 292); doc.text(String(i)+' / '+pageCount, pageW-marginR, 292, {align:'right'}); }
+
+  doc.save('2NA-Entreprise_'+(w.numero||'OT')+'.pdf');
+  toast('PDF généré');
+}
 function exportReportsToPDF(){
   toast('Génération du rapport PDF…');
   const d = computeReportData();
@@ -3471,6 +3801,17 @@ function openModal(title, bodyHtml, onSave){
   });
 }
 function closeModal(){ document.getElementById('modal-root').innerHTML=''; }
+function promptModal(title, label, onConfirm, opts={}){
+  openModal(title, `<label class="field"><span>${label}</span>${opts.textarea
+    ? `<textarea data-f="val" rows="3" placeholder="${opts.placeholder||''}">${esc(opts.defaultValue||'')}</textarea>`
+    : `<input data-f="val" value="${esc(opts.defaultValue||'')}" placeholder="${opts.placeholder||''}"/>`}</label>`,
+  (data)=>{
+    const val = (data.val||'').trim();
+    if(opts.required!==false && !val){ alert('Ce champ est requis'); return; }
+    closeModal();
+    onConfirm(val);
+  });
+}
 
 /* ============ CRUD HANDLERS ============ */
 function attachHandlers(){
@@ -3490,6 +3831,7 @@ function attachHandlers(){
     if(kind==='status' && val) woFilter = val;
     currentView = target; resaValidatingId=null; render();
   }));
+  wireEditableLists();
   document.querySelectorAll('[data-open-wo-dash]').forEach(el=>el.addEventListener('click',()=>{
     currentView='wo'; render(); openWOEditor(el.dataset.openWoDash);
   }));
@@ -4089,7 +4431,7 @@ document.getElementById('refresh-btn').addEventListener('click', async ()=>{
   btn.disabled = true; btn.textContent = '...';
   const res = await loadRemote();
   if(res.ok){
-    state = res.payload;
+    state = res.payload; normalizeState();
     applyTheme(state.theme);
     saveLocalCache();
     render();
@@ -4135,7 +4477,8 @@ async function init(){
     data = { fleet: seedFleet(), workOrders: [], fuelLogs: [], parts: [], pmPlans: [],
       locations: locs, plantEquipment: seedPlantEquipment(locs), notifications: [], measuringPoints: [],
       costCenters: seedCostCenters(), productionLogs: [], woCounter: 0, equipTypes: [...DEFAULT_EQUIP_TYPES], personnel: [], theme: { ...DEFAULT_THEME },
-      purchaseRequests: [], purchaseOrders: [], daCounter: 0, bcCounter: 0, reservations: [], resaCounter: 0, postes: [...DEFAULT_POSTES], avisCounter: 0, stockMovements: [], auditLog: [] };
+      purchaseRequests: [], purchaseOrders: [], daCounter: 0, bcCounter: 0, reservations: [], resaCounter: 0, postes: [...DEFAULT_POSTES], avisCounter: 0, stockMovements: [], auditLog: [],
+      typesTravail: ["Inspection","Remplacement pièces","Intervention","Révision","Autre"], woTypes: ["Panne / Correctif","Préventif","Inspection","Amélioration"], woPriorites: ["Basse","Normale","Haute","Urgente"] };
   } else {
     // compatibilité ascendante : ajoute le module usine si absent d'un compte existant
     if(!data.locations || data.locations.length===0){
@@ -4162,6 +4505,9 @@ async function init(){
     data.avisCounter = data.avisCounter || 0;
     data.stockMovements = data.stockMovements || [];
     data.auditLog = data.auditLog || [];
+    data.typesTravail = (data.typesTravail && data.typesTravail.length) ? data.typesTravail : ["Inspection","Remplacement pièces","Intervention","Révision","Autre"];
+    data.woTypes = (data.woTypes && data.woTypes.length) ? data.woTypes : ["Panne / Correctif","Préventif","Inspection","Amélioration"];
+    data.woPriorites = (data.woPriorites && data.woPriorites.length) ? data.woPriorites : ["Basse","Normale","Haute","Urgente"];
     (data.parts||[]).forEach(p=>{
       if(p.fournisseurPrincipal===undefined) p.fournisseurPrincipal = p.fournisseur||'';
       if(!p.categorie) p.categorie = CATEGORIES_ARTICLE[4];
