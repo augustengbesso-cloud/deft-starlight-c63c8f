@@ -711,6 +711,7 @@ function render(){
   else if(currentView==='bc') c.innerHTML = viewBC();
   attachHandlers();
   if(currentView==='dashboard') drawDashboardCharts();
+  if(currentView==='reports'){ const rd = computeReportData(); const top = rd.paretoEquip.slice(0,8); drawParetoChart(document.getElementById('chart-pareto'), top.map(x=>x.label), top.map(x=>x.cout)); }
   if(currentView==='users' && allUsers.length===0){ loadAllUsers().then(()=>{ if(currentView==='users') render(); }); }
 }
 function drawDashboardCharts(){
@@ -2886,29 +2887,260 @@ function receptionForm(b){
   </div>`;
 }
 
+let reportFrom = '';
+let reportTo = '';
+function drawParetoChart(canvas, labels, values){
+  if(!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio||1;
+  const W = canvas.clientWidth, H = canvas.clientHeight;
+  canvas.width = W*dpr; canvas.height = H*dpr; ctx.scale(dpr,dpr);
+  ctx.clearRect(0,0,W,H);
+  if(!values.length) return;
+  const total = values.reduce((a,b)=>a+b,0) || 1;
+  let cum = 0; const cumPct = values.map(v=>{ cum+=v; return cum/total*100; });
+  const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#F2A63C';
+  const steel = getComputedStyle(document.documentElement).getPropertyValue('--steel').trim() || '#5B8CB3';
+  const muted = getComputedStyle(document.documentElement).getPropertyValue('--muted').trim() || '#8B939A';
+  const max = Math.max(1, ...values);
+  const padL=8, padR=8, padT=14, padB=30;
+  const chartW = W-padL-padR, chartH = H-padT-padB;
+  const n = values.length;
+  const gap = chartW/n, bw = gap*0.55;
+  ctx.font = '9px Inter, sans-serif';
+  values.forEach((v,i)=>{
+    const h = (v/max)*chartH;
+    const x = padL + i*gap + (gap-bw)/2;
+    const y = padT + (chartH-h);
+    ctx.fillStyle = accent; ctx.globalAlpha = .85; ctx.fillRect(x,y,bw,h); ctx.globalAlpha = 1;
+    ctx.fillStyle = muted; ctx.textAlign = 'center';
+    ctx.fillText((labels[i]||'').toString().slice(0,9), x+bw/2, H-10);
+  });
+  ctx.beginPath();
+  cumPct.forEach((p,i)=>{
+    const x = padL + i*gap + gap/2;
+    const y = padT + chartH - (p/100*chartH);
+    if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+  });
+  ctx.strokeStyle = steel; ctx.lineWidth = 2; ctx.stroke();
+  cumPct.forEach((p,i)=>{
+    const x = padL + i*gap + gap/2;
+    const y = padT + chartH - (p/100*chartH);
+    ctx.beginPath(); ctx.arc(x,y,2.5,0,Math.PI*2); ctx.fillStyle = steel; ctx.fill();
+  });
+  const y80 = padT + chartH - (80/100*chartH);
+  ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.setLineDash([3,3]);
+  ctx.beginPath(); ctx.moveTo(padL,y80); ctx.lineTo(W-padR,y80); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle = muted; ctx.textAlign = 'left'; ctx.font = '9px Inter, sans-serif';
+  ctx.fillText('80%', padL, y80-3);
+}
+function computeReportData(){
+  const from = reportFrom, to = reportTo;
+  const inRange = d => { if(!from && !to) return true; if(!d) return false; if(from && d<from) return false; if(to && d>to) return false; return true; };
+  const em = equipMap();
+  const pm = Object.fromEntries(state.parts.map(p=>[p.id,p]));
+  const wos = state.workOrders.filter(w=>inRange(w.dateCreation));
+
+  const coutTotal = wos.reduce((a,w)=>a+Number(w.cout||0),0);
+  const coutParType = {};
+  wos.forEach(w=>{ const t=w.type||'Autre'; coutParType[t]=(coutParType[t]||0)+Number(w.cout||0); });
+  const coutParEquip = {};
+  wos.forEach(w=>{ if(!w.equipementId) return; coutParEquip[w.equipementId]=(coutParEquip[w.equipementId]||0)+Number(w.cout||0); });
+  const coutParFamille = {};
+  wos.forEach(w=>{ const eq=em[w.equipementId]; const f=eq?eq.type:'Non affecté'; coutParFamille[f]=(coutParFamille[f]||0)+Number(w.cout||0); });
+  const spentByCC = {};
+  wos.forEach(w=>{ const eq=em[w.equipementId]; const cc=eq&&eq.centreCoutId?eq.centreCoutId:null; if(cc) spentByCC[cc]=(spentByCC[cc]||0)+Number(w.cout||0); });
+  const budgetVsReel = state.costCenters.map(c=>({code:c.code, nom:c.nom, budget:Number(c.budgetAnnuel||0), reel:spentByCC[c.id]||0}));
+
+  const fuelLogs = state.fuelLogs.filter(f=>inRange(f.date));
+  const fuelParEquip = {};
+  fuelLogs.forEach(f=>{ const o=fuelParEquip[f.equipementId]=fuelParEquip[f.equipementId]||{l:0,cout:0}; o.l+=Number(f.quantite||0); o.cout+=Number(f.cout||0); });
+  const litresTotal = fuelLogs.reduce((a,f)=>a+Number(f.quantite||0),0);
+  const coutCarburantTotal = fuelLogs.reduce((a,f)=>a+Number(f.cout||0),0);
+
+  const sortiesValidees = state.reservations.filter(r=>r.statut==='Sortie validée' && inRange(r.dateSortie||r.dateCreation));
+  const valeurPiecesConsommees = sortiesValidees.reduce((a,r)=>{ const pt=pm[r.partId]; return a+(pt?Number(pt.coutUnitaire||0)*Number(r.quantite||0):0); },0);
+  const qtePiecesConsommees = sortiesValidees.reduce((a,r)=>a+Number(r.quantite||0),0);
+  const entreesStock = (state.stockMovements||[]).filter(m=>inRange(m.date));
+  const qteEntrees = entreesStock.reduce((a,m)=>a+Number(m.quantite||0),0);
+  const piecesSousSeuil = state.parts.filter(p=>Number(p.quantite)<=Number(p.seuil));
+  const piecesCritiques = state.parts.filter(p=>p.critique);
+  const consoParPiece = {};
+  sortiesValidees.forEach(r=>{ consoParPiece[r.partId]=(consoParPiece[r.partId]||0)+Number(r.quantite||0); });
+
+  const correctifs = wos.filter(w=>w.type==='Panne / Correctif');
+  const closedCorrectifs = correctifs.filter(w=>w.dateCreation && w.dateFin);
+  const mttrH = closedCorrectifs.length ? closedCorrectifs.reduce((a,w)=>a+Math.max(0,(new Date(w.dateFin)-new Date(w.dateCreation))/36e5),0)/closedCorrectifs.length : 0;
+  const pannesParEquip = {};
+  correctifs.forEach(w=>{ if(w.equipementId) pannesParEquip[w.equipementId]=(pannesParEquip[w.equipementId]||0)+1; });
+  let mtbfH = 0;
+  const mtbfList = [];
+  Object.keys(pannesParEquip).forEach(eid=>{
+    const pannes = correctifs.filter(w=>w.equipementId===eid).map(w=>w.dateCreation).filter(Boolean).sort();
+    if(pannes.length>=2){
+      const gaps=[]; for(let i=1;i<pannes.length;i++) gaps.push((new Date(pannes[i])-new Date(pannes[i-1]))/36e5);
+      const avg = gaps.reduce((a,b)=>a+b,0)/gaps.length;
+      mtbfList.push({equip:em[eid], mtbfH:avg});
+    }
+  });
+  if(mtbfList.length) mtbfH = mtbfList.reduce((a,x)=>a+x.mtbfH,0)/mtbfList.length;
+  const nbCrees = wos.length;
+  const nbClotures = wos.filter(w=>w.statut==='Clôturé').length;
+  const pctPreventif = wos.length ? Math.round(wos.filter(w=>w.type==='Préventif').length/wos.length*1000)/10 : 0;
+  const pctCorrectif = wos.length ? Math.round(correctifs.length/wos.length*1000)/10 : 0;
+
+  const arretParEquip = {};
+  correctifs.forEach(w=>{
+    if(!w.equipementId || !w.dateCreation || !w.dateFin) return;
+    const h = Math.max(0,(new Date(w.dateFin)-new Date(w.dateCreation))/36e5);
+    arretParEquip[w.equipementId] = (arretParEquip[w.equipementId]||0)+h;
+  });
+
+  const permisRenseigne = wos.filter(w=>w.permisTravail).length;
+  const consignationRenseignee = wos.filter(w=>w.consignation && w.consignation.trim()).length;
+
+  const paretoEquip = Object.entries(coutParEquip).map(([eid,cout])=>({label:em[eid]?em[eid].code:'?', cout}))
+    .sort((a,b)=>b.cout-a.cout);
+
+  return { coutTotal, coutParType, coutParEquip, coutParFamille, spentByCC, budgetVsReel,
+    fuelParEquip, litresTotal, coutCarburantTotal,
+    sortiesValidees, valeurPiecesConsommees, qtePiecesConsommees, qteEntrees, piecesSousSeuil, piecesCritiques, consoParPiece,
+    mttrH, mtbfH, mtbfList, nbCrees, nbClotures, pctPreventif, pctCorrectif, correctifs,
+    arretParEquip, permisRenseigne, consignationRenseignee, totalOT: wos.length,
+    paretoEquip, em, pm };
+}
+function exportReportsToExcel(){
+  const d = computeReportData();
+  const wb = XLSX.utils.book_new();
+  const synth = [
+    {Indicateur:'Coût total maintenance (FCFA)', Valeur: d.coutTotal},
+    {Indicateur:'Coût total carburant (FCFA)', Valeur: d.coutCarburantTotal},
+    {Indicateur:'Litres consommés', Valeur: d.litresTotal},
+    {Indicateur:'Valeur pièces consommées (FCFA)', Valeur: Math.round(d.valeurPiecesConsommees)},
+    {Indicateur:'Quantité pièces consommées', Valeur: d.qtePiecesConsommees},
+    {Indicateur:'MTTR moyen (h)', Valeur: Math.round(d.mttrH*10)/10},
+    {Indicateur:'MTBF moyen (h)', Valeur: Math.round(d.mtbfH*10)/10},
+    {Indicateur:'OT créés (période)', Valeur: d.nbCrees},
+    {Indicateur:'OT clôturés (période)', Valeur: d.nbClotures},
+    {Indicateur:'% Préventif', Valeur: d.pctPreventif},
+    {Indicateur:'% Correctif', Valeur: d.pctCorrectif},
+    {Indicateur:'Pièces sous seuil critique', Valeur: d.piecesSousSeuil.length},
+    {Indicateur:'Pièces critiques référencées', Valeur: d.piecesCritiques.length},
+    {Indicateur:'OT avec permis de travail formalisé', Valeur: d.permisRenseigne},
+    {Indicateur:'OT avec consignation renseignée', Valeur: d.consignationRenseignee},
+  ];
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(synth), 'Synthese');
+
+  const coutParEquipRows = Object.entries(d.coutParEquip).map(([eid,c])=>({Equipement: d.em[eid]?d.em[eid].code:eid, Designation: d.em[eid]?d.em[eid].nom:'', Famille: d.em[eid]?d.em[eid].type:'', 'Cout maintenance (FCFA)': c})).sort((a,b)=>b['Cout maintenance (FCFA)']-a['Cout maintenance (FCFA)']);
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(coutParEquipRows), 'Couts par equipement');
+
+  const coutParTypeRows = Object.entries(d.coutParType).map(([t,c])=>({Type: t, 'Cout (FCFA)': c}));
+  const coutParFamilleRows = Object.entries(d.coutParFamille).map(([f,c])=>({Famille: f, 'Cout (FCFA)': c}));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([...coutParTypeRows,{},...coutParFamilleRows]), 'Couts par type-famille');
+
+  const budgetRows = d.budgetVsReel.map(b=>({'Centre de cout':b.code, Nom:b.nom, 'Budget annuel':b.budget, 'Realise':b.reel, 'Ecart':b.budget-b.reel, '% consomme': b.budget?Math.round(b.reel/b.budget*1000)/10:''}));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(budgetRows), 'Budget vs reel');
+
+  const fuelRows = Object.entries(d.fuelParEquip).map(([eid,f])=>({Equipement: d.em[eid]?d.em[eid].code:eid, 'Litres':Math.round(f.l*10)/10, 'Cout (FCFA)':f.cout})).sort((a,b)=>b.Litres-a.Litres);
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(fuelRows), 'Carburant');
+
+  const piecesRows = Object.entries(d.consoParPiece).map(([pid,q])=>{ const pt=d.pm[pid]; return {Article: pt?pt.nom:pid, Reference: pt?pt.ref:'', 'Qte consommee':q, 'Valeur (FCFA)': pt?Math.round(Number(pt.coutUnitaire||0)*q):0}; }).sort((a,b)=>b['Valeur (FCFA)']-a['Valeur (FCFA)']);
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(piecesRows), 'Consommation pieces');
+
+  const mtbfRows = d.mtbfList.map(x=>({Equipement: x.equip?x.equip.code:'?', 'MTBF (h)': Math.round(x.mtbfH*10)/10})).sort((a,b)=>a['MTBF (h)']-b['MTBF (h)']);
+  const arretRows = Object.entries(d.arretParEquip).map(([eid,h])=>({Equipement: d.em[eid]?d.em[eid].code:eid, "Temps d'arret cumule (h)": Math.round(h*10)/10})).sort((a,b)=>b["Temps d'arret cumule (h)"]-a["Temps d'arret cumule (h)"]);
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(mtbfRows), 'MTBF par equipement');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(arretRows), "Temps d'arret");
+
+  const paretoRows = (()=>{ const total=d.paretoEquip.reduce((a,x)=>a+x.cout,0)||1; let cum=0; return d.paretoEquip.map(x=>{ cum+=x.cout; return {Equipement:x.label, 'Cout (FCFA)':x.cout, '% cumule': Math.round(cum/total*1000)/10}; }); })();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(paretoRows), 'Pareto equipements');
+
+  const dateStr = new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb, '2NA-ERP_rapport_maintenance_'+dateStr+'.xlsx');
+}
 function viewReports(){
   const k = computeKpis();
-  const costByEquip = {}; state.workOrders.forEach(w=>{ costByEquip[w.equipementId]=(costByEquip[w.equipementId]||0)+Number(w.cout||0); });
-  const fuelByEquip = {}; state.fuelLogs.forEach(f=>{ const o=fuelByEquip[f.equipementId]=fuelByEquip[f.equipementId]||{l:0,cout:0}; o.l+=Number(f.quantite||0); o.cout+=Number(f.cout||0); });
-  const rows = state.fleet.map(e=>({e, cout:costByEquip[e.id]||0, fuel:fuelByEquip[e.id]||{l:0,cout:0}})).sort((a,b)=>(b.cout+b.fuel.cout)-(a.cout+a.fuel.cout));
-  const totalGeneral = rows.reduce((a,r)=>a+r.cout+r.fuel.cout,0);
+  const d = computeReportData();
+  const topPareto = d.paretoEquip.slice(0,8);
+  let cum=0; const totalPareto = topPareto.reduce((a,x)=>a+x.cout,0)||1;
+  const pannesRows = Object.entries(d.arretParEquip).map(([eid,h])=>({eq:d.em[eid], h, n:d.correctifs.filter(w=>w.equipementId===eid).length})).sort((a,b)=>b.h-a.h).slice(0,6);
   return `
   <h1>Rapports</h1>
-  <p class="subtitle">Coûts consolidés par engin — maintenance & carburant</p>
-  <div class="grid grid-kpi" style="margin-bottom:16px;">
-    ${kpiCard('Coût total flotte', fmt(totalGeneral),'FCFA','report','var(--text)')}
-    ${kpiCard('Disponibilité', k.disponibilite,'%','gauge', k.disponibilite>=80?'var(--success)':'var(--danger)')}
-    ${kpiCard('MTTR', k.mttrH.toFixed(1),'h','wrench','var(--steel)')}
-    ${kpiCard('Litres consommés', fmt(k.litresTotal),'L','fuel','var(--steel)')}
+  <p class="subtitle">Analyse consolidée maintenance — financier, technique, stratégique</p>
+
+  <div class="plate p14" style="margin-bottom:16px;">
+    <div class="row wrapwrap" style="gap:8px;align-items:center;">
+      <span style="font-size:12px;color:var(--muted);">Période :</span>
+      <input type="date" id="report-from" value="${reportFrom}" style="width:150px;"/>
+      <span style="font-size:12px;color:var(--muted);">→</span>
+      <input type="date" id="report-to" value="${reportTo}" style="width:150px;"/>
+      ${(reportFrom||reportTo)?`<button class="btn btn-ghost" id="report-period-reset" type="button">${ICONS.close} Toute la période</button>`:''}
+      <button class="btn btn-accent" id="report-export-excel" style="margin-left:auto;">${ICONS.receipt} Exporter Excel (rapport complet)</button>
+    </div>
   </div>
+
+  <h3 class="oswald" style="text-transform:uppercase;font-size:14px;color:var(--muted);margin:0 0 10px;">1 · Axe financier</h3>
+  <div class="grid grid-kpi" style="margin-bottom:16px;">
+    ${kpiCard('Coût maintenance', fmt(d.coutTotal),'FCFA','report','var(--text)')}
+    ${kpiCard('Coût carburant', fmt(d.coutCarburantTotal),'FCFA','fuel','var(--steel)')}
+    ${kpiCard('Valeur pièces consommées', fmt(Math.round(d.valeurPiecesConsommees)),'FCFA','package','var(--accent)')}
+    ${kpiCard('Coût global', fmt(d.coutTotal+d.coutCarburantTotal+Math.round(d.valeurPiecesConsommees)),'FCFA','wallet','var(--danger)')}
+  </div>
+  <div class="grid" style="grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+    <div class="plate p16"><h4 style="margin:0 0 8px;font-size:12px;color:var(--muted);text-transform:uppercase;">Coût par type d'intervention</h4>
+      ${Object.entries(d.coutParType).sort((a,b)=>b[1]-a[1]).map(([t,c])=>`<div class="between" style="font-size:12px;padding:4px 0;border-bottom:1px solid var(--border);"><span>${esc(t)}</span><span class="mono">${fmt(c)} FCFA</span></div>`).join('')||`<span style="font-size:12px;color:var(--muted);">Aucune donnée sur la période.</span>`}
+    </div>
+    <div class="plate p16"><h4 style="margin:0 0 8px;font-size:12px;color:var(--muted);text-transform:uppercase;">Budget vs réalisé (centres de coût)</h4>
+      ${d.budgetVsReel.length?d.budgetVsReel.map(b=>`<div style="font-size:12px;padding:4px 0;border-bottom:1px solid var(--border);"><div class="between"><span>${esc(b.code)}</span><span class="mono">${fmt(b.reel)} / ${fmt(b.budget)} FCFA</span></div></div>`).join(''):`<span style="font-size:12px;color:var(--muted);">Aucun centre de coût défini.</span>`}
+    </div>
+  </div>
+
+  <h3 class="oswald" style="text-transform:uppercase;font-size:14px;color:var(--muted);margin:0 0 10px;">2 · Carburant & 3 · Pièces / Stock</h3>
+  <div class="grid grid-kpi" style="margin-bottom:16px;">
+    ${kpiCard('Litres consommés', fmt(d.litresTotal),'L','fuel','var(--steel)')}
+    ${kpiCard('Qté pièces consommées', fmt(d.qtePiecesConsommees),'unités','package','var(--accent)')}
+    ${kpiCard('Pièces sous seuil', fmt(d.piecesSousSeuil.length),'articles','wrench', d.piecesSousSeuil.length>0?'var(--danger)':'var(--success)')}
+    ${kpiCard('Pièces critiques', fmt(d.piecesCritiques.length),'référencées','layers','var(--muted)')}
+  </div>
+
+  <h3 class="oswald" style="text-transform:uppercase;font-size:14px;color:var(--muted);margin:0 0 10px;">4 · Indicateurs de performance</h3>
+  <div class="grid grid-kpi" style="margin-bottom:16px;">
+    ${kpiCard('Disponibilité flotte', k.disponibilite,'%','gauge', k.disponibilite>=80?'var(--success)':'var(--danger)')}
+    ${kpiCard('MTTR', d.mttrH.toFixed(1),'h','wrench','var(--steel)')}
+    ${kpiCard('MTBF', d.mtbfH.toFixed(0),'h','activity','var(--steel)')}
+    ${kpiCard('OT créés / clôturés', d.nbCrees+' / '+d.nbClotures,'','report','var(--text)')}
+    ${kpiCard('% Préventif', d.pctPreventif,'%','check', 'var(--success)')}
+    ${kpiCard('% Correctif', d.pctCorrectif,'%','close', 'var(--danger)')}
+  </div>
+
+  <h3 class="oswald" style="text-transform:uppercase;font-size:14px;color:var(--muted);margin:0 0 10px;">5 · Suivi opérationnel</h3>
+  <div class="plate p16" style="margin-bottom:16px;overflow:hidden;">
+    <table><thead><tr><th>Équipement</th><th class="right">Temps d'arrêt cumulé</th><th class="right">Nb pannes</th></tr></thead>
+    <tbody>${pannesRows.length?pannesRows.map(r=>`<tr><td class="mono">${r.eq?r.eq.code:'?'}</td><td class="right mono">${fmt(Math.round(r.h*10)/10)} h</td><td class="right mono">${r.n}</td></tr>`).join(''):`<tr><td colspan="3" style="color:var(--muted);font-size:12px;">Aucune panne correctif sur la période.</td></tr>`}</tbody></table>
+  </div>
+
+  <h3 class="oswald" style="text-transform:uppercase;font-size:14px;color:var(--muted);margin:0 0 10px;">6 · HSE & conformité</h3>
+  <div class="grid grid-kpi" style="margin-bottom:16px;">
+    ${kpiCard('OT avec permis de travail', d.totalOT?Math.round(d.permisRenseigne/d.totalOT*100):0,'%','check','var(--success)')}
+    ${kpiCard('OT avec consignation', d.totalOT?Math.round(d.consignationRenseignee/d.totalOT*100):0,'%','wrench','var(--steel)')}
+  </div>
+  <p style="font-size:11px;color:var(--muted);margin:-8px 0 16px;">Indicateurs calculés à partir des champs "Permis de travail" et "Consignation" saisis sur les OT — pas encore de module d'incidents HSE dédié.</p>
+
+  <h3 class="oswald" style="text-transform:uppercase;font-size:14px;color:var(--muted);margin:0 0 10px;">7 · Analyse stratégique — Pareto des coûts par équipement</h3>
+  <div class="plate p16" style="margin-bottom:16px;">
+    <canvas id="chart-pareto" style="width:100%;height:220px;"></canvas>
+    <p style="font-size:11px;color:var(--muted);margin:10px 0 0;">Barres = coût de maintenance par équipement (période sélectionnée). Ligne = % cumulé du coût total. La ligne pointillée marque le seuil des 80 % — les équipements à gauche de ce seuil concentrent l'essentiel des dépenses et sont prioritaires pour une action (préventif renforcé, remplacement).</p>
+  </div>
+
   <div class="plate" style="overflow:hidden;">
-  <table><thead><tr><th>Engin</th><th>Type</th><th class="right">Coût maintenance</th><th class="right">Carburant (L)</th><th class="right">Coût carburant</th><th class="right">Total</th></tr></thead>
+  <table><thead><tr><th>Engin</th><th>Famille</th><th class="right">Coût maintenance</th><th class="right">Carburant (L)</th><th class="right">Coût carburant</th><th class="right">Total</th></tr></thead>
   <tbody>
-  ${rows.map(({e,cout,fuel})=>`<tr>
+  ${(()=>{ const rows = state.fleet.map(e=>({e, cout:d.coutParEquip[e.id]||0, fuel:d.fuelParEquip[e.id]||{l:0,cout:0}})).sort((a,b)=>(b.cout+b.fuel.cout)-(a.cout+a.fuel.cout));
+    return rows.map(({e,cout,fuel})=>`<tr>
     <td class="mono">${e.code}</td><td style="color:var(--muted)">${e.type}</td>
     <td class="right mono">${fmt(cout)}</td><td class="right mono" style="color:var(--muted)">${fmt(fuel.l)}</td>
     <td class="right mono">${fmt(fuel.cout)}</td><td class="right mono" style="color:var(--accent)">${fmt(cout+fuel.cout)}</td>
-  </tr>`).join('')}
+  </tr>`).join(''); })()}
   </tbody></table></div>`;
 }
 
@@ -2992,6 +3224,14 @@ function attachHandlers(){
   if(wReset) wReset.addEventListener('click', ()=>{ woFilter='Tous'; woSearch=''; woFilterFamille='Tous'; woFilterEquip='Tous'; woFilterType='Tous'; render(); });
   const wExport = document.getElementById('wo-export-excel');
   if(wExport) wExport.addEventListener('click', exportWOToExcel);
+  const rFrom = document.getElementById('report-from');
+  if(rFrom) rFrom.addEventListener('change', e=>{ reportFrom=e.target.value; render(); });
+  const rTo = document.getElementById('report-to');
+  if(rTo) rTo.addEventListener('change', e=>{ reportTo=e.target.value; render(); });
+  const rReset = document.getElementById('report-period-reset');
+  if(rReset) rReset.addEventListener('click', ()=>{ reportFrom=''; reportTo=''; render(); });
+  const rExport = document.getElementById('report-export-excel');
+  if(rExport) rExport.addEventListener('click', exportReportsToExcel);
   document.querySelectorAll('[data-open-wo]').forEach(b=>b.addEventListener('click',()=>{
     openWOEditor(b.dataset.openWo);
   }));
