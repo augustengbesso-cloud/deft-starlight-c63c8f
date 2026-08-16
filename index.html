@@ -1262,7 +1262,10 @@ function viewWOEdit(){
     ${!woIsNew && canSuperviseEdit && !finalStates.includes(s) ? `<button class="btn btn-ghost" id="wo-transfer">${ICONS.users} Transférer</button>` : ''}
     ${!woIsNew && isAdminEdit && s==='Clôturé' && w.clotureFinanciere && !w.archive ? `<button class="btn btn-ghost" style="color:var(--success);border-color:var(--success);" id="wo-archive">${ICONS.receipt} Archiver</button>` : ''}
     <div class="row" style="margin-left:auto;">
-      <button class="btn btn-accent" id="wo-save">${ICONS.check} Enregistrer</button>
+      ${woIsNew
+        ? `<button class="btn btn-ghost" id="wo-cancel-new">${ICONS.close} Annuler</button>
+           <button class="btn btn-accent" id="wo-save">${ICONS.activity} Lancer</button>`
+        : `<button class="btn btn-accent" id="wo-save">${ICONS.check} Enregistrer</button>`}
     </div>
   </div>
 
@@ -1406,8 +1409,7 @@ function viewWOEdit(){
   </div>` : ''}
 
   <div class="row" style="justify-content:flex-end;margin-bottom:24px;">
-    <button class="btn btn-ghost" id="wo-back-2">Annuler</button>
-    <button class="btn btn-accent" id="wo-save-2">${ICONS.check} Enregistrer</button>
+    <button class="btn btn-ghost" id="wo-back-2">${ICONS.close} Retour à la liste</button>
   </div>`;
 }
 function wireWOEditor(){
@@ -1657,7 +1659,7 @@ function wireWOEditor(){
     }
   };
   const saveBtn = document.getElementById('wo-save'); if(saveBtn) saveBtn.addEventListener('click', saveHandler);
-  const saveBtn2 = document.getElementById('wo-save-2'); if(saveBtn2) saveBtn2.addEventListener('click', saveHandler);
+  const cancelNewBtn = document.getElementById('wo-cancel-new'); if(cancelNewBtn) cancelNewBtn.addEventListener('click', back);
 }
 
 /* ============ PREVENTIVE ============ */
