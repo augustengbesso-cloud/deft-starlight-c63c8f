@@ -1199,6 +1199,21 @@ function viewWO(){
 let woDraft = null;
 let woEditTab = 'general';
 let woIsNew = false;
+let woOpFormOpen = {};
+function dureeAffectation(af){
+  if(!af || !af.heureDebut || !af.heureFin) return null;
+  const [h1,m1] = af.heureDebut.split(':').map(Number);
+  const [h2,m2] = af.heureFin.split(':').map(Number);
+  if([h1,m1,h2,m2].some(n=>isNaN(n))) return null;
+  let mins = (h2*60+m2) - (h1*60+m1);
+  if(mins < 0) mins += 24*60;
+  return mins;
+}
+function fmtDuree(mins){
+  if(mins==null) return '—';
+  const h = Math.floor(mins/60), m = mins%60;
+  return (h>0 ? h+'h' : '') + String(m).padStart(2,'0');
+}
 function blankWO(){
   return { id:null, numero:null, categorieEquipement:'', equipementId:'', type:'Panne / Correctif',
     typeTravail: TYPES_TRAVAIL[0], poste: state.postes[0], titre:'', description:'', priorite:'Normale', statut:'Créé',
@@ -1214,6 +1229,7 @@ function openWOEditor(id){
   if(!woDraft.piecesUtilisees) woDraft.piecesUtilisees=[];
   if(!woDraft.documents) woDraft.documents=[];
   woEditTab = 'general';
+  woOpFormOpen = {};
   currentView = 'wo-edit';
   render();
 }
@@ -1353,9 +1369,13 @@ function viewWOEdit(){
   <div class="plate p16" style="margin-bottom:16px;">
     <h3 class="oswald" style="text-transform:uppercase;font-size:13px;margin:0 0 4px;color:var(--muted);">Opérations effectuées</h3>
     <p style="font-size:11px;color:var(--muted);margin:0 0 12px;">Une tâche peut réunir plusieurs corps de métier — ajoute un intervenant par poste, avec ses heures.</p>
-    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:12px;">
+    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px;">
       ${w.operations.length===0?`<span style="font-size:12px;color:var(--muted);">Aucune tâche ajoutée.</span>`:
-      w.operations.map((op,oi)=>`
+      w.operations.map((op,oi)=>{
+        const formOpen = !!woOpFormOpen[op.id];
+        const posteSelected = woOpFormOpen[op.id+'_poste'] || state.postes[0];
+        const personnelForPoste = state.personnel.filter(p=>p.statut==='Actif' && p.poste===posteSelected);
+        return `
       <div class="card-item" style="padding:10px 12px;">
         <div class="between" style="margin-bottom:8px;">
           <span style="font-size:13px;font-weight:500;">${esc(op.description)}</span>
@@ -1363,23 +1383,31 @@ function viewWOEdit(){
         </div>
         ${op.affectations.length===0?`<span style="font-size:11px;color:var(--muted);">Aucun intervenant affecté.</span>`:
         `<div style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px;">
-          ${op.affectations.map((af,ai)=>`<div class="between" style="font-size:12px;background:var(--panel);border-radius:4px;padding:5px 8px;">
-            <span><span class="badge">${esc(af.poste)}</span> ${esc(af.technicien)||'—'} <span style="color:var(--muted);">· ${af.heureDebut||'--:--'} → ${af.heureFin||'--:--'}</span></span>
+          ${op.affectations.map((af,ai)=>{
+            const mins = af.dureeMin!=null ? af.dureeMin : dureeAffectation(af);
+            return `<div class="between" style="font-size:12px;background:var(--panel);border-radius:4px;padding:5px 8px;">
+            <span><span class="badge">${esc(af.poste)}</span> ${esc(af.technicien)||'—'} <span style="color:var(--muted);">· ${af.heureDebut||'--:--'} → ${af.heureFin||'--:--'} · <strong style="color:var(--accent);">${fmtDuree(mins)}</strong></span></span>
             <button class="icon-btn" data-wo-aff-del="${oi}:${ai}">${ICONS.trash}</button>
-          </div>`).join('')}
+          </div>`;}).join('')}
         </div>`}
-        <div class="row wrapwrap" style="gap:6px;">
-          <select id="wo-aff-poste-${oi}" style="flex:1;min-width:110px;">${state.postes.map(p=>`<option>${p}</option>`).join('')}</select>
-          <input id="wo-aff-tech-${oi}" list="wo-personnel-list" placeholder="Technicien" style="flex:1;min-width:120px;"/>
+        ${formOpen ? `
+        <div class="row wrapwrap" style="gap:6px;background:var(--panel);border-radius:6px;padding:8px;">
+          <select id="wo-aff-poste-${oi}" style="flex:1;min-width:110px;">${state.postes.map(p=>`<option ${p===posteSelected?'selected':''}>${p}</option>`).join('')}</select>
+          <input id="wo-aff-tech-${oi}" list="wo-aff-personnel-list-${oi}" placeholder="Technicien" style="flex:1;min-width:120px;"/>
+          <datalist id="wo-aff-personnel-list-${oi}">${personnelForPoste.map(p=>`<option value="${esc(p.nom)}">${esc(p.poste)}</option>`).join('')}</datalist>
           <input type="time" id="wo-aff-debut-${oi}" style="width:100px;"/>
           <input type="time" id="wo-aff-fin-${oi}" style="width:100px;"/>
-          <button class="btn btn-ghost" data-wo-aff-add="${oi}" type="button" style="font-size:11px;">${ICONS.plus} Intervenant</button>
-        </div>
-      </div>`).join('')}
+          <button class="btn btn-accent" data-wo-aff-confirm="${oi}" type="button" style="font-size:11px;">${ICONS.check} Valider</button>
+          <button class="btn btn-ghost" data-wo-aff-cancel="${oi}" type="button" style="font-size:11px;">${ICONS.close} Annuler</button>
+        </div>` : `
+        <button class="btn btn-ghost" data-wo-aff-open="${oi}" type="button" style="font-size:11px;">${ICONS.plus} Ajouter un intervenant</button>`}
+      </div>`;}).join('')}
     </div>
-    <div class="row">
-      <input id="wo-op-input" placeholder="Nouvelle tâche, ex: Remplacement du roulement avant" style="flex:1;"/>
-      <button class="btn btn-ghost" id="wo-op-add" type="button">${ICONS.plus} Ajouter une tâche</button>
+    <div class="plate" style="background:var(--panel);padding:12px;border-top:2px solid var(--border);">
+      <div class="row">
+        <input id="wo-op-input" placeholder="Nouvelle tâche, ex: Remplacement du roulement avant" style="flex:1;"/>
+        <button class="btn btn-ghost" id="wo-op-add" type="button">${ICONS.plus} Ajouter une tâche</button>
+      </div>
     </div>
   </div>` : ''}
 
@@ -1563,14 +1591,32 @@ function wireWOEditor(){
     w.operations.splice(Number(b.dataset.woOpDel),1); render();
   }));
   w.operations.forEach((op,oi)=>{
-    const affAdd = document.getElementById('wo-aff-add-'+oi) || document.querySelector(`[data-wo-aff-add="${oi}"]`);
-    if(affAdd) affAdd.addEventListener('click', ()=>{
+    const openBtn = document.querySelector(`[data-wo-aff-open="${oi}"]`);
+    if(openBtn) openBtn.addEventListener('click', ()=>{
+      woOpFormOpen[op.id] = true;
+      woOpFormOpen[op.id+'_poste'] = state.postes[0];
+      render();
+    });
+    const cancelBtn = document.querySelector(`[data-wo-aff-cancel="${oi}"]`);
+    if(cancelBtn) cancelBtn.addEventListener('click', ()=>{
+      delete woOpFormOpen[op.id];
+      render();
+    });
+    const posteSel = document.getElementById('wo-aff-poste-'+oi);
+    if(posteSel) posteSel.addEventListener('change', (e)=>{
+      woOpFormOpen[op.id+'_poste'] = e.target.value;
+      render();
+    });
+    const affConfirm = document.querySelector(`[data-wo-aff-confirm="${oi}"]`);
+    if(affConfirm) affConfirm.addEventListener('click', ()=>{
       const poste = document.getElementById('wo-aff-poste-'+oi).value;
       const technicien = document.getElementById('wo-aff-tech-'+oi).value.trim();
       const heureDebut = document.getElementById('wo-aff-debut-'+oi).value;
       const heureFin = document.getElementById('wo-aff-fin-'+oi).value;
       if(!technicien){ alert('Nom du technicien requis'); return; }
-      op.affectations.push({id:uid(), poste, technicien, heureDebut, heureFin});
+      const dureeMin = dureeAffectation({heureDebut,heureFin});
+      op.affectations.push({id:uid(), poste, technicien, heureDebut, heureFin, dureeMin});
+      delete woOpFormOpen[op.id];
       render();
     });
   });
