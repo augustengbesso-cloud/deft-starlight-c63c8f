@@ -155,6 +155,9 @@ td{padding:9px 12px;border-bottom:1px solid var(--border);}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://unpkg.com/docx@8.5.0/build/index.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.js"></script>
 <script>
 /* ============ SUPABASE (multi-device sync) ============ */
 const SUPABASE_URL = "https://hfeggflrcbhzvyyejvqf.supabase.co";
@@ -3009,6 +3012,268 @@ function computeReportData(){
     arretParEquip, permisRenseigne, consignationRenseignee, totalOT: wos.length,
     paretoEquip, em, pm };
 }
+function buildReportNarrative(d){
+  const n = {};
+  const typesSorted = Object.entries(d.coutParType).sort((a,b)=>b[1]-a[1]);
+  n.finance = typesSorted.length
+    ? `Sur la période analysée, le poste "${typesSorted[0][0]}" concentre la part la plus importante des dépenses de maintenance (${fmt(typesSorted[0][1])} FCFA, soit ${d.coutTotal?Math.round(typesSorted[0][1]/d.coutTotal*100):0}% du coût total).`
+    : `Aucune dépense de maintenance enregistrée sur la période sélectionnée.`;
+  const overBudget = d.budgetVsReel.filter(b=>b.budget>0 && b.reel/b.budget>=0.9);
+  n.budget = overBudget.length
+    ? `Attention : ${overBudget.map(b=>b.code).join(', ')} ${overBudget.length>1?'ont':'a'} consommé 90% ou plus de leur budget annuel — un dépassement est à anticiper si la tendance se poursuit.`
+    : d.budgetVsReel.length ? `Aucun centre de coût ne dépasse 90% de son budget annuel sur la période.` : `Aucun centre de coût configuré.`;
+  let nEquip80=0, cum=0; const totalPareto = d.paretoEquip.reduce((a,x)=>a+x.cout,0)||1;
+  for(const x of d.paretoEquip){ cum+=x.cout; nEquip80++; if(cum/totalPareto>=0.8) break; }
+  n.pareto = d.paretoEquip.length
+    ? `${nEquip80} équipement(s) sur ${d.paretoEquip.length} concentrent 80% du coût total de maintenance : ${d.paretoEquip.slice(0,nEquip80).map(x=>x.label).join(', ')}. Ce sont les cibles prioritaires pour un renforcement du préventif ou une analyse de remplacement.`
+    : `Pas assez de données pour établir une analyse Pareto sur la période.`;
+  n.kpi = d.pctCorrectif > d.pctPreventif
+    ? `La maintenance reste majoritairement réactive (${d.pctCorrectif}% de correctif contre ${d.pctPreventif}% de préventif) — un renforcement du plan préventif est recommandé pour réduire les pannes et le MTTR.`
+    : `Le ratio préventif (${d.pctPreventif}%) est supérieur ou égal au correctif (${d.pctCorrectif}%) — la maintenance planifiée est bien engagée, à consolider.`;
+  n.hse = d.totalOT
+    ? `${Math.round(d.permisRenseigne/d.totalOT*100)}% des OT de la période ont un permis de travail formalisé et ${Math.round(d.consignationRenseignee/d.totalOT*100)}% une consignation renseignée.`
+    : `Aucun OT sur la période pour évaluer la conformité HSE.`;
+  n.stock = d.piecesSousSeuil.length>0
+    ? `${d.piecesSousSeuil.length} article(s) sont actuellement sous leur seuil critique — un réapprovisionnement est à programmer pour éviter une rupture bloquant une intervention.`
+    : `Aucun article sous seuil critique au moment de l'édition du rapport.`;
+  return n;
+}
+function dataURLToUint8Array(dataURL){
+  const base64 = dataURL.split(',')[1];
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for(let i=0;i<binary.length;i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+function getParetoChartDataURL(){
+  const c = document.getElementById('chart-pareto');
+  if(c && c.width>0) return c.toDataURL('image/png');
+  // fallback : dessiner hors écran si le canvas n'est pas monté (ex. export depuis un autre onglet)
+  const off = document.createElement('canvas'); off.width=900; off.height=440; off.style.width='700px'; off.style.height='340px';
+  document.body.appendChild(off);
+  const rd = computeReportData(); const top = rd.paretoEquip.slice(0,8);
+  drawParetoChart(off, top.map(x=>x.label), top.map(x=>x.cout));
+  const url = off.toDataURL('image/png'); document.body.removeChild(off);
+  return url;
+}
+
+/* ---------- Export Word (docx.js, 100% navigateur) ---------- */
+async function exportReportsToWord(){
+  toast('Génération du rapport Word…');
+  const d = computeReportData();
+  const nar = buildReportNarrative(d);
+  const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, Table, TableRow, TableCell,
+    WidthType, BorderStyle, ShadingType, ImageRun, PageBreak, LevelFormat, VerticalAlign } = window.docx;
+  const NAVY='1F3864', NAVY_DARK='162A4A', ORANGE='D97B29', LIGHTGREY='F2F2F2';
+  const periodeLabel = (reportFrom||reportTo) ? `${reportFrom||'…'} → ${reportTo||'…'}` : 'Toute la période disponible';
+  function h1(num,text){ return new Paragraph({ heading:HeadingLevel.HEADING_1, spacing:{before:420,after:200},
+    border:{bottom:{style:BorderStyle.SINGLE,size:6,color:ORANGE,space:4}},
+    children:[new TextRun({text:`${num}. ${text}`,bold:true,color:NAVY,size:30})] }); }
+  function h2(num,text){ return new Paragraph({ heading:HeadingLevel.HEADING_2, spacing:{before:300,after:140},
+    children:[new TextRun({text:`${num} ${text}`,bold:true,color:NAVY_DARK,size:24})] }); }
+  function p(text,opts={}){ return new Paragraph({ spacing:{after:160,line:276},
+    children:[new TextRun({text,size:21,italics:!!opts.italic,color:opts.color||'333333'})] }); }
+  function cell(text,opts={}){ return new TableCell({ width:{size:opts.width,type:WidthType.DXA},
+    shading: opts.header?{type:ShadingType.CLEAR,fill:NAVY}:(opts.shade?{type:ShadingType.CLEAR,fill:LIGHTGREY}:undefined),
+    verticalAlign:VerticalAlign.CENTER, margins:{top:80,bottom:80,left:100,right:100},
+    children:[new Paragraph({alignment:opts.align||AlignmentType.LEFT,
+      children:[new TextRun({text,bold:!!opts.header,color:opts.header?'FFFFFF':'222222',size:19})]})] }); }
+  function table(headers,rows,widths){ const total=widths.reduce((a,b)=>a+b,0);
+    return new Table({ width:{size:total,type:WidthType.DXA}, columnWidths:widths, rows:[
+      new TableRow({tableHeader:true,children:headers.map((h,i)=>cell(h,{width:widths[i],header:true,align:i>0?AlignmentType.RIGHT:AlignmentType.LEFT}))}),
+      ...rows.map((r,ri)=>new TableRow({children:r.map((v,i)=>cell(String(v),{width:widths[i],shade:ri%2===1,align:i>0?AlignmentType.RIGHT:AlignmentType.LEFT}))})),
+    ]}); }
+  const paretoBytes = dataURLToUint8Array(getParetoChartDataURL());
+  const fleetRows = state.fleet.map(e=>({e,cout:d.coutParEquip[e.id]||0,fuel:d.fuelParEquip[e.id]||{l:0,cout:0}})).sort((a,b)=>(b.cout+b.fuel.cout)-(a.cout+a.fuel.cout));
+
+  const doc = new Document({
+    numbering:{config:[{reference:'bl',levels:[{level:0,format:LevelFormat.BULLET,text:'•',alignment:AlignmentType.LEFT,style:{paragraph:{indent:{left:420,hanging:260}}}}]}]},
+    sections:[{
+      properties:{page:{margin:{top:1000,bottom:1000,left:1100,right:1100}}},
+      children:[
+        new Paragraph({spacing:{before:1600},alignment:AlignmentType.CENTER,children:[new TextRun({text:'CIGRAC',bold:true,size:32,color:'6B7280'})]}),
+        new Paragraph({spacing:{before:300,after:100},alignment:AlignmentType.CENTER,children:[new TextRun({text:'RAPPORT DE MAINTENANCE',bold:true,size:60,color:NAVY})]}),
+        new Paragraph({spacing:{after:500},alignment:AlignmentType.CENTER,children:[new TextRun({text:'Financier · Technique · Stratégique',size:26,color:ORANGE,italics:true})]}),
+        new Paragraph({alignment:AlignmentType.CENTER,spacing:{after:40},children:[new TextRun({text:'Période couverte : '+periodeLabel,size:20})]}),
+        new Paragraph({alignment:AlignmentType.CENTER,spacing:{after:40},children:[new TextRun({text:'Généré par : 2NA-ERP — module Rapports',size:20})]}),
+        new Paragraph({alignment:AlignmentType.CENTER,children:[new TextRun({text:"Date d'édition : "+new Date().toLocaleDateString('fr-FR'),size:20})]}),
+        new Paragraph({children:[new PageBreak()]}),
+
+        h1(1,'Introduction'),
+        p("Ce rapport présente la performance de la fonction maintenance CIGRAC sur la période indiquée, à partir des données consolidées de 2NA-ERP (ordres de travail, carburant, pièces/stock, réservations, centres de coûts)."),
+        p('Synthèse : '+nar.finance),
+        p(nar.budget),
+
+        h1(2,'Développement'),
+        h2('2.1',"Axe financier"),
+        table(['Indicateur','Valeur'],[
+          ['Coût total maintenance', fmt(d.coutTotal)+' FCFA'],
+          ['Coût total carburant', fmt(d.coutCarburantTotal)+' FCFA'],
+          ['Valeur des pièces consommées', fmt(Math.round(d.valeurPiecesConsommees))+' FCFA'],
+          ['Coût global', fmt(d.coutTotal+d.coutCarburantTotal+Math.round(d.valeurPiecesConsommees))+' FCFA'],
+        ],[5800,3000]),
+        p(''),
+        table(['Type d\'intervention','Coût (FCFA)'], Object.entries(d.coutParType).sort((a,b)=>b[1]-a[1]).map(([t,c])=>[t,fmt(c)]), [5800,3000]),
+        p(''),
+        d.budgetVsReel.length ? table(['Centre de coût','Budget annuel','Réalisé','% consommé'],
+          d.budgetVsReel.map(b=>[b.code, fmt(b.budget), fmt(b.reel), b.budget?Math.round(b.reel/b.budget*100)+'%':'—']), [3200,2400,2400,1800])
+          : p('Aucun centre de coût configuré.'),
+
+        h2('2.2','Carburant'),
+        Object.keys(d.fuelParEquip).length ? table(['Engin','Litres','Coût (FCFA)'],
+          Object.entries(d.fuelParEquip).map(([eid,f])=>[d.em[eid]?d.em[eid].code:eid, fmt(Math.round(f.l*10)/10), fmt(f.cout)]).sort((a,b)=>b[2]-a[2]),
+          [3400,3000,3400]) : p('Aucune consommation carburant enregistrée sur la période.'),
+
+        h2('2.3','Pièces et stock'),
+        p(`Valeur des pièces consommées : ${fmt(Math.round(d.valeurPiecesConsommees))} FCFA — Quantité : ${fmt(d.qtePiecesConsommees)} unités.`),
+        p(nar.stock),
+        p(`Pièces critiques référencées : ${d.piecesCritiques.length}.`),
+
+        h2('2.4','Indicateurs de performance'),
+        table(['Indicateur','Valeur'],[
+          ['MTTR (temps moyen de réparation)', d.mttrH.toFixed(1)+' h'],
+          ['MTBF (temps moyen entre pannes)', d.mtbfH.toFixed(0)+' h'],
+          ['OT créés / clôturés', d.nbCrees+' / '+d.nbClotures],
+          ['% Préventif', d.pctPreventif+'%'],
+          ['% Correctif', d.pctCorrectif+'%'],
+        ],[5800,3000]),
+        p(nar.kpi),
+
+        h2('2.5','Suivi opérationnel'),
+        Object.keys(d.arretParEquip).length ? table(["Équipement","Temps d'arrêt cumulé",'Nb pannes'],
+          Object.entries(d.arretParEquip).map(([eid,h])=>[d.em[eid]?d.em[eid].code:eid, (Math.round(h*10)/10)+' h', d.correctifs.filter(w=>w.equipementId===eid).length]).sort((a,b)=>b[1]-a[1]),
+          [3800,3200,2800]) : p("Aucun temps d'arrêt correctif enregistré sur la période."),
+
+        h2('2.6','HSE et conformité'),
+        p(nar.hse),
+
+        h1(3,'Analyse Pareto — équipements les plus coûteux'),
+        p(nar.pareto),
+        new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:200,after:200},
+          children:[new ImageRun({data:paretoBytes,type:'png',transformation:{width:560,height:280}})]}),
+
+        h1(4,'Conclusion et recommandations'),
+        p(nar.finance+' '+nar.pareto),
+        p(nar.kpi+' '+nar.stock),
+        p(nar.hse),
+
+        h1(5,'Détail par équipement'),
+        table(['Engin','Famille','Coût maintenance','Carburant (L)','Coût carburant','Total'],
+          fleetRows.map(({e,cout,fuel})=>[e.code, e.type, fmt(cout), fmt(Math.round(fuel.l*10)/10), fmt(fuel.cout), fmt(cout+fuel.cout)]),
+          [1800,1800,2200,1600,1800,1800]),
+      ],
+    }],
+  });
+  const blob = await Packer.toBlob(doc);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download='2NA-ERP_rapport_maintenance_'+new Date().toISOString().slice(0,10)+'.docx';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+  toast('Rapport Word généré');
+}
+
+/* ---------- Export PDF (jsPDF + autotable, 100% navigateur) ---------- */
+function exportReportsToPDF(){
+  toast('Génération du rapport PDF…');
+  const d = computeReportData();
+  const nar = buildReportNarrative(d);
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({unit:'mm',format:'a4'});
+  const pageW = doc.internal.pageSize.getWidth();
+  const marginL = 15, marginR = 15, usableW = pageW - marginL - marginR;
+  const NAVY=[31,54,99], ORANGE=[217,123,41], GREY=[90,90,90];
+  let y = 20;
+  const periodeLabel = (reportFrom||reportTo) ? `${reportFrom||'…'} → ${reportTo||'…'}` : 'Toute la période disponible';
+
+  function ensureSpace(h){ if(y+h > 280){ doc.addPage(); y=20; } }
+  function title(text){ ensureSpace(14); doc.setFont('helvetica','bold'); doc.setFontSize(15); doc.setTextColor(...NAVY);
+    doc.text(text, marginL, y); doc.setDrawColor(...ORANGE); doc.setLineWidth(0.6); doc.line(marginL, y+2, pageW-marginR, y+2); y+=10; }
+  function subtitle(text){ ensureSpace(10); doc.setFont('helvetica','bold'); doc.setFontSize(11.5); doc.setTextColor(40,40,60);
+    doc.text(text, marginL, y); y+=7; }
+  function paragraph(text){ doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(50,50,50);
+    const lines = doc.splitTextToSize(text, usableW); ensureSpace(lines.length*5+3); doc.text(lines, marginL, y); y+=lines.length*5+4; }
+  function pdfTable(headers, rows){
+    ensureSpace(14);
+    doc.autoTable({ startY:y, head:[headers], body:rows, margin:{left:marginL,right:marginR}, styles:{fontSize:8.5,cellPadding:2.4},
+      headStyles:{fillColor:NAVY,textColor:255,fontStyle:'bold'}, alternateRowStyles:{fillColor:[245,245,245]} });
+    y = doc.lastAutoTable.finalY + 8;
+  }
+
+  // Page de garde
+  doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(...GREY);
+  doc.text('CIGRAC', pageW/2, 60, {align:'center'});
+  doc.setFontSize(26); doc.setTextColor(...NAVY);
+  doc.text('RAPPORT DE MAINTENANCE', pageW/2, 75, {align:'center'});
+  doc.setFont('helvetica','italic'); doc.setFontSize(12); doc.setTextColor(...ORANGE);
+  doc.text('Financier · Technique · Stratégique', pageW/2, 84, {align:'center'});
+  doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(60,60,60);
+  doc.text('Période couverte : '+periodeLabel, pageW/2, 100, {align:'center'});
+  doc.text('Généré par : 2NA-ERP — module Rapports', pageW/2, 106, {align:'center'});
+  doc.text("Date d'édition : "+new Date().toLocaleDateString('fr-FR'), pageW/2, 112, {align:'center'});
+  doc.addPage(); y=20;
+
+  title('1. Introduction');
+  paragraph("Ce rapport présente la performance de la fonction maintenance CIGRAC sur la période indiquée, à partir des données consolidées de 2NA-ERP.");
+  paragraph('Synthèse : '+nar.finance);
+  paragraph(nar.budget);
+
+  title('2. Développement');
+  subtitle('2.1 Axe financier');
+  pdfTable(['Indicateur','Valeur'],[
+    ['Coût total maintenance', fmt(d.coutTotal)+' FCFA'],
+    ['Coût total carburant', fmt(d.coutCarburantTotal)+' FCFA'],
+    ['Valeur des pièces consommées', fmt(Math.round(d.valeurPiecesConsommees))+' FCFA'],
+    ['Coût global', fmt(d.coutTotal+d.coutCarburantTotal+Math.round(d.valeurPiecesConsommees))+' FCFA'],
+  ]);
+  pdfTable(["Type d'intervention",'Coût (FCFA)'], Object.entries(d.coutParType).sort((a,b)=>b[1]-a[1]).map(([t,c])=>[t,fmt(c)]));
+  if(d.budgetVsReel.length) pdfTable(['Centre de coût','Budget annuel','Réalisé','% consommé'],
+    d.budgetVsReel.map(b=>[b.code, fmt(b.budget), fmt(b.reel), b.budget?Math.round(b.reel/b.budget*100)+'%':'—']));
+
+  subtitle('2.2 Carburant');
+  if(Object.keys(d.fuelParEquip).length) pdfTable(['Engin','Litres','Coût (FCFA)'],
+    Object.entries(d.fuelParEquip).map(([eid,f])=>[d.em[eid]?d.em[eid].code:eid, fmt(Math.round(f.l*10)/10), fmt(f.cout)]).sort((a,b)=>b[2]-a[2]));
+  else paragraph('Aucune consommation carburant enregistrée sur la période.');
+
+  subtitle('2.3 Pièces et stock');
+  paragraph(`Valeur des pièces consommées : ${fmt(Math.round(d.valeurPiecesConsommees))} FCFA — Quantité : ${fmt(d.qtePiecesConsommees)} unités.`);
+  paragraph(nar.stock);
+
+  subtitle('2.4 Indicateurs de performance');
+  pdfTable(['Indicateur','Valeur'],[
+    ['MTTR', d.mttrH.toFixed(1)+' h'], ['MTBF', d.mtbfH.toFixed(0)+' h'],
+    ['OT créés / clôturés', d.nbCrees+' / '+d.nbClotures],
+    ['% Préventif', d.pctPreventif+'%'], ['% Correctif', d.pctCorrectif+'%'],
+  ]);
+  paragraph(nar.kpi);
+
+  subtitle('2.5 Suivi opérationnel');
+  if(Object.keys(d.arretParEquip).length) pdfTable(["Équipement","Arrêt cumulé",'Nb pannes'],
+    Object.entries(d.arretParEquip).map(([eid,h])=>[d.em[eid]?d.em[eid].code:eid, (Math.round(h*10)/10)+' h', d.correctifs.filter(w=>w.equipementId===eid).length]).sort((a,b)=>b[1]-a[1]));
+  else paragraph("Aucun temps d'arrêt correctif enregistré sur la période.");
+
+  subtitle('2.6 HSE et conformité');
+  paragraph(nar.hse);
+
+  doc.addPage(); y=20;
+  title('3. Analyse Pareto — équipements les plus coûteux');
+  paragraph(nar.pareto);
+  const chartUrl = getParetoChartDataURL();
+  const imgW = usableW, imgH = imgW*0.5;
+  ensureSpace(imgH+6);
+  doc.addImage(chartUrl, 'PNG', marginL, y, imgW, imgH); y += imgH + 8;
+  pdfTable(['Équipement','Coût (FCFA)'], d.paretoEquip.slice(0,10).map(x=>[x.label, fmt(x.cout)]));
+
+  title('4. Conclusion et recommandations');
+  paragraph(nar.finance+' '+nar.pareto);
+  paragraph(nar.kpi+' '+nar.stock);
+  paragraph(nar.hse);
+
+  const pageCount = doc.internal.getNumberOfPages();
+  for(let i=1;i<=pageCount;i++){ doc.setPage(i); doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(150,150,150);
+    doc.text('2NA-ERP — Rapport de maintenance', marginL, 292); doc.text(String(i)+' / '+pageCount, pageW-marginR, 292, {align:'right'}); }
+
+  doc.save('2NA-ERP_rapport_maintenance_'+new Date().toISOString().slice(0,10)+'.pdf');
+  toast('Rapport PDF généré');
+}
 function exportReportsToExcel(){
   const d = computeReportData();
   const wb = XLSX.utils.book_new();
@@ -3075,7 +3340,9 @@ function viewReports(){
       <span style="font-size:12px;color:var(--muted);">→</span>
       <input type="date" id="report-to" value="${reportTo}" style="width:150px;"/>
       ${(reportFrom||reportTo)?`<button class="btn btn-ghost" id="report-period-reset" type="button">${ICONS.close} Toute la période</button>`:''}
-      <button class="btn btn-accent" id="report-export-excel" style="margin-left:auto;">${ICONS.receipt} Exporter Excel (rapport complet)</button>
+      <button class="btn btn-ghost" id="report-export-word" style="margin-left:auto;">${ICONS.report} Exporter Word</button>
+      <button class="btn btn-ghost" id="report-export-pdf">${ICONS.report} Exporter PDF</button>
+      <button class="btn btn-accent" id="report-export-excel">${ICONS.receipt} Exporter Excel</button>
     </div>
   </div>
 
@@ -3232,6 +3499,10 @@ function attachHandlers(){
   if(rReset) rReset.addEventListener('click', ()=>{ reportFrom=''; reportTo=''; render(); });
   const rExport = document.getElementById('report-export-excel');
   if(rExport) rExport.addEventListener('click', exportReportsToExcel);
+  const rExportWord = document.getElementById('report-export-word');
+  if(rExportWord) rExportWord.addEventListener('click', ()=>{ rExportWord.disabled=true; exportReportsToWord().finally(()=>{ rExportWord.disabled=false; }); });
+  const rExportPdf = document.getElementById('report-export-pdf');
+  if(rExportPdf) rExportPdf.addEventListener('click', exportReportsToPDF);
   document.querySelectorAll('[data-open-wo]').forEach(b=>b.addEventListener('click',()=>{
     openWOEditor(b.dataset.openWo);
   }));
