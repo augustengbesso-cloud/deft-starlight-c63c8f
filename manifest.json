@@ -1,6 +1,6 @@
 {
-  "name": "2NA ERP — Maintenance & Carburant",
-  "short_name": "2NA ERP",
+  "name": "2NA Entreprise — Maintenance & Carburant",
+  "short_name": "2NA Entreprise",
   "description": "Gestion de flotte, maintenance et carburant",
   "start_url": "./index.html",
   "scope": "./",
