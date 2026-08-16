@@ -638,7 +638,7 @@ function renderNav(){
       ${ICONS[n.icon]}<span class="label">${n.label}</span>
     </button>`).join('')}
   `;}).join('');
-  nav.querySelectorAll('[data-nav]').forEach(b=>b.addEventListener('click',()=>{ currentView=b.dataset.nav; render(); }));
+  nav.querySelectorAll('[data-nav]').forEach(b=>b.addEventListener('click',()=>{ currentView=b.dataset.nav; resaValidatingId=null; render(); }));
   document.getElementById('fleet-count').textContent = `${state.fleet.length} engins · ${state.plantEquipment.length} machines`;
   const uiTop = document.getElementById('user-info-top');
   if(uiTop && currentUser){
@@ -1200,6 +1200,7 @@ let woDraft = null;
 let woEditTab = 'general';
 let woIsNew = false;
 let woOpFormOpen = {};
+let woPartEditIndex = null;
 function dureeAffectation(af){
   if(!af || !af.heureDebut || !af.heureFin) return null;
   const [h1,m1] = af.heureDebut.split(':').map(Number);
@@ -1230,6 +1231,7 @@ function openWOEditor(id){
   if(!woDraft.documents) woDraft.documents=[];
   woEditTab = 'general';
   woOpFormOpen = {};
+  woPartEditIndex = null;
   currentView = 'wo-edit';
   render();
 }
@@ -1414,23 +1416,38 @@ function viewWOEdit(){
   ${woEditTab==='composants' ? `
   <div class="plate p16" style="margin-bottom:16px;">
     <h3 class="oswald" style="text-transform:uppercase;font-size:13px;margin:0 0 4px;color:var(--muted);">Composants / pièces de rechange</h3>
-    <p style="font-size:11px;color:var(--muted);margin:0 0 12px;">Saisis le code article — la désignation s'affiche automatiquement. Une réservation est générée à l'enregistrement ; le magasinier valide la sortie dans "Pièces / Stock".</p>
+    <p style="font-size:11px;color:var(--muted);margin:0 0 12px;">Saisis le code article — désignation, unité et stock s'affichent automatiquement. Une réservation est générée à l'enregistrement ; le magasinier valide la sortie dans "Réservations".</p>
     <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:10px;">
       ${w.piecesUtilisees.length===0?`<span style="font-size:12px;color:var(--muted);">Aucune pièce ajoutée.</span>`:
       w.piecesUtilisees.map((pu,i)=>{ const pt=state.parts.find(p=>p.id===pu.partId);
         const resa = pu.reservationId ? resaMap[pu.reservationId] : null;
         const statusTxt = resa ? (resa.statut||'En attente') : (pu.reserved ? 'Réservé' : 'À réserver à l\'enregistrement');
         const statusColor = resa && resa.statut==='Sortie validée' ? 'var(--success)' : 'var(--accent)';
-        return `<div class="between card-item" style="padding:6px 10px;">
-          <span style="font-size:13px;">${pt?esc(pt.nom):'Pièce supprimée'} <span class="mono" style="color:var(--muted);font-size:11px;">${pt&&pt.ref?'('+esc(pt.ref)+')':''}</span> × ${pu.quantite}${pt?' '+uniteAbrev(pt):''} <span style="color:${statusColor};font-size:11px;margin-left:6px;">● ${statusTxt}</span></span>
-          <button class="icon-btn" data-wo-part-del="${i}">${ICONS.trash}</button>
+        const locked = resa && resa.statut==='Sortie validée';
+        const editing = woPartEditIndex===i;
+        return `<div class="card-item" style="padding:6px 10px;">
+          <div class="between">
+          <span style="font-size:13px;">${pt?esc(pt.nom):'Pièce supprimée'} <span class="mono" style="color:var(--muted);font-size:11px;">${pt&&pt.ref?'('+esc(pt.ref)+')':''}</span> ${editing?'':`× ${pu.quantite}${pt?' '+uniteAbrev(pt):''}`} <span style="color:${statusColor};font-size:11px;margin-left:6px;">● ${statusTxt}</span></span>
+          <div class="row" style="gap:2px;">
+            ${!locked?`<button class="icon-btn" data-wo-part-edit="${i}" title="Modifier la quantité">${ICONS.edit}</button>`:''}
+            <button class="icon-btn" data-wo-part-del="${i}">${ICONS.trash}</button>
+          </div>
+          </div>
+          ${editing?`<div class="row wrapwrap" style="gap:6px;margin-top:6px;">
+            <span style="font-size:11px;color:var(--muted);">Stock actuel : ${pt?fmt(pt.quantite)+' '+uniteAbrev(pt):'—'}</span>
+            <input id="wo-part-edit-qty" type="number" min="1" value="${pu.quantite}" style="width:80px;"/>
+            <button class="btn btn-accent" data-wo-part-edit-confirm="${i}" type="button" style="font-size:11px;">${ICONS.check} Valider</button>
+            <button class="btn btn-ghost" data-wo-part-edit-cancel="1" type="button" style="font-size:11px;">${ICONS.close} Annuler</button>
+          </div>`:''}
         </div>`;}).join('')}
     </div>
     ${state.parts.length===0?`<span style="font-size:12px;color:var(--muted);">Aucune pièce en stock — ajoute-en dans "Pièces / Stock".</span>`:
-    `<div class="row wrapwrap" style="gap:6px;">
-      <input id="wo-part-code" list="wo-parts-list" placeholder="Code article" style="width:140px;"/>
+    `<div class="row wrapwrap" style="gap:6px;align-items:center;">
+      <input id="wo-part-code" list="wo-parts-list" placeholder="Code article" style="width:130px;"/>
       <datalist id="wo-parts-list">${state.parts.map(p=>`<option value="${esc(p.ref||p.id)}">${esc(p.nom)}</option>`).join('')}</datalist>
-      <span id="wo-part-preview" style="font-size:12px;color:var(--muted);align-self:center;flex:1;min-width:120px;">—</span>
+      <input id="wo-part-desig" placeholder="Désignation" readonly style="flex:1;min-width:140px;background:var(--panel);color:var(--muted);"/>
+      <input id="wo-part-unite" placeholder="Unité" readonly style="width:64px;background:var(--panel);color:var(--muted);text-align:center;"/>
+      <span id="wo-part-stock" style="font-size:11px;color:var(--muted);white-space:nowrap;min-width:90px;">Stock : —</span>
       <input id="wo-part-qty" type="number" value="1" min="1" style="width:70px;"/>
       <button class="btn btn-ghost" id="wo-part-add" type="button">${ICONS.plus} Réserver</button>
     </div>`}
@@ -1626,13 +1643,24 @@ function wireWOEditor(){
   }));
 
   const partCodeInput = document.getElementById('wo-part-code');
-  const partPreview = document.getElementById('wo-part-preview');
-  if(partCodeInput && partPreview){
+  const partDesig = document.getElementById('wo-part-desig');
+  const partUnite = document.getElementById('wo-part-unite');
+  const partStock = document.getElementById('wo-part-stock');
+  if(partCodeInput && partDesig){
     partCodeInput.addEventListener('input', ()=>{
       const val = partCodeInput.value.trim().toLowerCase();
       const pt = state.parts.find(p=>(p.ref||'').toLowerCase()===val);
-      partPreview.textContent = pt ? (pt.nom+' — stock: '+pt.quantite+' '+uniteAbrev(pt)) : (val?'Article introuvable':'—');
-      partPreview.style.color = pt ? 'var(--text)' : 'var(--muted)';
+      if(pt){
+        partDesig.value = pt.nom;
+        partUnite.value = uniteAbrev(pt);
+        partStock.textContent = 'Stock : '+fmt(pt.quantite)+' '+uniteAbrev(pt);
+        partStock.style.color = Number(pt.quantite)>0 ? 'var(--muted)' : 'var(--danger)';
+      } else {
+        partDesig.value = val ? 'Article introuvable' : '';
+        partUnite.value = '';
+        partStock.textContent = 'Stock : —';
+        partStock.style.color = 'var(--muted)';
+      }
     });
   }
   const partAddBtn = document.getElementById('wo-part-add');
@@ -1644,6 +1672,24 @@ function wireWOEditor(){
     w.piecesUtilisees.push({id:uid(), partId:pt.id, quantite:qty, reserved:false, reservationId:null});
     render();
   });
+  document.querySelectorAll('[data-wo-part-edit]').forEach(b=>b.addEventListener('click',()=>{
+    woPartEditIndex = Number(b.dataset.woPartEdit); render();
+  }));
+  document.querySelectorAll('[data-wo-part-edit-cancel]').forEach(b=>b.addEventListener('click',()=>{
+    woPartEditIndex = null; render();
+  }));
+  document.querySelectorAll('[data-wo-part-edit-confirm]').forEach(b=>b.addEventListener('click',()=>{
+    const i = Number(b.dataset.woPartEditConfirm);
+    const pu = w.piecesUtilisees[i];
+    const newQty = Number(document.getElementById('wo-part-edit-qty').value);
+    if(!newQty || newQty<=0){ alert('Quantité invalide'); return; }
+    pu.quantite = newQty;
+    if(pu.reservationId){
+      const resa = state.reservations.find(r=>r.id===pu.reservationId);
+      if(resa && resa.statut!=='Sortie validée') resa.quantite = newQty;
+    }
+    woPartEditIndex = null; persist(); render(); toast('Quantité mise à jour');
+  }));
   document.querySelectorAll('[data-wo-part-del]').forEach(b=>b.addEventListener('click',()=>{
     w.piecesUtilisees.splice(Number(b.dataset.woPartDel),1); render();
   }));
@@ -1910,14 +1956,26 @@ function viewParts(){
   <div class="plate p16" style="margin-bottom:16px;border-left:3px solid var(--accent);">
     <h3 class="oswald" style="text-transform:uppercase;font-size:13px;margin:0 0 10px;color:var(--accent);">${ICONS.receipt} Réservations en attente de sortie (${pending.length})</h3>
     <div style="display:flex;flex-direction:column;gap:6px;">
-      ${pending.map(r=>`<div class="between card-item" style="padding:8px 12px;">
+      ${pending.map(r=>{
+        const pt = pm[r.partId];
+        const isValidating = resaValidatingId===r.id;
+        return `<div class="card-item" style="padding:8px 12px;">
+        <div class="between">
         <div>
           <span class="mono" style="font-size:11px;color:var(--muted);">${r.numero}</span>
-          <span style="font-size:13px;margin-left:8px;">${pm[r.partId]?esc(pm[r.partId].nom):'Pièce supprimée'} × ${fmt(r.quantite)}</span>
+          <span style="font-size:13px;margin-left:8px;">${pt?esc(pt.nom):'Pièce supprimée'} × ${fmt(r.quantite)}${pt?' '+uniteAbrev(pt):''}</span>
           <span style="font-size:11px;color:var(--muted);margin-left:8px;">${r.workOrderId?('OT '+(wom[r.workOrderId]?.numero||'—')):r.type}</span>
         </div>
-        <button class="btn btn-ghost" style="font-size:11px;padding:3px 8px;color:var(--success);" data-validate-resa="${r.id}">${ICONS.check} Valider sortie</button>
-      </div>`).join('')}
+        ${isValidating?'':`<button class="btn btn-ghost" style="font-size:11px;padding:3px 8px;color:var(--success);" data-open-validate-resa="${r.id}">${ICONS.check} Valider sortie</button>`}
+        </div>
+        ${isValidating?`<div class="row wrapwrap" style="gap:8px;align-items:center;margin-top:8px;background:var(--panel);border-radius:6px;padding:8px;">
+          <span style="font-size:11px;color:var(--muted);">Stock actuel : <strong style="color:${pt&&Number(pt.quantite)<r.quantite?'var(--danger)':'var(--text)'};">${pt?fmt(pt.quantite)+' '+uniteAbrev(pt):'—'}</strong></span>
+          <span style="font-size:11px;color:var(--muted);">Quantité à valider :</span>
+          <input id="resa-validate-qty" type="number" min="1" max="${pt?pt.quantite:undefined}" value="${r.quantite}" style="width:90px;"/>
+          <button class="btn btn-accent" data-confirm-validate-resa="${r.id}" style="font-size:11px;">${ICONS.check} Confirmer la sortie</button>
+          <button class="btn btn-ghost" id="cancel-validate-resa" style="font-size:11px;">${ICONS.close} Annuler</button>
+        </div>`:''}
+      </div>`;}).join('')}
     </div>
   </div>` : '';
 
@@ -2148,20 +2206,41 @@ function partForm(p){
 }
 
 /* ============ EMPLACEMENTS FONCTIONNELS ============ */
+function buildLocTree(){
+  const byParent = {};
+  state.locations.forEach((l,idx)=>{
+    if(l.ordre===undefined || l.ordre===null) l.ordre = idx;
+    const key = l.parentId||'root';
+    (byParent[key] = byParent[key]||[]).push(l);
+  });
+  Object.values(byParent).forEach(arr=>arr.sort((a,b)=>(a.ordre-b.ordre)));
+  const result = [];
+  function walk(parentKey, depth){
+    (byParent[parentKey]||[]).forEach(l=>{
+      const siblings = byParent[parentKey];
+      const idx = siblings.indexOf(l);
+      result.push({loc:l, depth, isFirst: idx===0, isLast: idx===siblings.length-1});
+      walk(l.id, depth+1);
+    });
+  }
+  walk('root', 0);
+  return result;
+}
 function viewFLoc(){
-  const map = locMap();
-  const sorted = [...state.locations].sort((a,b)=> (a.parentId?locPath(a.id):a.nom).localeCompare(b.parentId?locPath(b.id):b.nom));
+  const tree = buildLocTree();
   return `
   <div class="headrow">
-    <div><h1>Emplacements fonctionnels</h1><p class="subtitle" style="margin:0;">Hiérarchie Site › Atelier › Ligne › Machine</p></div>
+    <div><h1>Emplacements fonctionnels</h1><p class="subtitle" style="margin:0;">Hiérarchie Site › Atelier › Ligne › Machine — utilise ▲▼ pour réordonner manuellement</p></div>
     <button class="btn btn-accent" data-open-modal="floc-new">${ICONS.plus} Nouvel emplacement</button>
   </div>
-  ${sorted.length===0?`<div class="plate p16"><div class="empty">${ICONS.layers}<span>Aucun emplacement défini.</span></div></div>`:
+  ${tree.length===0?`<div class="plate p16"><div class="empty">${ICONS.layers}<span>Aucun emplacement défini.</span></div></div>`:
   `<div style="display:flex;flex-direction:column;gap:6px;">
-  ${sorted.map(l=>`<div class="plate p14 between wrapwrap" style="gap:12px;">
-    <div class="row"><span class="badge">${l.type}</span><span style="font-size:13px;">${esc(locPath(l.id))}</span></div>
-    <div class="row">
-      <span class="mono" style="font-size:11px;color:var(--muted);">${esc(l.code)}</span>
+  ${tree.map(({loc:l,depth,isFirst,isLast})=>`<div class="plate p14 between wrapwrap" style="gap:12px;padding-left:${14+depth*20}px;">
+    <div class="row"><span class="badge">${l.type}</span><span style="font-size:13px;">${esc(l.nom)}</span></div>
+    <div class="row" style="gap:2px;">
+      <span class="mono" style="font-size:11px;color:var(--muted);margin-right:6px;">${esc(l.code)}</span>
+      <button class="icon-btn" data-floc-up="${l.id}" ${isFirst?'disabled style="opacity:.3;"':''} title="Monter">${ICONS.arrowUp||'▲'}</button>
+      <button class="icon-btn" data-floc-down="${l.id}" ${isLast?'disabled style="opacity:.3;"':''} title="Descendre">${ICONS.arrowDown||'▼'}</button>
       <button class="icon-btn" data-edit-floc="${l.id}">${ICONS.edit}</button>
       <button class="icon-btn" data-del-floc="${l.id}">${ICONS.trash}</button>
     </div>
@@ -2563,7 +2642,7 @@ function viewSettings(){
       <div class="plate p16">
         <h3 class="oswald" style="text-transform:uppercase;font-size:14px;margin:0 0 10px;">Postes responsables</h3>
         <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:10px;max-height:180px;overflow-y:auto;">
-          ${state.postes.map((p,i)=>`<div class="between card-item" style="padding:6px 10px;"><span style="font-size:13px;">${esc(p)}</span><button class="icon-btn" data-poste-del="${i}">${ICONS.trash}</button></div>`).join('')}
+          ${state.postes.map((p,i)=>`<div class="between card-item" style="padding:6px 10px;"><span style="font-size:13px;">${esc(p)}</span><div class="row" style="gap:2px;"><button class="icon-btn" data-poste-up="${i}" ${i===0?'disabled style="opacity:.3;"':''} title="Monter">${ICONS.arrowUp||'▲'}</button><button class="icon-btn" data-poste-down="${i}" ${i===state.postes.length-1?'disabled style="opacity:.3;"':''} title="Descendre">${ICONS.arrowDown||'▼'}</button><button class="icon-btn" data-poste-del="${i}">${ICONS.trash}</button></div></div>`).join('')}
         </div>
         <div class="row">
           <input id="poste-new-input" placeholder="Nouveau poste (ex: Frigoriste)" style="flex:1;"/>
@@ -2586,6 +2665,7 @@ function viewSettings(){
 
 /* ============ DEMANDES D'ACHAT ============ */
 /* ============ RÉSERVATIONS DIRECTES ============ */
+let resaValidatingId = null;
 function viewResa(){
   const em = equipMap();
   const ccm = Object.fromEntries(state.costCenters.map(c=>[c.id,c]));
@@ -2599,21 +2679,33 @@ function viewResa(){
   </div>
   ${sorted.length===0?`<div class="plate p16"><div class="empty">${ICONS.layers}<span>Aucune réservation.</span></div></div>`:
   `<div class="plate" style="overflow:hidden;">
-  <table><thead><tr><th>N°</th><th>Type</th><th>Article</th><th class="right">Qté</th><th>Affectation</th><th>Statut</th><th>Date</th><th></th></tr></thead>
+  <table><thead><tr><th>N°</th><th>Type</th><th>Article</th><th class="right">Qté demandée</th><th>Affectation</th><th>Statut</th><th>Date</th><th></th></tr></thead>
   <tbody>
-  ${sorted.map(r=>`<tr>
+  ${sorted.map(r=>{
+    const pt = pm[r.partId];
+    const isValidating = resaValidatingId===r.id;
+    return `<tr>
     <td class="mono" style="color:var(--muted);">${r.numero}</td>
     <td><span class="badge">${r.type}</span></td>
-    <td>${pm[r.partId]?esc(pm[r.partId].nom):'Pièce supprimée'}</td>
-    <td class="right mono">${fmt(r.quantite)}</td>
+    <td>${pt?esc(pt.nom):'Pièce supprimée'}</td>
+    <td class="right mono">${fmt(r.quantite)}${pt?' '+uniteAbrev(pt):''}</td>
     <td style="color:var(--muted);font-size:12px;">${r.workOrderId?(wom[r.workOrderId]?.numero||'—'):r.type==='Centre de coût'?(ccm[r.costCenterId]?.code||'—'):(em[r.equipementId]?.code||'—')}</td>
     <td style="font-size:12px;color:${r.statut==='Sortie validée'?'var(--success)':'var(--accent)'};">${r.statut||'En attente'}</td>
     <td style="color:var(--muted);font-size:12px;">${r.dateCreation||''}</td>
-    <td><div class="row" style="justify-content:flex-end;">
-      ${(r.statut||'En attente')==='En attente'?`<button class="btn btn-ghost" style="font-size:11px;padding:3px 8px;color:var(--success);" data-validate-resa="${r.id}">${ICONS.check} Valider sortie</button>`:''}
+    <td>${isValidating ? '' : `<div class="row" style="justify-content:flex-end;">
+      ${(r.statut||'En attente')==='En attente'?`<button class="btn btn-ghost" style="font-size:11px;padding:3px 8px;color:var(--success);" data-open-validate-resa="${r.id}">${ICONS.check} Valider sortie</button>`:''}
       <button class="icon-btn" data-del-resa="${r.id}">${ICONS.trash}</button>
-    </div></td>
-  </tr>`).join('')}
+    </div>`}</td>
+  </tr>${isValidating ? `<tr><td colspan="8" style="background:var(--panel);padding:10px 14px;">
+    <div class="row wrapwrap" style="gap:8px;align-items:center;">
+      <span style="font-size:11px;color:var(--muted);">Stock actuel : <strong style="color:${pt&&Number(pt.quantite)<r.quantite?'var(--danger)':'var(--text)'};">${pt?fmt(pt.quantite)+' '+uniteAbrev(pt):'—'}</strong></span>
+      <span style="font-size:11px;color:var(--muted);">Quantité à valider :</span>
+      <input id="resa-validate-qty" type="number" min="1" max="${pt?pt.quantite:undefined}" value="${r.quantite}" style="width:90px;"/>
+      <button class="btn btn-accent" data-confirm-validate-resa="${r.id}" style="font-size:11px;">${ICONS.check} Confirmer la sortie</button>
+      <button class="btn btn-ghost" id="cancel-validate-resa" style="font-size:11px;">${ICONS.close} Annuler</button>
+    </div>
+    ${pt&&Number(pt.quantite)<r.quantite?`<div style="font-size:11px;color:var(--danger);margin-top:6px;">⚠ Stock insuffisant pour la quantité demandée — ajuste la quantité à valider.</div>`:''}
+  </td></tr>`:''}`;}).join('')}
   </tbody></table></div>`}`;
 }
 function resaForm(r){
@@ -2797,7 +2889,7 @@ function closeModal(){ document.getElementById('modal-root').innerHTML=''; }
 /* ============ CRUD HANDLERS ============ */
 function attachHandlers(){
   // global nav-from-content
-  document.querySelectorAll('[data-nav]').forEach(b=>b.addEventListener('click',()=>{ currentView=b.dataset.nav; render(); }));
+  document.querySelectorAll('[data-nav]').forEach(b=>b.addEventListener('click',()=>{ currentView=b.dataset.nav; resaValidatingId=null; render(); }));
 
   // Fleet
   const fs = document.getElementById('fleet-search');
@@ -2946,7 +3038,9 @@ function attachHandlers(){
     const l = {id:null, code:'', nom:'', type:LOCATION_TYPES[0], parentId:''};
     openModal('Nouvel emplacement', flocForm(l), (data)=>{
       if(!data.code||!data.nom){ alert('Code et nom requis'); return; }
-      state.locations.push({...data, id:uid(), parentId: data.parentId||null});
+      const parentId = data.parentId||null;
+      const siblingCount = state.locations.filter(x=>(x.parentId||null)===parentId).length;
+      state.locations.push({...data, id:uid(), parentId, ordre:siblingCount});
       persist(); closeModal(); render(); toast('Emplacement ajouté');
     });
   });
@@ -2956,6 +3050,18 @@ function attachHandlers(){
       Object.assign(l, data, {parentId: data.parentId||null});
       persist(); closeModal(); render(); toast('Emplacement mis à jour');
     });
+  }));
+  document.querySelectorAll('[data-floc-up]').forEach(b=>b.addEventListener('click',()=>{
+    const l = state.locations.find(x=>x.id===b.dataset.flocUp); if(!l) return;
+    const siblings = state.locations.filter(x=>(x.parentId||null)===(l.parentId||null)).sort((a,b)=>(a.ordre||0)-(b.ordre||0));
+    const idx = siblings.findIndex(x=>x.id===l.id);
+    if(idx>0){ const prev=siblings[idx-1]; const tmp=l.ordre; l.ordre=prev.ordre; prev.ordre=tmp; persist(); render(); }
+  }));
+  document.querySelectorAll('[data-floc-down]').forEach(b=>b.addEventListener('click',()=>{
+    const l = state.locations.find(x=>x.id===b.dataset.flocDown); if(!l) return;
+    const siblings = state.locations.filter(x=>(x.parentId||null)===(l.parentId||null)).sort((a,b)=>(a.ordre||0)-(b.ordre||0));
+    const idx = siblings.findIndex(x=>x.id===l.id);
+    if(idx<siblings.length-1){ const next=siblings[idx+1]; const tmp=l.ordre; l.ordre=next.ordre; next.ordre=tmp; persist(); render(); }
   }));
   document.querySelectorAll('[data-del-floc]').forEach(b=>b.addEventListener('click',()=>{
     if(!confirm('Supprimer cet emplacement ? (les enfants deviendront racines)')) return;
@@ -3123,16 +3229,27 @@ function attachHandlers(){
       persist(); closeModal(); render(); toast('Réservation créée — en attente de sortie magasin');
     });
   });
-  document.querySelectorAll('[data-validate-resa]').forEach(b=>b.addEventListener('click',()=>{
-    const r = state.reservations.find(x=>x.id===b.dataset.validateResa);
+  document.querySelectorAll('[data-open-validate-resa]').forEach(b=>b.addEventListener('click',()=>{
+    resaValidatingId = b.dataset.openValidateResa; render();
+  }));
+  const cancelValidate = document.getElementById('cancel-validate-resa');
+  if(cancelValidate) cancelValidate.addEventListener('click', ()=>{ resaValidatingId = null; render(); });
+  document.querySelectorAll('[data-confirm-validate-resa]').forEach(b=>b.addEventListener('click',()=>{
+    const r = state.reservations.find(x=>x.id===b.dataset.confirmValidateResa);
     if(!r) return;
-    if(!confirm('Confirmer la sortie magasin de '+r.numero+' ?')) return;
+    const qtyInput = document.getElementById('resa-validate-qty');
+    const qty = Number(qtyInput.value)||0;
+    if(qty<=0){ alert('Quantité invalide'); return; }
     const pt = state.parts.find(p=>p.id===r.partId);
-    if(pt) pt.quantite = Math.max(0, Number(pt.quantite) - Number(r.quantite));
+    if(pt && qty>Number(pt.quantite) && !confirm('La quantité saisie ('+qty+') dépasse le stock disponible ('+pt.quantite+'). Valider quand même ?')) return;
+    if(!confirm('Confirmer la sortie magasin de '+r.numero+' pour '+qty+(pt?' '+uniteAbrev(pt):'')+' ?')) return;
+    if(pt) pt.quantite = Math.max(0, Number(pt.quantite) - qty);
+    r.quantite = qty;
     r.statut = 'Sortie validée';
     r.dateSortie = new Date().toISOString().slice(0,10);
     r.magasinier = currentUser ? currentUser.nomComplet : '';
-    logAudit('Sortie stock validée — réservation '+r.numero); persist(); render(); toast('Sortie validée, stock décrémenté');
+    resaValidatingId = null;
+    logAudit('Sortie stock validée — réservation '+r.numero+' — qté '+qty); persist(); render(); toast('Sortie validée, stock décrémenté');
   }));
   document.querySelectorAll('[data-del-resa]').forEach(b=>b.addEventListener('click',()=>{
     const r = state.reservations.find(x=>x.id===b.dataset.delResa);
@@ -3278,6 +3395,14 @@ function attachHandlers(){
     const used = state.workOrders.some(w=>w.poste===state.postes[i]) || state.personnel.some(p=>p.poste===state.postes[i]);
     if(used && !confirm('Ce poste est utilisé. Le supprimer quand même ?')) return;
     state.postes.splice(i,1); persist(); render();
+  }));
+  document.querySelectorAll('[data-poste-up]').forEach(b=>b.addEventListener('click',()=>{
+    const i = Number(b.dataset.posteUp);
+    if(i>0){ const tmp=state.postes[i-1]; state.postes[i-1]=state.postes[i]; state.postes[i]=tmp; persist(); render(); }
+  }));
+  document.querySelectorAll('[data-poste-down]').forEach(b=>b.addEventListener('click',()=>{
+    const i = Number(b.dataset.posteDown);
+    if(i<state.postes.length-1){ const tmp=state.postes[i+1]; state.postes[i+1]=state.postes[i]; state.postes[i]=tmp; persist(); render(); }
   }));
 
   // Apparence / thème
