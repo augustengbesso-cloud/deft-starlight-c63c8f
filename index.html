@@ -458,7 +458,8 @@ function drawDonut(canvas, segments){
 }
 const DEFAULT_EQUIP_TYPES = ["Pelleteuse","Tombereau","Foreuse","Groupe électrogène","Ligne de production","Machine industrielle","Convoyeur","Emballeuse","Autre"];
 const STATUTS = ["Opérationnel","En maintenance","En panne","À l'arrêt"];
-const WO_STATUTS = ["Ouvert","En cours","Terminé","Clôturé"];
+const WO_STATUTS = ["Créé","Confirmé","En cours","Suspendu","Terminé","Clôturé","Annulé"];
+const WO_STATUTS_ACTIFS = ["Créé","Confirmé","En cours","Suspendu"]; // comptent comme "ouverts" dans les KPI
 const WO_PRIORITES = ["Basse","Normale","Haute","Urgente"];
 const SITES = ["CIGRAC","Usine"];
 const LOCATION_TYPES = ["Site","Atelier","Ligne","Machine"];
@@ -481,7 +482,8 @@ const STATUTS_STOCK = ["Libre","Réservé","En transit"];
 const NIVEAUX_CRITICITE = ["A","B","C"];
 const TYPES_MOUVEMENT = ["Achat","Retour","Réparation"];
 const TYPES_TRAVAIL = ["Inspection","Remplacement pièces","Intervention","Révision","Autre"];
-const WO_TYPES = ["Correctif","Préventif","Inspection","Amélioration"];
+const WO_TYPES = ["Panne / Correctif","Préventif","Inspection","Amélioration"];
+const CATEGORIES_EQUIPEMENT = ["Flotte","Usine","Bâtiment"];
 const DA_STATUTS = ["Ouverte","Convertie en BC","Clôturée"];
 const BC_STATUTS = ["Émis","Réceptionné partiellement","Réceptionné"];
 const AFFECTATIONS = ["Flotte","Usine","Les deux"];
@@ -548,21 +550,23 @@ function logAudit(action){
   state.auditLog.unshift({ date: new Date().toISOString(), user: currentUser?currentUser.nomComplet:'Système', action });
   if(state.auditLog.length>500) state.auditLog.length = 500;
 }
+function woStatutColor(statut){
+  return { 'Créé':'var(--muted)', 'Confirmé':'var(--steel)', 'En cours':'var(--accent)', 'Suspendu':'var(--accent)', 'Terminé':'var(--steel)', 'Clôturé':'var(--success)', 'Annulé':'var(--danger)' }[statut] || 'var(--muted)';
+}
 function woStatusBadges(w){
   // Reproduit l'esprit du bandeau "statut système" SAP (LANC/DANP/DELN...) à partir de l'état réel de l'OT
-  const tags = [{t:'CRÉÉ', c:'var(--muted)'}];
-  if(w.statut==='En cours') tags.push({t:'LANCÉ', c:'var(--accent)'});
+  const statutColors = { 'Créé':'var(--muted)', 'Confirmé':'var(--steel)', 'En cours':'var(--accent)', 'Suspendu':'var(--accent)', 'Terminé':'var(--steel)', 'Clôturé':'var(--success)', 'Annulé':'var(--danger)' };
+  const tags = [{t: w.statut.toUpperCase(), c: statutColors[w.statut]||'var(--muted)'}];
   if(w.operations && w.operations.length) tags.push({t:'OPÉR. SAISIES', c:'var(--steel)'});
   if(w.piecesUtilisees && w.piecesUtilisees.length) tags.push({t:'COMPOSANTS', c:'var(--steel)'});
   const da = state.purchaseRequests.find(d=>d.workOrderId===w.id);
   if(da) tags.push({t: da.statut==='Clôturée' ? 'DA RÉCEPT.' : 'DA EN COURS', c: da.statut==='Clôturée' ? 'var(--success)' : 'var(--accent)'});
-  if(w.statut==='Terminé') tags.push({t:'EN ATTENTE CLÔTURE', c:'var(--steel)'});
-  if(w.statut==='Clôturé') tags.push({t:'CLÔTURÉ TECHN.', c:'var(--success)'});
   if(w.permisTravail) tags.push({t:'PERMIS OK', c:'var(--success)'});
   if(Number(w.cout)>0){
     tags.push(w.budgetApprouve ? {t:'BUDGET APPROUVÉ', c:'var(--success)'} : {t:'BUDGET EN ATTENTE', c:'var(--accent)'});
   }
   if(w.clotureFinanciere) tags.push({t:'CLÔTURÉ FINANC.', c:'var(--success)'});
+  if(w.archive) tags.push({t:'ARCHIVÉ', c:'var(--muted)'});
   return tags;
 }
 function woLinkedDA(woId){ return state.purchaseRequests.find(d=>d.workOrderId===woId) || null; }
@@ -655,7 +659,7 @@ function computeKpis(){
   const coutMaintenance = state.workOrders.reduce((a,w)=>a+Number(w.cout||0),0);
   const coutCarburant = state.fuelLogs.reduce((a,f)=>a+Number(f.cout||0),0);
   const litresTotal = state.fuelLogs.reduce((a,f)=>a+Number(f.quantite||0),0);
-  const ouverts = state.workOrders.filter(w=>w.statut==="Ouvert"||w.statut==="En cours").length;
+  const ouverts = state.workOrders.filter(w=>WO_STATUTS_ACTIFS.includes(w.statut)).length;
   const partsBas = state.parts.filter(p=>Number(p.quantite)<=Number(p.seuil)).length;
 
   const totalPlant = state.plantEquipment.length || 1;
@@ -727,9 +731,10 @@ function drawDashboardCharts(){
   const steel = getComputedStyle(document.documentElement).getPropertyValue('--steel').trim() || '#5B8CB3';
   const success = getComputedStyle(document.documentElement).getPropertyValue('--success').trim() || '#4CAF6D';
   const muted = getComputedStyle(document.documentElement).getPropertyValue('--muted').trim() || '#8B939A';
+  const danger = getComputedStyle(document.documentElement).getPropertyValue('--danger').trim() || '#E5533C';
   drawBarChart(document.getElementById('chart-maint-cost'), months.map(monthLabel), maintByMonth, accent);
   drawBarChart(document.getElementById('chart-fuel-cost'), months.map(monthLabel), fuelByMonth, steel);
-  const woColors = { 'Ouvert':muted, 'En cours':accent, 'Terminé':steel, 'Clôturé':success };
+  const woColors = { 'Créé':muted, 'Confirmé':steel, 'En cours':accent, 'Suspendu':accent, 'Terminé':steel, 'Clôturé':success, 'Annulé':danger };
   drawDonut(document.getElementById('chart-wo-status'), WO_STATUTS.map(s=>({label:s, value: state.workOrders.filter(w=>w.statut===s).length || 0.0001, color: woColors[s]})));
   const persColors = [accent, steel, success];
   drawDonut(document.getElementById('chart-personnel'), AFFECTATIONS.map((a,i)=>({label:a, value: state.personnel.filter(p=>p.statut==='Actif'&&p.affectation===a).length || 0.0001, color: persColors[i%3]})));
@@ -791,7 +796,7 @@ function viewDashboard(){
         <div style="display:flex;flex-direction:column;gap:6px;">
           ${WO_STATUTS.map(s=>{
             const n = state.workOrders.filter(w=>w.statut===s).length;
-            const c = s==='Clôturé'?'var(--success)':s==='Terminé'?'var(--steel)':s==='En cours'?'var(--accent)':'var(--muted)';
+            const c = woStatutColor(s);
             return `<div class="row"><span class="led" style="background:${c}"></span><span style="font-size:12px;color:var(--muted);">${s} : <span style="color:var(--text)">${n}</span></span></div>`;
           }).join('')}
         </div>
@@ -827,7 +832,7 @@ function viewDashboard(){
       ${recentWO.length===0?`<div class="empty">${ICONS.wrench}<span>Aucun ordre de travail créé.</span></div>`:
         `<div style="display:flex;flex-direction:column;gap:6px;">
         ${recentWO.map(w=>`<div class="between card-item">
-          <div class="row"><span class="led" style="background:${w.statut==='Clôturé'?'var(--success)':w.statut==='Terminé'?'var(--steel)':w.statut==='En cours'?'var(--accent)':'var(--muted)'}"></span><span>${esc(w.titre)}</span></div>
+          <div class="row"><span class="led" style="background:${woStatutColor(w.statut)}"></span><span>${esc(w.titre)}</span></div>
           <span style="color:var(--muted);font-size:12px;">${em[w.equipementId]?.code||'—'}</span>
         </div>`).join('')}
         </div>`}
@@ -1157,7 +1162,7 @@ function viewWO(){
   <div class="plate p14" style="gap:10px;display:flex;flex-direction:column;">
     <div class="between wrapwrap" style="gap:12px;">
       <div class="row" style="min-width:0;">
-        <span class="led" style="background:${w.statut==='Clôturé'?'var(--success)':w.statut==='Terminé'?'var(--steel)':w.statut==='En cours'?'var(--accent)':'var(--muted)'}"></span>
+        <span class="led" style="background:${woStatutColor(w.statut)}"></span>
         <div>
           <div class="row" style="flex-wrap:wrap;">
             <span class="mono" style="font-size:11px;color:var(--muted);">${w.numero||'—'}</span>
@@ -1174,7 +1179,7 @@ function viewWO(){
         </div>
       </div>
       <div class="row">
-        <span style="font-size:12px;color:${w.statut==='Clôturé'?'var(--success)':w.statut==='Terminé'?'var(--steel)':w.statut==='En cours'?'var(--accent)':'var(--muted)'}">${w.statut}</span>
+        <span style="font-size:12px;color:${woStatutColor(w.statut)}">${w.statut}</span>
         ${w.cout>0?`<span class="mono" style="font-size:12px;color:var(--muted);">${fmt(w.cout)} FCFA</span>`:''}
         ${!isTech && w.statut==='Terminé' ? `<button class="btn btn-ghost" style="font-size:11px;padding:3px 8px;color:var(--success);" data-close-wo="${w.id}">${ICONS.check} Clôturer</button>`:''}
         <button class="icon-btn" data-open-wo="${w.id}">${ICONS.edit}</button>
@@ -1195,11 +1200,12 @@ let woDraft = null;
 let woEditTab = 'general';
 let woIsNew = false;
 function blankWO(){
-  return { id:null, numero:null, equipementId: state.fleet[0]?.id||state.plantEquipment[0]?.id||'', type:'Correctif',
-    typeTravail: TYPES_TRAVAIL[0], poste: state.postes[0], titre:'', description:'', priorite:'Normale', statut:'Ouvert',
+  return { id:null, numero:null, categorieEquipement:'', equipementId:'', type:'Panne / Correctif',
+    typeTravail: TYPES_TRAVAIL[0], poste: state.postes[0], titre:'', description:'', priorite:'Normale', statut:'Créé',
     dateCreation:new Date().toISOString().slice(0,10), dateDebut:new Date().toISOString().slice(0,10), dateFin:'',
     technicien:'', cout:0, operations:[], piecesUtilisees:[],
-    permisTravail:false, consignation:'', budgetApprouve:false, approbateurBudget:'', clotureFinanciere:false, clotureFinancierePar:'', documents:[] };
+    permisTravail:false, consignation:'', budgetApprouve:false, approbateurBudget:'', clotureFinanciere:false, clotureFinancierePar:'', documents:[],
+    statutAvantSuspension:null, archive:false, motifAnnulation:'' };
 }
 function openWOEditor(id){
   woIsNew = (id==='new');
@@ -1213,11 +1219,16 @@ function openWOEditor(id){
 }
 function viewWOEdit(){
   const w = woDraft;
-  const allEquip = [...state.fleet.map(e=>({...e,grp:'Flotte'})), ...state.plantEquipment.map(e=>({...e,grp:'Usine'}))];
-  const equipOpts = allEquip.map(e=>`<option value="${e.id}" ${w.equipementId===e.id?'selected':''}>[${e.grp}] ${e.code} — ${e.nom}</option>`).join('');
+  if(w.categorieEquipement===undefined) w.categorieEquipement = '';
+  let equipForCat = [];
+  if(w.categorieEquipement==='Flotte') equipForCat = state.fleet.map(e=>({...e,grp:'Flotte'}));
+  else if(w.categorieEquipement==='Usine') equipForCat = state.plantEquipment.map(e=>({...e,grp:'Usine'}));
+  // Bâtiment : module à venir, aucune donnée pour l'instant
+  const equipOpts = `<option value="">— Choisir un équipement —</option>` + equipForCat.map(e=>`<option value="${e.id}" ${w.equipementId===e.id?'selected':''}>${e.code} — ${e.nom}</option>`).join('');
   const linkedNotif = w.id ? state.notifications.find(n=>n.workOrderId===w.id) : null;
   const badges = w.id ? woStatusBadges(w) : [{t:'NOUVEAU', c:'var(--muted)'}];
   const resaMap = Object.fromEntries(state.reservations.map(r=>[r.id,r]));
+  const personnelDuPoste = state.personnel.filter(p=>p.statut==='Actif' && (!w.poste || p.poste===w.poste));
 
   const isTechEdit = currentUser && currentUser.role==='technicien';
   const canSuperviseEdit = currentUser && (currentUser.role==='admin' || currentUser.role==='planificateur');
@@ -1231,12 +1242,25 @@ function viewWOEdit(){
     {id:'documents', label:'Documents'},
     ...(hasBudgetTab ? [{id:'budget', label:'Budget & clôture'}] : []),
   ];
+  const isAdminEdit = currentUser && currentUser.role==='admin';
+  const canExecute = !woIsNew && (canSuperviseEdit || (isTechEdit && w.technicien===currentUser.nomComplet));
+  const s = w.statut;
+  const finalStates = ['Clôturé','Annulé'];
 
   return `
-  <div class="wo-toolbar">
+  <div class="wo-toolbar wrapwrap">
     <button class="btn btn-ghost" id="wo-back">${ICONS.close} Retour à la liste</button>
-    ${!woIsNew && canSuperviseEdit && w.statut==='Ouvert' ? `<button class="btn btn-ghost" style="color:var(--accent);border-color:var(--accent);" id="wo-launch">${ICONS.activity} Lancer</button>` : ''}
-    ${!woIsNew && canSuperviseEdit && w.statut==='Terminé' ? `<button class="btn btn-ghost" style="color:var(--success);border-color:var(--success);" id="wo-close-toolbar">${ICONS.check} Clôturer techniquement et financièrement</button>` : ''}
+    ${!woIsNew && canSuperviseEdit && s==='Créé' ? `<button class="btn btn-ghost" style="color:var(--steel);border-color:var(--steel);" id="wo-confirm">${ICONS.check} Confirmer</button>` : ''}
+    ${!woIsNew && canSuperviseEdit && s==='Confirmé' ? `<button class="btn btn-ghost" style="color:var(--accent);border-color:var(--accent);" id="wo-launch">${ICONS.activity} Lancer</button>` : ''}
+    ${!woIsNew && isTechEdit && w.technicien===currentUser.nomComplet && s==='Confirmé' ? `<button class="btn btn-ghost" style="color:var(--accent);border-color:var(--accent);" id="wo-launch">${ICONS.activity} Exécuter</button>` : ''}
+    ${canExecute && s==='En cours' ? `<button class="btn btn-ghost" style="color:var(--steel);border-color:var(--steel);" id="wo-finish">${ICONS.check} Marquer terminé</button>` : ''}
+    ${!woIsNew && canSuperviseEdit && s==='Terminé' ? `<button class="btn btn-ghost" style="color:var(--success);border-color:var(--success);" id="wo-close-toolbar">${ICONS.check} Clôturer technique</button>` : ''}
+    ${!woIsNew && canSuperviseEdit && ['Créé','Confirmé','En cours'].includes(s) ? `<button class="btn btn-ghost" style="color:var(--muted);" id="wo-suspend">${ICONS.close} Suspendre</button>` : ''}
+    ${!woIsNew && canSuperviseEdit && s==='Suspendu' ? `<button class="btn btn-ghost" style="color:var(--accent);border-color:var(--accent);" id="wo-reopen">${ICONS.activity} Réouvrir</button>` : ''}
+    ${!woIsNew && canSuperviseEdit && s==='Clôturé' ? `<button class="btn btn-ghost" style="color:var(--accent);border-color:var(--accent);" id="wo-reopen">${ICONS.activity} Réouvrir</button>` : ''}
+    ${!woIsNew && canSuperviseEdit && !finalStates.includes(s) ? `<button class="btn btn-ghost" style="color:var(--danger);border-color:var(--danger);" id="wo-cancel">${ICONS.trash} Annuler</button>` : ''}
+    ${!woIsNew && canSuperviseEdit && !finalStates.includes(s) ? `<button class="btn btn-ghost" id="wo-transfer">${ICONS.users} Transférer</button>` : ''}
+    ${!woIsNew && isAdminEdit && s==='Clôturé' && w.clotureFinanciere && !w.archive ? `<button class="btn btn-ghost" style="color:var(--success);border-color:var(--success);" id="wo-archive">${ICONS.receipt} Archiver</button>` : ''}
     <div class="row" style="margin-left:auto;">
       <button class="btn btn-accent" id="wo-save">${ICONS.check} Enregistrer</button>
     </div>
@@ -1258,19 +1282,21 @@ function viewWOEdit(){
   <div class="plate p16" style="margin-bottom:16px;">
     <h3 class="oswald" style="text-transform:uppercase;font-size:13px;margin:0 0 14px;color:var(--muted);">Données générales</h3>
     <div class="formgrid">
+      <label class="field"><span>Catégorie</span><select id="wo-f-categorie"><option value="">— Choisir —</option>${CATEGORIES_EQUIPEMENT.map(c=>`<option ${w.categorieEquipement===c?'selected':''}>${c}</option>`).join('')}</select></label>
       <label class="field"><span>Équipement</span><select id="wo-f-equip">${equipOpts}</select></label>
-      <label class="field"><span>Type de travail</span><select id="wo-f-typetravail">${TYPES_TRAVAIL.map(t=>`<option ${w.typeTravail===t?'selected':''}>${t}</option>`).join('')}</select></label>
+      ${w.categorieEquipement==='Bâtiment' ? `<p style="font-size:11px;color:var(--muted);grid-column:1/-1;margin:-8px 0 0;">Module Bâtiments à venir — aucun équipement disponible pour l'instant.</p>` : ''}
+      <label class="field"><span>Type de travail <span style="color:var(--muted);font-weight:400;">(nature technique)</span></span><select id="wo-f-typetravail">${TYPES_TRAVAIL.map(t=>`<option ${w.typeTravail===t?'selected':''}>${t}</option>`).join('')}</select></label>
       <label class="field span2"><span>Libellé</span><input id="wo-f-titre" value="${esc(w.titre)}" placeholder="Remplacement flexible hydraulique"/></label>
       <label class="field span2"><span>Description</span><textarea id="wo-f-desc" rows="2">${esc(w.description)}</textarea></label>
-      <label class="field"><span>Type</span><select id="wo-f-type">${WO_TYPES.map(t=>`<option ${w.type===t?'selected':''}>${t}</option>`).join('')}</select></label>
-      <label class="field"><span>Poste responsable principal</span><select id="wo-f-poste">${state.postes.map(p=>`<option ${w.poste===p?'selected':''}>${p}</option>`).join('')}</select></label>
+      <label class="field"><span>Type <span style="color:var(--muted);font-weight:400;">(catégorie de l'ordre)</span></span><select id="wo-f-type">${WO_TYPES.map(t=>`<option ${w.type===t?'selected':''}>${t}</option>`).join('')}</select></label>
+      <label class="field"><span>Poste responsable principal <span style="color:var(--muted);font-weight:400;">(corps de métier)</span></span><select id="wo-f-poste">${state.postes.map(p=>`<option ${w.poste===p?'selected':''}>${p}</option>`).join('')}</select></label>
       <label class="field"><span>Priorité</span><select id="wo-f-priorite">${WO_PRIORITES.map(p=>`<option ${w.priorite===p?'selected':''}>${p}</option>`).join('')}</select></label>
-      <label class="field"><span>Statut</span><select id="wo-f-statut">${WO_STATUTS.filter(s=> s!=='Clôturé' || !(currentUser&&currentUser.role==='technicien')).map(s=>`<option ${w.statut===s?'selected':''}>${s}</option>`).join('')}</select></label>
+      <label class="field"><span>Statut</span><select id="wo-f-statut" disabled title="Le statut se change uniquement via les boutons d'action en haut de page">${WO_STATUTS.map(s=>`<option ${w.statut===s?'selected':''}>${s}</option>`).join('')}</select></label>
       <label class="field"><span>Date début</span><input type="date" id="wo-f-debut" value="${w.dateDebut||w.dateCreation||''}"/></label>
       <label class="field"><span>Date fin</span><input type="date" id="wo-f-fin" value="${w.dateFin||''}"/></label>
-      <label class="field"><span>Responsable OT</span>
+      <label class="field"><span>Responsable OT <span style="color:var(--muted);font-weight:400;">(du corps de métier choisi)</span></span>
         <input id="wo-f-tech" list="wo-personnel-list" value="${esc(w.technicien)}" placeholder="Choisir ou saisir un nom"/>
-        <datalist id="wo-personnel-list">${state.personnel.filter(p=>p.statut==='Actif').map(p=>`<option value="${esc(p.nom)}">${esc(p.poste)}</option>`).join('')}</datalist>
+        <datalist id="wo-personnel-list">${personnelDuPoste.map(p=>`<option value="${esc(p.nom)}">${esc(p.poste)}</option>`).join('')}</datalist>
       </label>
       <label class="field"><span>Coût (FCFA)</span><input type="number" id="wo-f-cout" value="${w.cout||0}"/></label>
     </div>
@@ -1391,23 +1417,92 @@ function wireWOEditor(){
   const backBtn = document.getElementById('wo-back'); if(backBtn) backBtn.addEventListener('click', back);
   const backBtn2 = document.getElementById('wo-back-2'); if(backBtn2) backBtn2.addEventListener('click', back);
   document.querySelectorAll('[data-wo-tab]').forEach(b=>b.addEventListener('click',()=>{ woEditTab=b.dataset.woTab; render(); }));
+  function val(id, fallback){ const el = document.getElementById(id); return el ? el.value : fallback; }
+  function syncFieldsIntoW(){
+    w.titre = val('wo-f-titre', w.titre);
+    w.description = val('wo-f-desc', w.description);
+    w.priorite = val('wo-f-priorite', w.priorite);
+    w.dateDebut = val('wo-f-debut', w.dateDebut);
+    w.dateFin = val('wo-f-fin', w.dateFin);
+    w.technicien = val('wo-f-tech', w.technicien);
+    w.cout = val('wo-f-cout', w.cout);
+    w.type = val('wo-f-type', w.type);
+    w.typeTravail = val('wo-f-typetravail', w.typeTravail);
+  }
+  const catSel = document.getElementById('wo-f-categorie');
+  if(catSel) catSel.addEventListener('change', (e)=>{
+    syncFieldsIntoW();
+    w.categorieEquipement = e.target.value;
+    w.equipementId = '';
+    render();
+  });
+  const posteSel = document.getElementById('wo-f-poste');
+  if(posteSel) posteSel.addEventListener('change', (e)=>{ syncFieldsIntoW(); w.poste = e.target.value; render(); });
 
-  function quickTransition(newStatut){
+  function quickTransition(newStatut, extra){
     w.statut = newStatut;
     if((newStatut==='Terminé'||newStatut==='Clôturé') && !w.dateFin) w.dateFin = new Date().toISOString().slice(0,10);
+    if(extra) Object.assign(w, extra);
     const idx = state.workOrders.findIndex(x=>x.id===w.id);
     if(idx>-1) state.workOrders[idx] = {...w};
     const eq = equipMap()[w.equipementId];
     if(eq){
-      if(newStatut==='Terminé' || newStatut==='Clôturé') eq.statut='Opérationnel';
+      if(newStatut==='Terminé' || newStatut==='Clôturé' || newStatut==='Annulé') eq.statut='Opérationnel';
       else if(newStatut==='En cours') eq.statut='En maintenance';
     }
     logAudit('OT '+w.numero+' → '+newStatut); persist(); toast('Statut : '+newStatut); render();
   }
+  const confirmBtn = document.getElementById('wo-confirm');
+  if(confirmBtn) confirmBtn.addEventListener('click', ()=>quickTransition('Confirmé'));
   const launchBtn = document.getElementById('wo-launch');
   if(launchBtn) launchBtn.addEventListener('click', ()=>quickTransition('En cours'));
+  const finishBtn = document.getElementById('wo-finish');
+  if(finishBtn) finishBtn.addEventListener('click', ()=>quickTransition('Terminé'));
   const closeBtn = document.getElementById('wo-close-toolbar');
-  if(closeBtn) closeBtn.addEventListener('click', ()=>{ if(confirm('Clôturer '+w.numero+' ?')) quickTransition('Clôturé'); });
+  if(closeBtn) closeBtn.addEventListener('click', ()=>{ if(confirm('Clôturer techniquement '+w.numero+' ?')) quickTransition('Clôturé'); });
+  const suspendBtn = document.getElementById('wo-suspend');
+  if(suspendBtn) suspendBtn.addEventListener('click', ()=>{
+    const motif = prompt('Motif de suspension (pièces manquantes, ressources...) :');
+    if(motif===null) return;
+    quickTransition('Suspendu', { statutAvantSuspension: w.statut, motifSuspension: motif });
+  });
+  const reopenBtn = document.getElementById('wo-reopen');
+  if(reopenBtn) reopenBtn.addEventListener('click', ()=>{
+    if(w.statutAvantSuspension){
+      const target = w.statutAvantSuspension;
+      quickTransition(target, { statutAvantSuspension:null });
+    } else {
+      if(!confirm('Rouvrir '+w.numero+' ? La clôture financière déjà validée sera remise à zéro.')) return;
+      quickTransition('En cours', { clotureFinanciere:false, clotureFinancierePar:'' });
+    }
+  });
+  const cancelBtn = document.getElementById('wo-cancel');
+  if(cancelBtn) cancelBtn.addEventListener('click', ()=>{
+    const motif = prompt('Motif d\'annulation :');
+    if(motif===null) return;
+    if(!confirm('Confirmer l\'annulation de '+w.numero+' ?')) return;
+    quickTransition('Annulé', { motifAnnulation: motif });
+  });
+  const transferBtn = document.getElementById('wo-transfer');
+  if(transferBtn) transferBtn.addEventListener('click', ()=>{
+    const nouveauResp = prompt('Transférer à (nom du nouveau responsable) :', w.technicien||'');
+    if(nouveauResp===null || !nouveauResp.trim()) return;
+    const ancien = w.technicien||'—';
+    w.technicien = nouveauResp.trim();
+    const idx = state.workOrders.findIndex(x=>x.id===w.id);
+    if(idx>-1) state.workOrders[idx] = {...w};
+    logAudit('OT '+w.numero+' transféré de '+ancien+' à '+nouveauResp.trim());
+    persist(); toast('OT transféré à '+nouveauResp.trim()); render();
+  });
+  const archiveBtn = document.getElementById('wo-archive');
+  if(archiveBtn) archiveBtn.addEventListener('click', ()=>{
+    if(!confirm('Archiver '+w.numero+' ? Il restera consultable dans les rapports.')) return;
+    w.archive = true;
+    const idx = state.workOrders.findIndex(x=>x.id===w.id);
+    if(idx>-1) state.workOrders[idx] = {...w};
+    logAudit('OT '+w.numero+' archivé');
+    persist(); toast('Ordre archivé'); currentView='wo'; woDraft=null; render();
+  });
 
   const approveBudgetBtn = document.getElementById('wo-approve-budget');
   if(approveBudgetBtn) approveBudgetBtn.addEventListener('click', ()=>{
@@ -1518,7 +1613,6 @@ function wireWOEditor(){
     });
   }
 
-  function val(id, fallback){ const el = document.getElementById(id); return el ? el.value : fallback; }
   const saveHandler = ()=>{
     w.equipementId = val('wo-f-equip', w.equipementId);
     w.titre = val('wo-f-titre', w.titre);
@@ -1556,8 +1650,8 @@ function wireWOEditor(){
       const idx = state.workOrders.findIndex(x=>x.id===w.id);
       if(idx>-1) state.workOrders[idx] = w;
       if(eqForStatus){
-        if(w.statut==='Terminé' || w.statut==='Clôturé') eqForStatus.statut='Opérationnel';
-        else if(w.statut!=='Ouvert' || eqForStatus.statut!=='En panne') eqForStatus.statut='En maintenance';
+        if(w.statut==='Terminé' || w.statut==='Clôturé' || w.statut==='Annulé') eqForStatus.statut='Opérationnel';
+        else if(w.statut!=='Créé' || eqForStatus.statut!=='En panne') eqForStatus.statut='En maintenance';
       }
       persist(); currentView='wo'; woDraft=null; render(); toast('Ordre de travail mis à jour');
     }
@@ -2908,11 +3002,11 @@ function attachHandlers(){
     if(!n) return;
     state.woCounter = (state.woCounter||0)+1;
     const wo = {
+      ...blankWO(),
       id:uid(), numero:'OT-'+String(state.woCounter).padStart(4,'0'), equipementId:n.equipementId, type:'Correctif',
       typeTravail: n.type==='Panne'?'Intervention':'Inspection', poste:state.postes[0], titre:n.description.slice(0,60),
-      description:n.description, priorite:n.priorite, statut:'Ouvert',
-      dateCreation:new Date().toISOString().slice(0,10), dateDebut:new Date().toISOString().slice(0,10), dateFin:'',
-      technicien:'', cout:0, operations:[], piecesUtilisees:[]
+      description:n.description, priorite:n.priorite, statut:'Créé',
+      dateCreation:new Date().toISOString().slice(0,10), dateDebut:new Date().toISOString().slice(0,10), dateFin:''
     };
     state.workOrders.push(wo);
     n.statut = 'Convertie en OT';
@@ -3300,6 +3394,17 @@ async function init(){
       if(w.clotureFinanciere===undefined) w.clotureFinanciere = false;
       if(w.clotureFinancierePar===undefined) w.clotureFinancierePar = '';
       if(!w.documents) w.documents = [];
+      if(w.statutAvantSuspension===undefined) w.statutAvantSuspension = null;
+      if(w.archive===undefined) w.archive = false;
+      if(w.motifAnnulation===undefined) w.motifAnnulation = '';
+      if(w.categorieEquipement===undefined || !w.categorieEquipement){
+        const inFleet = (data.fleet||[]).some(e=>e.id===w.equipementId);
+        const inPlant = (data.plantEquipment||[]).some(e=>e.id===w.equipementId);
+        w.categorieEquipement = inFleet ? 'Flotte' : inPlant ? 'Usine' : '';
+      }
+      if(w.type==='Correctif') w.type = 'Panne / Correctif';
+      // migration de l'ancien statut "Ouvert" vers le nouveau workflow "Créé"
+      if(w.statut==='Ouvert') w.statut = 'Créé';
     });
   }
   state = data;
