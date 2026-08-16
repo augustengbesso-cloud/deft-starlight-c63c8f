@@ -1364,13 +1364,13 @@ function viewWOEdit(){
   return `
   <div class="wo-toolbar wrapwrap">
     <button class="btn btn-ghost" id="wo-back">${ICONS.close} Retour à la liste</button>
-    ${!woIsNew && canSuperviseEdit && (s==='Créé'||s==='Confirmé partiel') ? `<button class="btn btn-ghost" style="color:var(--steel);border-color:var(--steel);" id="wo-confirm">${ICONS.check} Confirmer${s==='Confirmé partiel'?' (suite)':''}</button>` : ''}
-    ${!woIsNew && canSuperviseEdit && (s==='Confirmé partiel'||s==='Confirmé') ? `<button class="btn btn-ghost" style="color:var(--muted);" id="wo-deconfirm">${ICONS.close} Déconfirmer</button>` : ''}
+    ${!woIsNew && canSuperviseEdit && s==='Créé' ? `<button class="btn btn-ghost" style="color:var(--steel);border-color:var(--steel);" id="wo-confirm">${ICONS.check} Confirmer</button>` : ''}
     ${!woIsNew && canSuperviseEdit && s==='Confirmé' ? `<button class="btn btn-ghost" style="color:var(--accent);border-color:var(--accent);" id="wo-launch">${ICONS.activity} Lancer</button>` : ''}
     ${!woIsNew && isTechEdit && w.technicien===currentUser.nomComplet && s==='Confirmé' ? `<button class="btn btn-ghost" style="color:var(--accent);border-color:var(--accent);" id="wo-launch">${ICONS.activity} Exécuter</button>` : ''}
-    ${canExecute && s==='En cours' ? `<button class="btn btn-ghost" style="color:var(--steel);border-color:var(--steel);" id="wo-finish">${ICONS.check} Marquer terminé</button>` : ''}
+    ${canExecute && (s==='En cours'||s==='Confirmé partiel') ? `<button class="btn btn-ghost" style="color:var(--steel);border-color:var(--steel);" id="wo-finish">${ICONS.check} Marquer terminé${s==='Confirmé partiel'?' (suite)':''}</button>` : ''}
+    ${!woIsNew && canSuperviseEdit && (s==='Confirmé partiel'||s==='Terminé') ? `<button class="btn btn-ghost" style="color:var(--muted);" id="wo-deconfirm">${ICONS.close} Déconfirmer</button>` : ''}
     ${!woIsNew && canSuperviseEdit && s==='Terminé' ? `<button class="btn btn-ghost" style="color:var(--success);border-color:var(--success);" id="wo-close-toolbar">${ICONS.check} Clôturer technique</button>` : ''}
-    ${!woIsNew && canSuperviseEdit && ['Créé','Confirmé partiel','Confirmé','En cours'].includes(s) ? `<button class="btn btn-ghost" style="color:var(--muted);" id="wo-suspend">${ICONS.close} Suspendre</button>` : ''}
+    ${!woIsNew && canSuperviseEdit && ['Créé','Confirmé','En cours','Confirmé partiel'].includes(s) ? `<button class="btn btn-ghost" style="color:var(--muted);" id="wo-suspend">${ICONS.close} Suspendre</button>` : ''}
     ${!woIsNew && canSuperviseEdit && s==='Suspendu' ? `<button class="btn btn-ghost" style="color:var(--accent);border-color:var(--accent);" id="wo-reopen">${ICONS.activity} Réouvrir</button>` : ''}
     ${!woIsNew && canSuperviseEdit && s==='Clôturé' ? `<button class="btn btn-ghost" style="color:var(--accent);border-color:var(--accent);" id="wo-reopen">${ICONS.activity} Déclôturer</button>` : ''}
     ${!woIsNew && canSuperviseEdit && !finalStates.includes(s) ? `<button class="btn btn-ghost" style="color:var(--danger);border-color:var(--danger);" id="wo-cancel">${ICONS.trash} Annuler</button>` : ''}
@@ -1594,15 +1594,12 @@ function wireWOEditor(){
     const eq = equipMap()[w.equipementId];
     if(eq){
       if(newStatut==='Terminé' || newStatut==='Clôturé' || newStatut==='Annulé') eq.statut='Opérationnel';
-      else if(newStatut==='En cours') eq.statut='En maintenance';
+      else if(newStatut==='En cours' || newStatut==='Confirmé partiel') eq.statut='En maintenance';
     }
     logAudit('OT '+w.numero+' → '+newStatut); persist(); toast('Statut : '+newStatut); render();
   }
   const confirmBtn = document.getElementById('wo-confirm');
-  if(confirmBtn) confirmBtn.addEventListener('click', ()=>{
-    if(!w.operations || w.operations.length===0){ alert("Ajoute au moins une opération avec ses intervenants dans l'onglet \"Opérations\" avant de confirmer."); return; }
-    openConfirmationPanel(w);
-  });
+  if(confirmBtn) confirmBtn.addEventListener('click', ()=>quickTransition('Confirmé'));
   const deconfirmBtn = document.getElementById('wo-deconfirm');
   if(deconfirmBtn) deconfirmBtn.addEventListener('click', ()=>openDeconfirmPanel(w));
   const workflowBtn = document.getElementById('wo-workflow');
@@ -1612,7 +1609,10 @@ function wireWOEditor(){
   const launchBtn = document.getElementById('wo-launch');
   if(launchBtn) launchBtn.addEventListener('click', ()=>quickTransition('En cours'));
   const finishBtn = document.getElementById('wo-finish');
-  if(finishBtn) finishBtn.addEventListener('click', ()=>quickTransition('Terminé'));
+  if(finishBtn) finishBtn.addEventListener('click', ()=>{
+    if(!w.operations || w.operations.length===0){ alert("Ajoute au moins une opération avec ses intervenants dans l'onglet \"Opérations\" avant de marquer l'OT comme terminé — c'est là que tu enregistres le travail réellement effectué."); return; }
+    openConfirmationPanel(w);
+  });
   const closeBtn = document.getElementById('wo-close-toolbar');
   if(closeBtn) closeBtn.addEventListener('click', ()=>{ confirmModal('Clôturer techniquement '+w.numero+' ?', ()=>quickTransition('Clôturé')); });
   const suspendBtn = document.getElementById('wo-suspend');
@@ -3280,25 +3280,47 @@ function recomputeConfirmStatus(w){
   const total = (w.operations||[]).length;
   const confirmed = (w.operations||[]).filter(o=>o.confirme).length;
   if(total===0) return;
-  w.statut = confirmed===0 ? 'Créé' : (confirmed<total ? 'Confirmé partiel' : 'Confirmé');
+  const eq = equipMap()[w.equipementId];
+  if(confirmed===0){
+    w.statut = 'En cours';
+    w.dateFin = '';
+    if(eq) eq.statut = 'En maintenance';
+  } else if(confirmed<total){
+    w.statut = 'Confirmé partiel';
+    w.dateFin = '';
+    if(eq) eq.statut = 'En maintenance';
+  } else {
+    w.statut = 'Terminé';
+    if(!w.dateFin) w.dateFin = new Date().toISOString().slice(0,10);
+    if(eq) eq.statut = 'Opérationnel';
+  }
 }
-function openConfirmationPanel(w){
+function openConfirmationPanel(wId){
+  const w = typeof wId==='string' ? state.workOrders.find(x=>x.id===wId) : wId;
+  if(!w){ alert('Ordre de travail introuvable — réessaie depuis la liste des OT.'); return; }
   const root = document.getElementById('modal-root');
+  const ops = w.operations||[];
+  const totalOps = ops.length, confirmedOps = ops.filter(o=>o.confirme).length;
   root.innerHTML = `
   <div class="modal-overlay" id="wo-panel-overlay">
     <div class="modal" style="max-width:760px;">
       <div class="modal-head"><h3>Confirmation des opérations — ${w.numero||''}</h3><button class="icon-btn" id="wo-panel-close">${ICONS.close}</button></div>
       <div class="modal-body">
-        <p style="font-size:12px;color:var(--muted);margin:0 0 14px;">Vérifie les heures réalisées par intervenant, ajuste-les si besoin, puis confirme chaque opération. L'OT passe en <strong>Confirmé partiel</strong> tant que toutes les opérations ne sont pas validées, puis en <strong>Confirmé</strong> une fois complet.</p>
-        <div style="display:flex;flex-direction:column;gap:10px;max-height:58vh;overflow-y:auto;">
-          ${(w.operations||[]).map((op,oi)=>`
-          <div class="card-item" style="padding:12px;${op.confirme?'border-color:var(--success);':''}">
-            <div class="between" style="margin-bottom:8px;">
-              <span style="font-size:13px;font-weight:500;">${esc(op.description)}</span>
-              ${op.confirme?`<span class="badge" style="color:var(--success);border-color:var(--success);">${ICONS.check} Confirmée — ${esc(op.confirmePar||'')}</span>`
-                :`<button class="btn btn-accent" style="font-size:11px;" data-confirm-op="${oi}">${ICONS.check} Confirmer cette opération</button>`}
+        <p style="font-size:12px;color:var(--muted);margin:0 0 10px;">Le travail a été exécuté — vérifie les heures réellement effectuées par intervenant, ajuste-les si besoin, puis clique sur <strong>"Confirmer cette opération"</strong> pour chacune. L'OT reste en <strong>Confirmé partiel</strong> tant que toutes ne sont pas validées, puis passe en <strong>Terminé</strong> une fois complet.</p>
+        <div class="between" style="background:var(--panel);border-radius:6px;padding:8px 12px;margin-bottom:14px;">
+          <span style="font-size:12px;color:var(--muted);">Progression</span>
+          <span style="font-size:13px;font-weight:700;color:${confirmedOps===totalOps&&totalOps>0?'var(--success)':'var(--accent)'};">${confirmedOps} / ${totalOps} opération(s) confirmée(s)</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px;max-height:52vh;overflow-y:auto;" id="wo-confirm-op-list">
+          ${totalOps===0?`<div class="empty">${ICONS.wrench}<span>Aucune opération sur cet OT.</span></div>`:
+          ops.map((op,oi)=>`
+          <div class="card-item" style="padding:12px;${op.confirme?'border-color:var(--success);background:rgba(76,175,109,.08);':''}">
+            <div class="between wrapwrap" style="margin-bottom:8px;gap:8px;">
+              <span style="font-size:13px;font-weight:500;">${op.confirme?ICONS.check+' ':''}${esc(op.description)}</span>
+              ${op.confirme?`<span class="badge" style="color:var(--success);border-color:var(--success);white-space:nowrap;">Confirmée — ${esc(op.confirmePar||'')}</span>`
+                :`<button class="btn btn-accent" type="button" style="font-size:11px;white-space:nowrap;" data-confirm-op="${oi}">${ICONS.check} Confirmer cette opération</button>`}
             </div>
-            ${(op.affectations||[]).length===0?`<span style="font-size:11px;color:var(--muted);">Aucun intervenant affecté — rien à confirmer pour cette tâche.</span>`:
+            ${(op.affectations||[]).length===0?`<span style="font-size:11px;color:var(--muted);">Aucun intervenant affecté — rien à confirmer pour cette tâche, tu peux la confirmer directement.</span>`:
             `<div style="display:flex;flex-direction:column;gap:6px;">
               ${op.affectations.map((af,ai)=>{
                 const mins = af.dureeMin!=null?af.dureeMin:dureeAffectation(af);
@@ -3312,12 +3334,17 @@ function openConfirmationPanel(w){
             </div>`}
           </div>`).join('')}
         </div>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" type="button" id="wo-panel-footer-close">${ICONS.close} Fermer</button>
+        </div>
       </div>
     </div>
   </div>`;
   wireWorkflowPanels(w, 'confirm');
 }
-function openDeconfirmPanel(w){
+function openDeconfirmPanel(wId){
+  const w = typeof wId==='string' ? state.workOrders.find(x=>x.id===wId) : wId;
+  if(!w){ alert('Ordre de travail introuvable — réessaie depuis la liste des OT.'); return; }
   const root = document.getElementById('modal-root');
   const confirmedOps = (w.operations||[]).map((op,oi)=>({op,oi})).filter(x=>x.op.confirme);
   root.innerHTML = `
@@ -3325,7 +3352,7 @@ function openDeconfirmPanel(w){
     <div class="modal" style="max-width:680px;">
       <div class="modal-head"><h3>Déconfirmation des opérations — ${w.numero||''}</h3><button class="icon-btn" id="wo-panel-close">${ICONS.close}</button></div>
       <div class="modal-body">
-        <p style="font-size:12px;color:var(--muted);margin:0 0 14px;">Réservé aux responsables et planificateurs. Annule la confirmation d'une opération en cas d'erreur de saisie — l'OT repasse en <strong>Confirmé partiel</strong> ou <strong>Créé</strong> selon le nombre d'opérations restant confirmées.</p>
+        <p style="font-size:12px;color:var(--muted);margin:0 0 14px;">Réservé aux responsables et planificateurs. Annule la confirmation d'une opération en cas d'erreur de saisie sur les heures — l'OT repasse en <strong>Confirmé partiel</strong> ou <strong>En cours</strong> selon le nombre d'opérations restant confirmées.</p>
         ${confirmedOps.length===0?`<div class="empty">${ICONS.check}<span>Aucune opération confirmée pour l'instant.</span></div>`:
         `<div style="display:flex;flex-direction:column;gap:8px;max-height:55vh;overflow-y:auto;">
           ${confirmedOps.map(({op,oi})=>`<div class="between card-item" style="padding:10px 12px;">
@@ -3333,9 +3360,12 @@ function openDeconfirmPanel(w){
               <div style="font-size:13px;font-weight:500;">${esc(op.description)}</div>
               <div style="font-size:11px;color:var(--muted);margin-top:2px;">Confirmée par ${esc(op.confirmePar||'—')}${op.dateConfirmation?' · '+new Date(op.dateConfirmation).toLocaleString('fr-FR'):''}</div>
             </div>
-            <button class="btn btn-ghost" style="color:var(--danger);border-color:var(--danger);font-size:11px;" data-deconfirm-op="${oi}">${ICONS.close} Déconfirmer</button>
+            <button class="btn btn-ghost" type="button" style="color:var(--danger);border-color:var(--danger);font-size:11px;" data-deconfirm-op="${oi}">${ICONS.close} Déconfirmer</button>
           </div>`).join('')}
         </div>`}
+        <div class="modal-actions">
+          <button class="btn btn-ghost" type="button" id="wo-panel-footer-close">${ICONS.close} Fermer</button>
+        </div>
       </div>
     </div>
   </div>`;
@@ -3347,6 +3377,8 @@ function wireWorkflowPanels(w, mode){
   if(overlay) overlay.addEventListener('click', (e)=>{ if(e.target.id==='wo-panel-overlay') closePanel(); });
   const closeBtn = document.getElementById('wo-panel-close');
   if(closeBtn) closeBtn.addEventListener('click', closePanel);
+  const footerCloseBtn = document.getElementById('wo-panel-footer-close');
+  if(footerCloseBtn) footerCloseBtn.addEventListener('click', closePanel);
 
   document.querySelectorAll('[data-conf-debut]').forEach(inp=>inp.addEventListener('change', ()=>{
     const [oi,ai] = inp.dataset.confDebut.split(':').map(Number);
@@ -3361,28 +3393,46 @@ function wireWorkflowPanels(w, mode){
     const label = document.querySelector(`[data-conf-duree="${oi}:${ai}"]`); if(label) label.textContent = fmtDuree(mins);
   }));
   document.querySelectorAll('[data-confirm-op]').forEach(btn=>btn.addEventListener('click', ()=>{
-    const oi = Number(btn.dataset.confirmOp);
-    const op = w.operations[oi];
-    (op.affectations||[]).forEach(af=>{ af.dureeMin = dureeAffectation(af); });
-    op.confirme = true;
-    op.confirmePar = currentUser ? currentUser.nomComplet : '';
-    op.dateConfirmation = new Date().toISOString();
-    recomputeConfirmStatus(w);
-    syncWOToState(w);
-    logAudit('OT '+w.numero+' — opération "'+op.description+'" confirmée par '+op.confirmePar);
-    persist(); toast('Opération confirmée');
-    openConfirmationPanel(w);
+    try{
+      const oi = Number(btn.dataset.confirmOp);
+      const op = w.operations[oi];
+      if(!op){ alert('Opération introuvable, réessaie.'); return; }
+      (op.affectations||[]).forEach(af=>{ af.dureeMin = dureeAffectation(af); });
+      op.confirme = true;
+      op.confirmePar = currentUser ? currentUser.nomComplet : '';
+      op.dateConfirmation = new Date().toISOString();
+      recomputeConfirmStatus(w);
+      syncWOToState(w);
+      logAudit('OT '+w.numero+' — opération "'+op.description+'" confirmée par '+op.confirmePar);
+      persist(); toast('Opération confirmée');
+      const total = (w.operations||[]).length;
+      const confirmed = (w.operations||[]).filter(o=>o.confirme).length;
+      if(total>0 && confirmed===total){
+        closePanel();
+        toast('Toutes les opérations sont confirmées — OT marqué Terminé');
+      } else {
+        openConfirmationPanel(w.id);
+      }
+    }catch(err){
+      console.error(err);
+      alert("Une erreur est survenue lors de la confirmation. Détail : "+(err&&err.message?err.message:String(err)));
+    }
   }));
   document.querySelectorAll('[data-deconfirm-op]').forEach(btn=>btn.addEventListener('click', ()=>{
     const oi = Number(btn.dataset.deconfirmOp);
     const op = w.operations[oi];
     confirmModal('Déconfirmer l\'opération "'+op.description+'" ?', ()=>{
-      op.confirme = false; op.confirmePar=''; op.dateConfirmation=null;
-      recomputeConfirmStatus(w);
-      syncWOToState(w);
-      logAudit('OT '+w.numero+' — confirmation annulée sur "'+op.description+'" par '+(currentUser?currentUser.nomComplet:''));
-      persist(); toast('Opération déconfirmée');
-      openDeconfirmPanel(w);
+      try{
+        op.confirme = false; op.confirmePar=''; op.dateConfirmation=null;
+        recomputeConfirmStatus(w);
+        syncWOToState(w);
+        logAudit('OT '+w.numero+' — confirmation annulée sur "'+op.description+'" par '+(currentUser?currentUser.nomComplet:''));
+        persist(); toast('Opération déconfirmée');
+        openDeconfirmPanel(w.id);
+      }catch(err){
+        console.error(err);
+        alert("Une erreur est survenue lors de la déconfirmation. Détail : "+(err&&err.message?err.message:String(err)));
+      }
     });
   }));
 }
@@ -3391,17 +3441,21 @@ function openWorkflowPanel(w){
   const linkedNotif = state.notifications.find(n=>n.workOrderId===w.id);
   const ops = w.operations||[];
   const totalOps = ops.length, confirmedOps = ops.filter(o=>o.confirme).length;
+  const s = w.statut;
   const stages = [
     { key:'Créé', label:'Création', done:true, info: 'Créé le '+(w.dateCreation||'—')+(linkedNotif?' · à partir de l\'avis '+(linkedNotif.numero||''):'') },
-    { key:'Confirmation', label:'Confirmation des opérations', done: w.statut!=='Créé',
-      info: totalOps===0 ? 'Aucune opération à confirmer' : `${confirmedOps} / ${totalOps} opération(s) confirmée(s)`,
-      pending: w.statut==='Créé' || w.statut==='Confirmé partiel' },
-    { key:'Exécution', label:'Exécution', done: ['En cours','Terminé','Clôturé'].includes(w.statut),
+    { key:'Confirmation', label:'Confirmation (validation administrative)', done: s!=='Créé',
+      info: s==='Créé' ? 'En attente de validation par un responsable ou planificateur' : 'Ordre validé, prêt à être lancé',
+      pending: s==='Créé' },
+    { key:'Exécution', label:'Exécution', done: ['En cours','Confirmé partiel','Terminé','Clôturé'].includes(s),
       info: w.technicien ? 'Responsable : '+w.technicien : 'Aucun responsable assigné',
-      pending: w.statut==='Confirmé' },
-    { key:'Clôture', label:'Clôture technique & financière', done: w.statut==='Clôturé',
-      info: w.statut==='Clôturé' ? ('Clôturé le '+(w.dateFin||'—')+(w.clotureFinanciere?' · clôture financière validée par '+(w.clotureFinancierePar||''):' · clôture financière en attente')) : (w.statut==='Terminé' ? 'Prêt pour clôture technique' : 'En attente d\'exécution'),
-      pending: w.statut==='Terminé' },
+      pending: s==='Confirmé' },
+    { key:'ConfirmationOps', label:'Confirmation des heures effectuées', done: ['Terminé','Clôturé'].includes(s),
+      info: totalOps===0 ? 'Aucune opération à confirmer' : `${confirmedOps} / ${totalOps} opération(s) confirmée(s)`,
+      pending: s==='En cours' || s==='Confirmé partiel' },
+    { key:'Clôture', label:'Clôture technique & financière', done: s==='Clôturé',
+      info: s==='Clôturé' ? ('Clôturé le '+(w.dateFin||'—')+(w.clotureFinanciere?' · clôture financière validée par '+(w.clotureFinancierePar||''):' · clôture financière en attente')) : (s==='Terminé' ? 'Prêt pour clôture technique' : 'En attente de fin d\'exécution'),
+      pending: s==='Terminé' },
   ];
   const root = document.getElementById('modal-root');
   root.innerHTML = `
