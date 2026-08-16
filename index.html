@@ -1163,8 +1163,9 @@ function renderTypesModal(){
   document.querySelectorAll('[data-type-del]').forEach(b=>b.addEventListener('click',()=>{
     const i = Number(b.dataset.typeDel);
     const used = [...state.fleet, ...state.plantEquipment].some(e=>e.type===state.equipTypes[i]);
-    if(used && !confirm('Ce type est utilisé par au moins un équipement. Le supprimer quand même ?')) return;
-    state.equipTypes.splice(i,1); persist(); renderTypesModal();
+    const doDelete = ()=>{ state.equipTypes.splice(i,1); persist(); renderTypesModal(); };
+    if(used) confirmModal('Ce type est utilisé par au moins un équipement. Le supprimer quand même ?', doDelete, {danger:true, okLabel:'Supprimer quand même'});
+    else doDelete();
   }));
 }
 function closeTypesModal(){ document.getElementById('modal-root').innerHTML=''; render(); }
@@ -1254,7 +1255,7 @@ function viewWO(){
     const badges = woStatusBadges(w);
     const linkedNotif = state.notifications.find(n=>n.workOrderId===w.id);
     return `
-  <div class="plate p14" style="gap:10px;display:flex;flex-direction:column;">
+  <div class="plate p14 legend-clickable" style="gap:10px;display:flex;flex-direction:column;" data-open-wo-row="${w.id}">
     <div class="between wrapwrap" style="gap:12px;">
       <div class="row" style="min-width:0;">
         <span class="led" style="background:${woStatutColor(w.statut)}"></span>
@@ -1613,7 +1614,7 @@ function wireWOEditor(){
   const finishBtn = document.getElementById('wo-finish');
   if(finishBtn) finishBtn.addEventListener('click', ()=>quickTransition('Terminé'));
   const closeBtn = document.getElementById('wo-close-toolbar');
-  if(closeBtn) closeBtn.addEventListener('click', ()=>{ if(confirm('Clôturer techniquement '+w.numero+' ?')) quickTransition('Clôturé'); });
+  if(closeBtn) closeBtn.addEventListener('click', ()=>{ confirmModal('Clôturer techniquement '+w.numero+' ?', ()=>quickTransition('Clôturé')); });
   const suspendBtn = document.getElementById('wo-suspend');
   if(suspendBtn) suspendBtn.addEventListener('click', ()=>{
     promptModal('Suspendre '+w.numero, 'Motif de suspension (pièces manquantes, ressources...)', (motif)=>{
@@ -1626,15 +1627,17 @@ function wireWOEditor(){
       const target = w.statutAvantSuspension;
       quickTransition(target, { statutAvantSuspension:null });
     } else {
-      if(!confirm('Rouvrir '+w.numero+' ? La clôture financière déjà validée sera remise à zéro.')) return;
-      quickTransition('En cours', { clotureFinanciere:false, clotureFinancierePar:'' });
+      confirmModal('Rouvrir '+w.numero+' ? La clôture financière déjà validée sera remise à zéro.', ()=>{
+        quickTransition('En cours', { clotureFinanciere:false, clotureFinancierePar:'' });
+      });
     }
   });
   const cancelBtn = document.getElementById('wo-cancel');
   if(cancelBtn) cancelBtn.addEventListener('click', ()=>{
     promptModal("Annuler "+w.numero, "Motif d'annulation", (motif)=>{
-      if(!confirm('Confirmer l\'annulation de '+w.numero+' ?')) return;
-      quickTransition('Annulé', { motifAnnulation: motif });
+      confirmModal("Confirmer l'annulation de "+w.numero+' ?', ()=>{
+        quickTransition('Annulé', { motifAnnulation: motif });
+      }, {danger:true, okLabel:'Annuler l\'OT'});
     }, {textarea:true});
   });
   const transferBtn = document.getElementById('wo-transfer');
@@ -1650,12 +1653,13 @@ function wireWOEditor(){
   });
   const archiveBtn = document.getElementById('wo-archive');
   if(archiveBtn) archiveBtn.addEventListener('click', ()=>{
-    if(!confirm('Archiver '+w.numero+' ? Il restera consultable dans les rapports.')) return;
-    w.archive = true;
-    const idx = state.workOrders.findIndex(x=>x.id===w.id);
-    if(idx>-1) state.workOrders[idx] = {...w};
-    logAudit('OT '+w.numero+' archivé');
-    persist(); toast('Ordre archivé'); currentView='wo'; woDraft=null; render();
+    confirmModal('Archiver '+w.numero+' ? Il restera consultable dans les rapports.', ()=>{
+      w.archive = true;
+      const idx = state.workOrders.findIndex(x=>x.id===w.id);
+      if(idx>-1) state.workOrders[idx] = {...w};
+      logAudit('OT '+w.numero+' archivé');
+      persist(); toast('Ordre archivé'); currentView='wo'; woDraft=null; render();
+    });
   });
 
   const approveBudgetBtn = document.getElementById('wo-approve-budget');
@@ -1668,12 +1672,13 @@ function wireWOEditor(){
   });
   const closeFinancialBtn = document.getElementById('wo-close-financial');
   if(closeFinancialBtn) closeFinancialBtn.addEventListener('click', ()=>{
-    if(!confirm('Confirmer la clôture financière de '+w.numero+' ?')) return;
-    w.clotureFinanciere = true;
-    w.clotureFinancierePar = currentUser ? currentUser.nomComplet : '';
-    const idx = state.workOrders.findIndex(x=>x.id===w.id);
-    if(idx>-1) state.workOrders[idx] = {...w};
-    logAudit('Clôture financière '+w.numero); persist(); toast('Ordre clôturé financièrement'); render();
+    confirmModal('Confirmer la clôture financière de '+w.numero+' ?', ()=>{
+      w.clotureFinanciere = true;
+      w.clotureFinancierePar = currentUser ? currentUser.nomComplet : '';
+      const idx = state.workOrders.findIndex(x=>x.id===w.id);
+      if(idx>-1) state.workOrders[idx] = {...w};
+      logAudit('Clôture financière '+w.numero); persist(); toast('Ordre clôturé financièrement'); render();
+    });
   });
 
   const docAddBtn = document.getElementById('wo-doc-add');
@@ -1698,12 +1703,13 @@ function wireWOEditor(){
       docAddBtn.disabled = false;
     }
   });
-  document.querySelectorAll('[data-wo-doc-del]').forEach(b=>b.addEventListener('click', async ()=>{
+  document.querySelectorAll('[data-wo-doc-del]').forEach(b=>b.addEventListener('click', ()=>{
     const i = Number(b.dataset.woDocDel);
     const doc = w.documents[i];
-    if(!confirm('Supprimer "'+doc.name+'" ?')) return;
-    try{ if(doc.path) await sb.storage.from('documents').remove([doc.path]); }catch(e){}
-    w.documents.splice(i,1); render();
+    confirmModal('Supprimer "'+doc.name+'" ?', async ()=>{
+      try{ if(doc.path) await sb.storage.from('documents').remove([doc.path]); }catch(e){}
+      w.documents.splice(i,1); render();
+    }, {danger:true, okLabel:'Supprimer'});
   }));
 
   const opAdd = document.getElementById('wo-op-add');
@@ -2749,8 +2755,9 @@ function wireEditableLists(){
     const [prefix, iStr] = b.dataset.elistDel.split(':'); const key = EDITABLE_LIST_KEYS[prefix]; const i = Number(iStr);
     if(state[key].length<=1){ alert('Il doit rester au moins une valeur dans la liste.'); return; }
     const used = state.workOrders.some(w=>(prefix==='wo-typetravail'&&w.typeTravail===state[key][i])||(prefix==='wo-type'&&w.type===state[key][i])||(prefix==='wo-priorite'&&w.priorite===state[key][i]));
-    if(used && !confirm('Cette valeur est utilisée par au moins un ordre de travail. La supprimer quand même ?')) return;
-    state[key].splice(i,1); persist(); render();
+    const doDelete = ()=>{ state[key].splice(i,1); persist(); render(); };
+    if(used) confirmModal('Cette valeur est utilisée par au moins un ordre de travail. La supprimer quand même ?', doDelete, {danger:true, okLabel:'Supprimer quand même'});
+    else doDelete();
   }));
   document.querySelectorAll('[data-elist-up]').forEach(b=>b.addEventListener('click',()=>{
     const [prefix, iStr] = b.dataset.elistUp.split(':'); const key = EDITABLE_LIST_KEYS[prefix]; const i = Number(iStr);
@@ -3369,13 +3376,14 @@ function wireWorkflowPanels(w, mode){
   document.querySelectorAll('[data-deconfirm-op]').forEach(btn=>btn.addEventListener('click', ()=>{
     const oi = Number(btn.dataset.deconfirmOp);
     const op = w.operations[oi];
-    if(!confirm('Déconfirmer l\'opération "'+op.description+'" ?')) return;
-    op.confirme = false; op.confirmePar=''; op.dateConfirmation=null;
-    recomputeConfirmStatus(w);
-    syncWOToState(w);
-    logAudit('OT '+w.numero+' — confirmation annulée sur "'+op.description+'" par '+(currentUser?currentUser.nomComplet:''));
-    persist(); toast('Opération déconfirmée');
-    openDeconfirmPanel(w);
+    confirmModal('Déconfirmer l\'opération "'+op.description+'" ?', ()=>{
+      op.confirme = false; op.confirmePar=''; op.dateConfirmation=null;
+      recomputeConfirmStatus(w);
+      syncWOToState(w);
+      logAudit('OT '+w.numero+' — confirmation annulée sur "'+op.description+'" par '+(currentUser?currentUser.nomComplet:''));
+      persist(); toast('Opération déconfirmée');
+      openDeconfirmPanel(w);
+    });
   }));
 }
 function openWorkflowPanel(w){
@@ -3812,6 +3820,27 @@ function promptModal(title, label, onConfirm, opts={}){
     onConfirm(val);
   });
 }
+function confirmModal(message, onConfirm, opts={}){
+  const root = document.getElementById('modal-root');
+  root.innerHTML = `
+  <div class="modal-overlay" id="confirm-overlay">
+    <div class="modal" style="max-width:440px;">
+      <div class="modal-head"><h3>${opts.title||'Confirmation'}</h3><button class="icon-btn" id="confirm-x">${ICONS.close}</button></div>
+      <div class="modal-body">
+        <p style="font-size:13px;color:var(--text);line-height:1.5;margin:0 0 18px;">${esc(message)}</p>
+        <div class="modal-actions" style="justify-content:flex-end;">
+          <button class="btn btn-ghost" id="confirm-cancel">Annuler</button>
+          <button class="btn ${opts.danger?'btn-ghost':'btn-accent'}" id="confirm-ok" ${opts.danger?'style="color:var(--danger);border-color:var(--danger);"':''}>${opts.okLabel||'Confirmer'}</button>
+        </div>
+      </div>
+    </div>
+  </div>`;
+  const close = ()=>{ document.getElementById('modal-root').innerHTML=''; };
+  document.getElementById('confirm-overlay').addEventListener('click', e=>{ if(e.target.id==='confirm-overlay') close(); });
+  document.getElementById('confirm-x').addEventListener('click', close);
+  document.getElementById('confirm-cancel').addEventListener('click', close);
+  document.getElementById('confirm-ok').addEventListener('click', ()=>{ close(); onConfirm(); });
+}
 
 /* ============ CRUD HANDLERS ============ */
 function attachHandlers(){
@@ -3862,9 +3891,10 @@ function attachHandlers(){
     });
   }));
   document.querySelectorAll('[data-del-fleet]').forEach(b=>b.addEventListener('click',()=>{
-    if(!confirm('Supprimer cet engin ?')) return;
-    state.fleet = state.fleet.filter(x=>x.id!==b.dataset.delFleet);
-    persist(); render(); toast('Engin supprimé');
+    confirmModal('Supprimer cet engin ?', ()=>{
+      state.fleet = state.fleet.filter(x=>x.id!==b.dataset.delFleet);
+      persist(); render(); toast('Engin supprimé');
+    }, {danger:true, okLabel:'Supprimer'});
   }));
 
   // Work orders
@@ -3894,22 +3924,30 @@ function attachHandlers(){
   if(rExportWord) rExportWord.addEventListener('click', ()=>{ rExportWord.disabled=true; exportReportsToWord().finally(()=>{ rExportWord.disabled=false; }); });
   const rExportPdf = document.getElementById('report-export-pdf');
   if(rExportPdf) rExportPdf.addEventListener('click', exportReportsToPDF);
-  document.querySelectorAll('[data-open-wo]').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('[data-open-wo]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
     openWOEditor(b.dataset.openWo);
   }));
-  document.querySelectorAll('[data-del-wo]').forEach(b=>b.addEventListener('click',()=>{
-    if(!confirm('Supprimer cet ordre de travail ?')) return;
-    state.workOrders = state.workOrders.filter(x=>x.id!==b.dataset.delWo);
-    persist(); render(); toast('Ordre de travail supprimé');
+  document.querySelectorAll('[data-open-wo-row]').forEach(b=>b.addEventListener('click',()=>{
+    openWOEditor(b.dataset.openWoRow);
   }));
-  document.querySelectorAll('[data-close-wo]').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('[data-del-wo]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
+    confirmModal('Supprimer cet ordre de travail ?', ()=>{
+      state.workOrders = state.workOrders.filter(x=>x.id!==b.dataset.delWo);
+      persist(); render(); toast('Ordre de travail supprimé');
+    }, {danger:true, okLabel:'Supprimer'});
+  }));
+  document.querySelectorAll('[data-close-wo]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
     const w = state.workOrders.find(x=>x.id===b.dataset.closeWo);
     if(!w) return;
-    if(!confirm('Clôturer techniquement et financièrement '+w.numero+' ?')) return;
-    w.statut = 'Clôturé';
-    if(!w.dateFin) w.dateFin = new Date().toISOString().slice(0,10);
-    const eq = equipMap()[w.equipementId]; if(eq) eq.statut='Opérationnel';
-    persist(); render(); toast(w.numero+' clôturé');
+    confirmModal('Clôturer techniquement et financièrement '+w.numero+' ?', ()=>{
+      w.statut = 'Clôturé';
+      if(!w.dateFin) w.dateFin = new Date().toISOString().slice(0,10);
+      const eq = equipMap()[w.equipementId]; if(eq) eq.statut='Opérationnel';
+      persist(); render(); toast(w.numero+' clôturé');
+    });
   }));
   if(currentView==='wo-edit') wireWOEditor();
 
@@ -3919,9 +3957,10 @@ function attachHandlers(){
     openPMModal(b.dataset.openPm);
   }));
   document.querySelectorAll('[data-del-pm]').forEach(b=>b.addEventListener('click',()=>{
-    if(!confirm('Supprimer ce plan ?')) return;
-    state.pmPlans = state.pmPlans.filter(x=>x.id!==b.dataset.delPm);
-    persist(); render(); toast('Plan supprimé');
+    confirmModal('Supprimer ce plan ?', ()=>{
+      state.pmPlans = state.pmPlans.filter(x=>x.id!==b.dataset.delPm);
+      persist(); render(); toast('Plan supprimé');
+    }, {danger:true, okLabel:'Supprimer'});
   }));
 
   // Fuel
@@ -3942,9 +3981,10 @@ function attachHandlers(){
     });
   }));
   document.querySelectorAll('[data-del-fuel]').forEach(b=>b.addEventListener('click',()=>{
-    if(!confirm('Supprimer ce plein ?')) return;
-    state.fuelLogs = state.fuelLogs.filter(x=>x.id!==b.dataset.delFuel);
-    persist(); render(); toast('Plein supprimé');
+    confirmModal('Supprimer ce plein ?', ()=>{
+      state.fuelLogs = state.fuelLogs.filter(x=>x.id!==b.dataset.delFuel);
+      persist(); render(); toast('Plein supprimé');
+    }, {danger:true, okLabel:'Supprimer'});
   }));
 
   // Parts
@@ -3984,9 +4024,10 @@ function attachHandlers(){
     });
   }));
   document.querySelectorAll('[data-del-part]').forEach(b=>b.addEventListener('click',()=>{
-    if(!confirm('Supprimer cette pièce ?')) return;
-    state.parts = state.parts.filter(x=>x.id!==b.dataset.delPart);
-    persist(); render(); toast('Pièce supprimée');
+    confirmModal('Supprimer cette pièce ?', ()=>{
+      state.parts = state.parts.filter(x=>x.id!==b.dataset.delPart);
+      persist(); render(); toast('Pièce supprimée');
+    }, {danger:true, okLabel:'Supprimer'});
   }));
   const mvtn = document.querySelector('[data-open-modal="mvt-new"]');
   if(mvtn) mvtn.addEventListener('click', ()=>{
@@ -4033,11 +4074,12 @@ function attachHandlers(){
     if(idx<siblings.length-1){ const next=siblings[idx+1]; const tmp=l.ordre; l.ordre=next.ordre; next.ordre=tmp; persist(); render(); }
   }));
   document.querySelectorAll('[data-del-floc]').forEach(b=>b.addEventListener('click',()=>{
-    if(!confirm('Supprimer cet emplacement ? (les enfants deviendront racines)')) return;
-    const id = b.dataset.delFloc;
-    state.locations.forEach(l=>{ if(l.parentId===id) l.parentId=null; });
-    state.locations = state.locations.filter(x=>x.id!==id);
-    persist(); render(); toast('Emplacement supprimé');
+    confirmModal('Supprimer cet emplacement ? (les enfants deviendront racines)', ()=>{
+      const id = b.dataset.delFloc;
+      state.locations.forEach(l=>{ if(l.parentId===id) l.parentId=null; });
+      state.locations = state.locations.filter(x=>x.id!==id);
+      persist(); render(); toast('Emplacement supprimé');
+    }, {danger:true, okLabel:'Supprimer'});
   }));
 
   // Équipements usine
@@ -4058,9 +4100,10 @@ function attachHandlers(){
     });
   }));
   document.querySelectorAll('[data-del-plant]').forEach(b=>b.addEventListener('click',()=>{
-    if(!confirm('Supprimer cette machine ?')) return;
-    state.plantEquipment = state.plantEquipment.filter(x=>x.id!==b.dataset.delPlant);
-    persist(); render(); toast('Machine supprimée');
+    confirmModal('Supprimer cette machine ?', ()=>{
+      state.plantEquipment = state.plantEquipment.filter(x=>x.id!==b.dataset.delPlant);
+      persist(); render(); toast('Machine supprimée');
+    }, {danger:true, okLabel:'Supprimer'});
   }));
 
   // Production / OEE
@@ -4081,9 +4124,10 @@ function attachHandlers(){
     });
   }));
   document.querySelectorAll('[data-del-prod]').forEach(b=>b.addEventListener('click',()=>{
-    if(!confirm('Supprimer ce relevé ?')) return;
-    state.productionLogs = state.productionLogs.filter(x=>x.id!==b.dataset.delProd);
-    persist(); render(); toast('Relevé supprimé');
+    confirmModal('Supprimer ce relevé ?', ()=>{
+      state.productionLogs = state.productionLogs.filter(x=>x.id!==b.dataset.delProd);
+      persist(); render(); toast('Relevé supprimé');
+    }, {danger:true, okLabel:'Supprimer'});
   }));
 
   // Notifications
@@ -4110,9 +4154,10 @@ function attachHandlers(){
     });
   }));
   document.querySelectorAll('[data-del-notif]').forEach(b=>b.addEventListener('click',()=>{
-    if(!confirm('Supprimer cette demande ?')) return;
-    state.notifications = state.notifications.filter(x=>x.id!==b.dataset.delNotif);
-    persist(); render(); toast('Demande supprimée');
+    confirmModal('Supprimer cette demande ?', ()=>{
+      state.notifications = state.notifications.filter(x=>x.id!==b.dataset.delNotif);
+      persist(); render(); toast('Demande supprimée');
+    }, {danger:true, okLabel:'Supprimer'});
   }));
   document.querySelectorAll('[data-validate-notif]').forEach(b=>b.addEventListener('click',()=>{
     const n = state.notifications.find(x=>x.id===b.dataset.validateNotif);
@@ -4157,9 +4202,10 @@ function attachHandlers(){
     });
   }));
   document.querySelectorAll('[data-del-measure]').forEach(b=>b.addEventListener('click',()=>{
-    if(!confirm('Supprimer ce point de mesure ?')) return;
-    state.measuringPoints = state.measuringPoints.filter(x=>x.id!==b.dataset.delMeasure);
-    persist(); render(); toast('Point de mesure supprimé');
+    confirmModal('Supprimer ce point de mesure ?', ()=>{
+      state.measuringPoints = state.measuringPoints.filter(x=>x.id!==b.dataset.delMeasure);
+      persist(); render(); toast('Point de mesure supprimé');
+    }, {danger:true, okLabel:'Supprimer'});
   }));
 
   // Centres de coûts
@@ -4180,9 +4226,10 @@ function attachHandlers(){
     });
   }));
   document.querySelectorAll('[data-del-cc]').forEach(b=>b.addEventListener('click',()=>{
-    if(!confirm('Supprimer ce centre de coût ?')) return;
-    state.costCenters = state.costCenters.filter(x=>x.id!==b.dataset.delCc);
-    persist(); render(); toast('Centre de coût supprimé');
+    confirmModal('Supprimer ce centre de coût ?', ()=>{
+      state.costCenters = state.costCenters.filter(x=>x.id!==b.dataset.delCc);
+      persist(); render(); toast('Centre de coût supprimé');
+    }, {danger:true, okLabel:'Supprimer'});
   }));
 
   // Réservations
@@ -4210,26 +4257,33 @@ function attachHandlers(){
     const qty = Number(qtyInput.value)||0;
     if(qty<=0){ alert('Quantité invalide'); return; }
     const pt = state.parts.find(p=>p.id===r.partId);
-    if(pt && qty>Number(pt.quantite) && !confirm('La quantité saisie ('+qty+') dépasse le stock disponible ('+pt.quantite+'). Valider quand même ?')) return;
-    if(!confirm('Confirmer la sortie magasin de '+r.numero+' pour '+qty+(pt?' '+uniteAbrev(pt):'')+' ?')) return;
-    if(pt) pt.quantite = Math.max(0, Number(pt.quantite) - qty);
-    r.quantite = qty;
-    r.statut = 'Sortie validée';
-    r.dateSortie = new Date().toISOString().slice(0,10);
-    r.magasinier = currentUser ? currentUser.nomComplet : '';
-    resaValidatingId = null;
-    logAudit('Sortie stock validée — réservation '+r.numero+' — qté '+qty); persist(); render(); toast('Sortie validée, stock décrémenté');
+    const doValidate = ()=>{
+      confirmModal('Confirmer la sortie magasin de '+r.numero+' pour '+qty+(pt?' '+uniteAbrev(pt):'')+' ?', ()=>{
+        if(pt) pt.quantite = Math.max(0, Number(pt.quantite) - qty);
+        r.quantite = qty;
+        r.statut = 'Sortie validée';
+        r.dateSortie = new Date().toISOString().slice(0,10);
+        r.magasinier = currentUser ? currentUser.nomComplet : '';
+        resaValidatingId = null;
+        logAudit('Sortie stock validée — réservation '+r.numero+' — qté '+qty); persist(); render(); toast('Sortie validée, stock décrémenté');
+      });
+    };
+    if(pt && qty>Number(pt.quantite)){
+      confirmModal('La quantité saisie ('+qty+') dépasse le stock disponible ('+pt.quantite+'). Valider quand même ?', doValidate, {danger:true, okLabel:'Valider quand même'});
+    } else doValidate();
   }));
   document.querySelectorAll('[data-del-resa]').forEach(b=>b.addEventListener('click',()=>{
     const r = state.reservations.find(x=>x.id===b.dataset.delResa);
     const warn = r && r.statut==='Sortie validée' ? ' Le stock déjà sorti ne sera pas réajusté.' : '';
-    if(!confirm('Supprimer cette réservation ?'+warn)) return;
-    state.reservations = state.reservations.filter(x=>x.id!==b.dataset.delResa);
-    persist(); render(); toast('Réservation supprimée');
+    confirmModal('Supprimer cette réservation ?'+warn, ()=>{
+      state.reservations = state.reservations.filter(x=>x.id!==b.dataset.delResa);
+      persist(); render(); toast('Réservation supprimée');
+    }, {danger:true, okLabel:'Supprimer'});
   }));
 
   // Créer une DA directement depuis un OT (liaison façon "Activer réservation/demande d'achat" SAP)
-  document.querySelectorAll('[data-create-da-from-wo]').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('[data-create-da-from-wo]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
     const w = state.workOrders.find(x=>x.id===b.dataset.createDaFromWo);
     if(!w) return;
     const eq = equipMap()[w.equipementId];
@@ -4265,9 +4319,10 @@ function attachHandlers(){
     });
   }));
   document.querySelectorAll('[data-del-da]').forEach(b=>b.addEventListener('click',()=>{
-    if(!confirm('Supprimer cette demande d\'achat ?')) return;
-    state.purchaseRequests = state.purchaseRequests.filter(x=>x.id!==b.dataset.delDa);
-    persist(); render(); toast('Demande d\'achat supprimée');
+    confirmModal('Supprimer cette demande d\'achat ?', ()=>{
+      state.purchaseRequests = state.purchaseRequests.filter(x=>x.id!==b.dataset.delDa);
+      persist(); render(); toast('Demande d\'achat supprimée');
+    }, {danger:true, okLabel:'Supprimer'});
   }));
   document.querySelectorAll('[data-convert-da]').forEach(b=>b.addEventListener('click',()=>{
     const d = state.purchaseRequests.find(x=>x.id===b.dataset.convertDa);
@@ -4290,9 +4345,10 @@ function attachHandlers(){
     });
   }));
   document.querySelectorAll('[data-del-bc]').forEach(b=>b.addEventListener('click',()=>{
-    if(!confirm('Supprimer ce bon de commande ?')) return;
-    state.purchaseOrders = state.purchaseOrders.filter(x=>x.id!==b.dataset.delBc);
-    persist(); render(); toast('Bon de commande supprimé');
+    confirmModal('Supprimer ce bon de commande ?', ()=>{
+      state.purchaseOrders = state.purchaseOrders.filter(x=>x.id!==b.dataset.delBc);
+      persist(); render(); toast('Bon de commande supprimé');
+    }, {danger:true, okLabel:'Supprimer'});
   }));
   document.querySelectorAll('[data-receive-bc]').forEach(b=>b.addEventListener('click',()=>{
     const bc = state.purchaseOrders.find(x=>x.id===b.dataset.receiveBc);
@@ -4362,8 +4418,9 @@ function attachHandlers(){
   document.querySelectorAll('[data-poste-del]').forEach(b=>b.addEventListener('click',()=>{
     const i = Number(b.dataset.posteDel);
     const used = state.workOrders.some(w=>w.poste===state.postes[i]) || state.personnel.some(p=>p.poste===state.postes[i]);
-    if(used && !confirm('Ce poste est utilisé. Le supprimer quand même ?')) return;
-    state.postes.splice(i,1); persist(); render();
+    const doDelete = ()=>{ state.postes.splice(i,1); persist(); render(); };
+    if(used) confirmModal('Ce poste est utilisé. Le supprimer quand même ?', doDelete, {danger:true, okLabel:'Supprimer quand même'});
+    else doDelete();
   }));
   document.querySelectorAll('[data-poste-up]').forEach(b=>b.addEventListener('click',()=>{
     const i = Number(b.dataset.posteUp);
@@ -4419,9 +4476,10 @@ function attachHandlers(){
     });
   }));
   document.querySelectorAll('[data-del-personnel]').forEach(b=>b.addEventListener('click',()=>{
-    if(!confirm('Supprimer cette personne ?')) return;
-    state.personnel = state.personnel.filter(x=>x.id!==b.dataset.delPersonnel);
-    persist(); render(); toast('Personne supprimée');
+    confirmModal('Supprimer cette personne ?', ()=>{
+      state.personnel = state.personnel.filter(x=>x.id!==b.dataset.delPersonnel);
+      persist(); render(); toast('Personne supprimée');
+    }, {danger:true, okLabel:'Supprimer'});
   }));
 }
 
