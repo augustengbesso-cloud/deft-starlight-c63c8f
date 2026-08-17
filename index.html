@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>2NA Entreprise — Maintenance & Carburant</title>
-<meta name="theme-color" content="#14171A" />
+<title>2NA-MAINT-PROD — Maintenance & Carburant</title>
+<meta name="theme-color" content="#0F2A44" />
 <link rel="manifest" href="manifest.json" />
 <link rel="icon" href="icon.svg" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="icon.svg" />
@@ -12,31 +12,35 @@
 @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
 :root{
-  --bg:#14171A; --panel:#1B1F23; --panelR:#22272C; --border:#2E353B; --borderL:#3A424A;
-  --text:#ECEAE5; --muted:#8B939A; --accent:#F2A63C; --steel:#5B8CB3; --success:#4CAF6D; --danger:#E5533C;
+  --bg:#EAF4FC; --panel:#FFFFFF; --panelR:#E3F0FB; --border:#C9DEEF; --borderL:#A9C7E0;
+  --text:#16324F; --muted:#5B7A93; --accent:#F2A63C; --steel:#3B82C4; --success:#2E9E5B; --danger:#D9483A;
+  --sidebar-bg:#0F2A44; --sidebar-bg2:#173A5E; --sidebar-text:#EAF4FC; --sidebar-muted:#8FB3D1;
 }
 *{box-sizing:border-box;}
-body{margin:0;background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased;}
+html,body{height:100%;}
+body{margin:0;background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased;overflow:hidden;}
 .mono{font-family:'IBM Plex Mono',monospace;}
 .oswald{font-family:'Oswald',sans-serif;}
-#app{display:flex;min-height:100vh;}
+#app{display:flex;height:100vh;height:100dvh;}
 /* Sidebar */
-#sidebar{width:220px;flex-shrink:0;background:#101315;border-right:1px solid var(--border);display:flex;flex-direction:column;}
-.brand{padding:20px 16px;border-bottom:1px solid var(--border);}
+#sidebar{width:220px;flex-shrink:0;height:100%;overflow-y:auto;background:linear-gradient(180deg,var(--sidebar-bg) 0%,var(--sidebar-bg2) 100%);border-right:1px solid var(--border);display:flex;flex-direction:column;}
+.brand{padding:20px 16px;border-bottom:1px solid rgba(255,255,255,.1);}
 .brand-row{display:flex;align-items:center;gap:8px;}
 .dot{width:10px;height:10px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent);}
-.brand-title{font-family:'Oswald',sans-serif;letter-spacing:.05em;font-weight:600;font-size:14px;text-transform:uppercase;}
+.brand-title{font-family:'Oswald',sans-serif;letter-spacing:.05em;font-weight:600;font-size:14px;text-transform:uppercase;color:var(--text);}
 .brand-sub{font-size:11px;color:var(--muted);margin-top:4px;}
+#sidebar .brand-title{color:var(--sidebar-text);}
+#sidebar .brand-sub{color:var(--sidebar-muted);}
 nav{flex:1;padding:12px 8px;display:flex;flex-direction:column;gap:2px;}
-.navbtn{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:6px;border:none;background:transparent;color:var(--muted);font-size:14px;text-align:left;cursor:pointer;border-left:2px solid transparent;font-family:'Inter',sans-serif;}
-.navbtn:hover{color:var(--text);}
-.navbtn.active{background:var(--panelR);color:var(--accent);border-left:2px solid var(--accent);}
+.navbtn{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:6px;border:none;background:transparent;color:var(--sidebar-muted);font-size:14px;text-align:left;cursor:pointer;border-left:2px solid transparent;font-family:'Inter',sans-serif;}
+.navbtn:hover{color:var(--sidebar-text);background:rgba(255,255,255,.06);}
+.navbtn.active{background:rgba(255,255,255,.1);color:var(--accent);border-left:2px solid var(--accent);}
 .navbtn svg{flex-shrink:0;}
-.nav-section{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);padding:14px 12px 4px;font-family:'Oswald',sans-serif;}
+.nav-section{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--sidebar-muted);padding:14px 12px 4px;font-family:'Oswald',sans-serif;opacity:.7;}
 .nav-section:first-child{padding-top:4px;}
-.sidebar-foot{padding:12px 16px;font-size:10px;color:var(--muted);border-top:1px solid var(--border);}
+.sidebar-foot{padding:12px 16px;font-size:10px;color:var(--sidebar-muted);border-top:1px solid rgba(255,255,255,.1);}
 /* Main */
-#main{flex:1;min-width:0;overflow-y:auto;height:100vh;}
+#main{flex:1;min-width:0;overflow-y:auto;height:100%;}
 .wrap{max-width:1500px;margin:0;padding:24px 32px;}
 h1{font-family:'Oswald',sans-serif;text-transform:uppercase;letter-spacing:.03em;font-size:24px;margin:0 0 2px;}
 .subtitle{color:var(--muted);font-size:14px;margin:0 0 20px;}
@@ -106,7 +110,8 @@ td{padding:9px 12px;border-bottom:1px solid var(--border);}
 .toast{position:fixed;bottom:20px;right:20px;background:var(--panelR);border:1px solid var(--accent);color:var(--text);padding:10px 16px;border-radius:6px;font-size:13px;display:flex;align-items:center;gap:8px;z-index:200;}
 .badge{font-size:10px;padding:2px 6px;border-radius:4px;text-transform:uppercase;background:var(--panelR);color:var(--muted);border:1px solid transparent;}
 .badge-danger{background:var(--danger);color:#fff;}
-#topbar{display:flex;align-items:center;gap:8px;padding:8px 16px;border-bottom:1px solid var(--border);background:#101315;position:sticky;top:0;z-index:10;}
+#topbar{display:flex;align-items:center;gap:8px;padding:8px 16px;border-bottom:1px solid var(--border);background:var(--sidebar-bg);position:sticky;top:0;z-index:10;}
+#offline-banner{position:sticky;top:0;z-index:11;padding:7px 16px;font-size:12.5px;font-weight:500;text-align:center;color:#fff;}
 #sync-text{display:none;}
 #refresh-btn{padding:5px 10px;font-size:12px;flex-shrink:0;}
 #logout-btn-top{padding:5px 10px;font-size:12px;flex-shrink:0;}
@@ -135,7 +140,7 @@ td{padding:9px 12px;border-bottom:1px solid var(--border);}
 <div id="app" style="display:none;">
   <aside id="sidebar">
     <div class="brand">
-      <div class="brand-row"><span class="dot"></span><span class="brand-title">2NA ENTREPRISE</span></div>
+      <div class="brand-row"><span class="dot"></span><span class="brand-title">2NA-MAINT-PROD</span></div>
       <div class="brand-sub">Maintenance & Carburant</div>
       <div id="env-badge" style="margin-top:8px;"></div>
     </div>
@@ -145,6 +150,7 @@ td{padding:9px 12px;border-bottom:1px solid var(--border);}
     </div>
   </aside>
   <main id="main">
+    <div id="offline-banner" style="display:none;"></div>
     <div id="topbar">
       <span id="user-info-top"></span>
       <span class="led" id="sync-dot" style="background:var(--muted)"></span>
@@ -217,7 +223,7 @@ function renderAuthScreen(){
   el.innerHTML = `
   <div class="auth-card">
     <div class="brand-row" style="justify-content:center;margin-bottom:8px;">
-      <span class="dot"></span><span class="brand-title" style="font-size:16px;">2NA ENTREPRISE</span>
+      <span class="dot"></span><span class="brand-title" style="font-size:16px;">2NA-MAINT-PROD</span>
     </div>
     <div id="env-badge-auth" style="display:flex;justify-content:center;margin-bottom:16px;"></div>
     <h3 class="oswald" style="text-align:center;text-transform:uppercase;font-size:14px;color:var(--muted);margin:0 0 20px;">Connexion</h3>
@@ -385,38 +391,73 @@ async function loadRemote(){
   }
 }
 let isSaving = false;
+let pendingSync = false;
+let retryTimer = null;
 async function saveRemote(){
   isSaving = true;
   try{
     const { error } = await sb.from('erp_data').upsert({ id:'main', data: state, updated_at: new Date().toISOString() });
-    if(error){ setSyncStatus(false, 'écriture: '+error.message); return; }
+    if(error){ pendingSync = true; setSyncStatus('pending', 'écriture en attente (réseau) : '+error.message); scheduleRetry(); return; }
+    pendingSync = false;
     setSyncStatus(true, 'enregistré');
-  }catch(e){ setSyncStatus(false, 'écriture: '+((e&&e.message)||String(e))); }
+  }catch(e){
+    pendingSync = true;
+    setSyncStatus('pending', 'écriture en attente (réseau) : '+((e&&e.message)||String(e)));
+    scheduleRetry();
+  }
   finally{ isSaving = false; }
 }
+function scheduleRetry(){
+  if(retryTimer) return;
+  retryTimer = setTimeout(()=>{ retryTimer = null; if(pendingSync && navigator.onLine) saveRemote(); else if(pendingSync) scheduleRetry(); }, 8000);
+}
+window.addEventListener('online', ()=>{ pollFailCount = 0; if(pendingSync) saveRemote(); updateOfflineBanner(); });
+window.addEventListener('offline', ()=>{ setSyncStatus(false, 'Connexion perdue — modifications conservées en local, envoi automatique au retour du réseau'); updateOfflineBanner(); });
+function updateOfflineBanner(){
+  const b = document.getElementById('offline-banner');
+  if(!b) return;
+  if(!navigator.onLine){
+    b.style.display = 'block';
+    b.style.background = 'var(--danger)';
+    b.textContent = "Vous êtes hors ligne — vos modifications sont conservées et seront envoyées automatiquement dès que la connexion revient.";
+  } else if(pendingSync){
+    b.style.display = 'block';
+    b.style.background = 'var(--accent)';
+    b.style.color = '#1A1508';
+    b.textContent = "Connexion faible — envoi en attente, nouvelle tentative automatique en cours...";
+  } else {
+    b.style.display = 'none';
+  }
+}
+setInterval(updateOfflineBanner, 3000);
 function persist(){
   saveLocalCache();
   saveRemote();
 }
-function setSyncStatus(ok, detail){
+function setSyncStatus(status, detail){
   const dot = document.getElementById('sync-dot');
   const txt = document.getElementById('sync-text');
   const now = new Date().toLocaleTimeString('fr-FR');
-  const full = ok
-    ? `OK ${now}${detail ? ' · '+detail : ''}`
-    : `ERREUR ${now} · ${detail || 'inconnue'}`;
-  if(dot){ dot.style.background = ok ? 'var(--success)' : 'var(--danger)'; dot.title = full; }
+  let color, label;
+  if(status===true){ color = 'var(--success)'; label = 'OK'; }
+  else if(status==='pending'){ color = 'var(--accent)'; label = 'EN ATTENTE'; }
+  else { color = 'var(--danger)'; label = 'ERREUR'; }
+  const full = `${label} ${now}${detail ? ' · '+detail : ''}`;
+  if(dot){ dot.style.background = color; dot.title = full; }
   if(txt){ txt.textContent = full; txt.title = full; }
 }
 let pollTimer = null;
+let pollFailCount = 0;
 function startPolling(){
   if(pollTimer) clearInterval(pollTimer);
   pollTimer = setInterval(async ()=>{
+    if(!navigator.onLine){ setSyncStatus(false, 'Hors ligne — travail en local'); return; }
     const modalOpen = document.getElementById('modal-root').innerHTML.trim() !== '';
-    if(modalOpen || isSaving) return;
+    if(modalOpen || isSaving || pendingSync) return; // ne jamais écraser des changements locaux pas encore envoyés
     const res = await loadRemote();
-    if(isSaving) return; // une sauvegarde a démarré pendant le chargement -> on ignore ce cycle pour ne pas écraser
+    if(isSaving || pendingSync) return;
     if(res.ok){
+      pollFailCount = 0;
       const stamp = res.updatedAt ? new Date(res.updatedAt).toLocaleTimeString('fr-FR') : '?';
       setSyncStatus(true, 'donnée du serveur: '+stamp);
       const changed = JSON.stringify(res.payload) !== JSON.stringify(state);
@@ -427,28 +468,32 @@ function startPolling(){
         render();
       }
     } else {
-      setSyncStatus(false, res.error);
+      pollFailCount++;
+      // on tolère 1 échec isolé (réseau faible) sans afficher d'erreur — seulement si ça persiste
+      if(pollFailCount>=2) setSyncStatus(false, res.error);
     }
-  }, 6000);
+  }, 15000);
 }
 
 const uid = () => Math.random().toString(36).slice(2,10);
 
 /* ============ THÈME PERSONNALISABLE ============ */
 const DEFAULT_THEME = {
-  bg:'#14171A', panel:'#1B1F23', panelR:'#22272C', text:'#ECEAE5', muted:'#8B939A',
-  accent:'#F2A63C', steel:'#5B8CB3', success:'#4CAF6D', danger:'#E5533C'
+  bg:'#EAF4FC', panel:'#FFFFFF', panelR:'#E3F0FB', text:'#16324F', muted:'#5B7A93',
+  accent:'#F2A63C', steel:'#3B82C4', success:'#2E9E5B', danger:'#D9483A',
+  border:'#C9DEEF', borderL:'#A9C7E0', sidebarBg:'#0F2A44', sidebarBg2:'#173A5E'
 };
 const THEME_LABELS = {
   bg:'Fond général', panel:'Panneaux', panelR:'Panneaux (survol)', text:'Texte principal', muted:'Texte secondaire',
-  accent:'Accent (couleur signature)', steel:'Bleu secondaire', success:'Succès / vert', danger:'Alerte / rouge'
+  accent:'Accent (couleur signature)', steel:'Bleu secondaire', success:'Succès / vert', danger:'Alerte / rouge',
+  border:'Bordures', borderL:'Bordures (claires)', sidebarBg:'Barre latérale (haut)', sidebarBg2:'Barre latérale (bas)'
 };
 function applyTheme(theme){
   const t = { ...DEFAULT_THEME, ...(theme||{}) };
   const root = document.documentElement.style;
-  Object.keys(DEFAULT_THEME).forEach(k=> root.setProperty('--'+k, t[k]));
+  Object.keys(DEFAULT_THEME).forEach(k=> root.setProperty('--'+(k==='sidebarBg'?'sidebar-bg':k==='sidebarBg2'?'sidebar-bg2':k), t[k]));
   const meta = document.querySelector('meta[name="theme-color"]');
-  if(meta) meta.setAttribute('content', t.bg);
+  if(meta) meta.setAttribute('content', t.sidebarBg);
 }
 
 /* ============ MINI GRAPHIQUES (canvas, sans librairie) ============ */
@@ -1140,7 +1185,7 @@ function exportPartsToExcel(){
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Pieces ou Stocks');
   const dateStr = new Date().toISOString().slice(0,10);
-  XLSX.writeFile(wb, '2NA-Entreprise_stock_'+dateStr+'.xlsx');
+  XLSX.writeFile(wb, '2NA-MAINT-PROD_stock_'+dateStr+'.xlsx');
   toast('Export généré — '+state.parts.length+' article(s)');
 }
 
@@ -1279,7 +1324,7 @@ function exportWOToExcel(){
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Ordres de travail');
   const dateStr = new Date().toISOString().slice(0,10);
-  XLSX.writeFile(wb, '2NA-Entreprise_ordres_de_travail_'+dateStr+'.xlsx');
+  XLSX.writeFile(wb, '2NA-MAINT-PROD_ordres_de_travail_'+dateStr+'.xlsx');
 }
 function viewWO(){
   const em = equipMap();
@@ -3630,12 +3675,12 @@ async function exportReportsToWord(){
         new Paragraph({spacing:{before:300,after:100},alignment:AlignmentType.CENTER,children:[new TextRun({text:'RAPPORT DE MAINTENANCE',bold:true,size:60,color:NAVY})]}),
         new Paragraph({spacing:{after:500},alignment:AlignmentType.CENTER,children:[new TextRun({text:'Financier · Technique · Stratégique',size:26,color:ORANGE,italics:true})]}),
         new Paragraph({alignment:AlignmentType.CENTER,spacing:{after:40},children:[new TextRun({text:'Période couverte : '+periodeLabel,size:20})]}),
-        new Paragraph({alignment:AlignmentType.CENTER,spacing:{after:40},children:[new TextRun({text:'Généré par : 2NA Entreprise — module Rapports',size:20})]}),
+        new Paragraph({alignment:AlignmentType.CENTER,spacing:{after:40},children:[new TextRun({text:'Généré par : 2NA-MAINT-PROD — module Rapports',size:20})]}),
         new Paragraph({alignment:AlignmentType.CENTER,children:[new TextRun({text:"Date d'édition : "+new Date().toLocaleDateString('fr-FR'),size:20})]}),
         new Paragraph({children:[new PageBreak()]}),
 
         h1(1,'Introduction'),
-        p("Ce rapport présente la performance de la fonction maintenance CIGRAC sur la période indiquée, à partir des données consolidées de 2NA Entreprise (ordres de travail, carburant, pièces/stock, réservations, centres de coûts)."),
+        p("Ce rapport présente la performance de la fonction maintenance CIGRAC sur la période indiquée, à partir des données consolidées de 2NA-MAINT-PROD (ordres de travail, carburant, pièces/stock, réservations, centres de coûts)."),
         p('Synthèse : '+nar.finance),
         p(nar.budget),
 
@@ -3701,7 +3746,7 @@ async function exportReportsToWord(){
   });
   const blob = await Packer.toBlob(doc);
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href=url; a.download='2NA-Entreprise_rapport_maintenance_'+new Date().toISOString().slice(0,10)+'.docx';
+  const a = document.createElement('a'); a.href=url; a.download='2NA-MAINT-PROD_rapport_maintenance_'+new Date().toISOString().slice(0,10)+'.docx';
   document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
   toast('Rapport Word généré');
 }
@@ -3945,7 +3990,7 @@ function exportSingleWOToPDF(wOrId){
   // En-tête
   doc.setFillColor(...NAVY); doc.rect(0,0,pageW,15,'F');
   doc.setFont('helvetica','bold'); doc.setFontSize(14); doc.setTextColor(255,255,255);
-  doc.text('2NA ENTREPRISE — ORDRE DE TRAVAIL', marginL, 10);
+  doc.text('2NA-MAINT-PROD — ORDRE DE TRAVAIL', marginL, 10);
   doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(...ORANGE);
   doc.text(w.numero||'—', pageW-marginR, 10, {align:'right'});
   y = 22;
@@ -4026,9 +4071,9 @@ function exportSingleWOToPDF(wOrId){
 
   const pageCount = doc.internal.getNumberOfPages();
   for(let i=1;i<=pageCount;i++){ doc.setPage(i); doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(150,150,150);
-    doc.text('2NA Entreprise — Ordre de travail '+(w.numero||''), marginL, 292); doc.text(String(i)+' / '+pageCount, pageW-marginR, 292, {align:'right'}); }
+    doc.text('2NA-MAINT-PROD — Ordre de travail '+(w.numero||''), marginL, 292); doc.text(String(i)+' / '+pageCount, pageW-marginR, 292, {align:'right'}); }
 
-  doc.save('2NA-Entreprise_'+(w.numero||'OT')+'.pdf');
+  doc.save('2NA-MAINT-PROD_'+(w.numero||'OT')+'.pdf');
   toast('PDF généré');
 }
 function exportReportsToPDF(){
@@ -4066,12 +4111,12 @@ function exportReportsToPDF(){
   doc.text('Financier · Technique · Stratégique', pageW/2, 84, {align:'center'});
   doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(60,60,60);
   doc.text('Période couverte : '+periodeLabel, pageW/2, 100, {align:'center'});
-  doc.text('Généré par : 2NA Entreprise — module Rapports', pageW/2, 106, {align:'center'});
+  doc.text('Généré par : 2NA-MAINT-PROD — module Rapports', pageW/2, 106, {align:'center'});
   doc.text("Date d'édition : "+new Date().toLocaleDateString('fr-FR'), pageW/2, 112, {align:'center'});
   doc.addPage(); y=20;
 
   title('1. Introduction');
-  paragraph("Ce rapport présente la performance de la fonction maintenance CIGRAC sur la période indiquée, à partir des données consolidées de 2NA Entreprise.");
+  paragraph("Ce rapport présente la performance de la fonction maintenance CIGRAC sur la période indiquée, à partir des données consolidées de 2NA-MAINT-PROD.");
   paragraph('Synthèse : '+nar.finance);
   paragraph(nar.budget);
 
@@ -4128,9 +4173,9 @@ function exportReportsToPDF(){
 
   const pageCount = doc.internal.getNumberOfPages();
   for(let i=1;i<=pageCount;i++){ doc.setPage(i); doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(150,150,150);
-    doc.text('2NA Entreprise — Rapport de maintenance', marginL, 292); doc.text(String(i)+' / '+pageCount, pageW-marginR, 292, {align:'right'}); }
+    doc.text('2NA-MAINT-PROD — Rapport de maintenance', marginL, 292); doc.text(String(i)+' / '+pageCount, pageW-marginR, 292, {align:'right'}); }
 
-  doc.save('2NA-Entreprise_rapport_maintenance_'+new Date().toISOString().slice(0,10)+'.pdf');
+  doc.save('2NA-MAINT-PROD_rapport_maintenance_'+new Date().toISOString().slice(0,10)+'.pdf');
   toast('Rapport PDF généré');
 }
 function exportReportsToExcel(){
@@ -4180,7 +4225,7 @@ function exportReportsToExcel(){
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(paretoRows), 'Pareto equipements');
 
   const dateStr = new Date().toISOString().slice(0,10);
-  XLSX.writeFile(wb, '2NA-Entreprise_rapport_maintenance_'+dateStr+'.xlsx');
+  XLSX.writeFile(wb, '2NA-MAINT-PROD_rapport_maintenance_'+dateStr+'.xlsx');
 }
 function viewReports(){
   const k = computeKpis();

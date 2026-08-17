@@ -1,6 +1,6 @@
 {
-  "name": "2NA Entreprise — Maintenance & Carburant",
-  "short_name": "2NA Entreprise",
+  "name": "2NA-MAINT-PROD — Maintenance & Carburant",
+  "short_name": "2NA-MAINT-PROD",
   "description": "Gestion de flotte, maintenance et carburant",
   "start_url": "./index.html",
   "scope": "./",
