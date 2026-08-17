@@ -288,7 +288,7 @@ function canSee(navId){
   if(currentUser.statutCompte==='Inactif') return false;
   if(currentUser.role==='admin') return true;
   const moduleOf = { wo:'maintenance', pm:'maintenance', notif:'maintenance', floc:'maintenance', plant:'maintenance', production:'maintenance', measures:'maintenance', fleet:'maintenance', fuel:'maintenance',
-    parts:'stock', resa:'stock', da:'achats', bc:'achats', personnel:'rh', dashboard:'reporting', costs:'reporting', reports:'reporting' };
+    parts:'stock', resa:'stock', da:'achats', bc:'achats', personnel:'rh', conges:'rh', dashboard:'reporting', costs:'reporting', reports:'reporting' };
   const mod = moduleOf[navId];
   if(mod && currentUser.modules && currentUser.modules[mod]==='Aucun') return false;
   const restricted = {
@@ -342,6 +342,17 @@ function normalizeState(){
   if(!Array.isArray(state.typesTravail) || state.typesTravail.length===0) state.typesTravail = ["Inspection","Remplacement pièces","Intervention","Révision","Autre"];
   if(!Array.isArray(state.woTypes) || state.woTypes.length===0) state.woTypes = ["Panne / Correctif","Préventif","Inspection","Amélioration"];
   if(!Array.isArray(state.woPriorites) || state.woPriorites.length===0) state.woPriorites = ["Basse","Normale","Haute","Urgente"];
+  if(!Array.isArray(state.categoriesArticle) || state.categoriesArticle.length===0) state.categoriesArticle = ["Mécanique","Électrique","HSE","Consommable","Autre"];
+  if(!Array.isArray(state.unitesArticle) || state.unitesArticle.length===0) state.unitesArticle = ["Pièce (PCE)","Unité (UN)","Kilogramme (KG)","Gramme (G)","Tonne (T)","Litre (L)","Millilitre (ML)","Mètre (M)","Mètre carré (M2)","Mètre cube (M3)","Boîte (BT)","Carton (CAR)","Sachet (SAC)","Bidon (BID)","Rouleau (RLO)","Paire (PR)","Jeu / Kit (JEU)","Lot (LOT)","Bouteille (BOU)","Sac (SC)","Barre (BAR)","Autre"];
+  if(!Array.isArray(state.niveauxCriticite) || state.niveauxCriticite.length===0) state.niveauxCriticite = ["A","B","C"];
+  if(!Array.isArray(state.typesMouvement) || state.typesMouvement.length===0) state.typesMouvement = ["Achat","Retour","Réparation"];
+  if(!Array.isArray(state.locationTypes) || state.locationTypes.length===0) state.locationTypes = ["Site","Atelier","Ligne","Machine"];
+  if(!Array.isArray(state.affectations) || state.affectations.length===0) state.affectations = ["Flotte","Usine","Les deux"];
+  if(!Array.isArray(state.fonctions) || state.fonctions.length===0) state.fonctions = ["Technicien","Planificateur","Superviseur","Responsable","Administrateur"];
+  if(!Array.isArray(state.niveauxApprobation) || state.niveauxApprobation.length===0) state.niveauxApprobation = ["Technique","Financière","Stratégique"];
+  if(!Array.isArray(state.leaveRequests)) state.leaveRequests = [];
+  if(!Array.isArray(state.typesConge) || state.typesConge.length===0) state.typesConge = ["Congé annuel","Congé maladie","Congé sans solde","Congé maternité / paternité","Autre"];
+  state.personnel.forEach(p=>{ if(p.soldeConges===undefined || p.soldeConges===null || p.soldeConges==='') p.soldeConges = 26; });
 }
 async function loadRemote(){
   try{
@@ -545,7 +556,16 @@ function seedFleet(){
   }));
 }
 
-let state = { fleet: [], workOrders: [], fuelLogs: [], parts: [], pmPlans: [], locations: [], plantEquipment: [], notifications: [], measuringPoints: [], costCenters: [], productionLogs: [], woCounter: 0, equipTypes: [...DEFAULT_EQUIP_TYPES], personnel: [], purchaseRequests: [], purchaseOrders: [], daCounter: 0, bcCounter: 0, reservations: [], resaCounter: 0, postes: [...DEFAULT_POSTES], avisCounter: 0, stockMovements: [], auditLog: [], typesTravail: ["Inspection","Remplacement pièces","Intervention","Révision","Autre"], woTypes: ["Panne / Correctif","Préventif","Inspection","Amélioration"], woPriorites: ["Basse","Normale","Haute","Urgente"] };
+let state = { fleet: [], workOrders: [], fuelLogs: [], parts: [], pmPlans: [], locations: [], plantEquipment: [], notifications: [], measuringPoints: [], costCenters: [], productionLogs: [], woCounter: 0, equipTypes: [...DEFAULT_EQUIP_TYPES], personnel: [], purchaseRequests: [], purchaseOrders: [], daCounter: 0, bcCounter: 0, reservations: [], resaCounter: 0, postes: [...DEFAULT_POSTES], avisCounter: 0, stockMovements: [], auditLog: [], typesTravail: ["Inspection","Remplacement pièces","Intervention","Révision","Autre"], woTypes: ["Panne / Correctif","Préventif","Inspection","Amélioration"], woPriorites: ["Basse","Normale","Haute","Urgente"],
+  categoriesArticle: ["Mécanique","Électrique","HSE","Consommable","Autre"],
+  unitesArticle: ["Pièce (PCE)","Unité (UN)","Kilogramme (KG)","Gramme (G)","Tonne (T)","Litre (L)","Millilitre (ML)","Mètre (M)","Mètre carré (M2)","Mètre cube (M3)","Boîte (BT)","Carton (CAR)","Sachet (SAC)","Bidon (BID)","Rouleau (RLO)","Paire (PR)","Jeu / Kit (JEU)","Lot (LOT)","Bouteille (BOU)","Sac (SC)","Barre (BAR)","Autre"],
+  niveauxCriticite: ["A","B","C"],
+  typesMouvement: ["Achat","Retour","Réparation"],
+  locationTypes: ["Site","Atelier","Ligne","Machine"],
+  affectations: ["Flotte","Usine","Les deux"],
+  fonctions: ["Technicien","Planificateur","Superviseur","Responsable","Administrateur"],
+  niveauxApprobation: ["Technique","Financière","Stratégique"],
+  leaveRequests: [], typesConge: ["Congé annuel","Congé maladie","Congé sans solde","Congé maternité / paternité","Autre"] };
 let currentView = 'dashboard';
 
 /* ============ HELPERS ============ */
@@ -623,6 +643,7 @@ const NAV = [
   ]},
   { section:'RH', items:[
     {id:'personnel', label:'Personnel', icon:'users'},
+    {id:'conges', label:'Congés', icon:'calendar'},
   ]},
   { section:'Achats', items:[
     {id:'da', label:'Demandes d\'achat', icon:'cart'},
@@ -714,6 +735,7 @@ function render(){
   else if(currentView==='measures') c.innerHTML = viewMeasures();
   else if(currentView==='costs') c.innerHTML = viewCosts();
   else if(currentView==='personnel') c.innerHTML = viewPersonnel();
+  else if(currentView==='conges') c.innerHTML = viewConges();
   else if(currentView==='reports') c.innerHTML = viewReports();
   else if(currentView==='settings') c.innerHTML = viewSettings();
   else if(currentView==='users') c.innerHTML = viewUsers();
@@ -757,7 +779,7 @@ function drawDashboardCharts(){
   const woFiltered = state.workOrders.filter(w=>matchesFilter(w.equipementId));
   drawDonut(document.getElementById('chart-wo-status'), WO_STATUTS.map(s=>({label:s, value: woFiltered.filter(w=>w.statut===s).length || 0.0001, color: woColors[s]})));
   const persColors = [accent, steel, success];
-  drawDonut(document.getElementById('chart-personnel'), AFFECTATIONS.map((a,i)=>({label:a, value: state.personnel.filter(p=>p.statut==='Actif'&&p.affectation===a).length || 0.0001, color: persColors[i%3]})));
+  drawDonut(document.getElementById('chart-personnel'), state.affectations.map((a,i)=>({label:a, value: state.personnel.filter(p=>p.statut==='Actif'&&p.affectation===a).length || 0.0001, color: persColors[i%3]})));
 }
 
 /* ============ DASHBOARD ============ */
@@ -847,7 +869,7 @@ function viewDashboard(){
       <div class="row" style="gap:20px;">
         <canvas id="chart-personnel" style="width:120px;height:120px;flex-shrink:0;"></canvas>
         <div style="display:flex;flex-direction:column;gap:6px;">
-          ${AFFECTATIONS.map((a,i)=>{
+          ${state.affectations.map((a,i)=>{
             const n = state.personnel.filter(p=>p.statut==='Actif' && p.affectation===a).length;
             const colors=['var(--accent)','var(--steel)','var(--success)'];
             return `<div class="row legend-clickable" data-nav-dash="personnel"><span class="led" style="background:${colors[i%3]}"></span><span style="font-size:12px;color:var(--muted);">${a} : <span style="color:var(--text)">${n}</span></span></div>`;
@@ -898,6 +920,26 @@ function viewDashboard(){
         </div>`).join('')}
       </div>`}
     </div>
+  </div>
+  <div class="plate p16" style="margin-top:16px;">
+    <div class="between" style="margin-bottom:10px;">
+      <div class="row">${ICONS.users}<h3 class="oswald" style="text-transform:uppercase;font-size:14px;margin:0;">Volet RH</h3></div>
+      <button class="btn btn-ghost" style="padding:2px 6px;color:var(--accent);font-size:12px;" data-nav="conges">Voir les congés →</button>
+    </div>
+    ${(()=>{
+      const pm = Object.fromEntries(state.personnel.map(p=>[p.id,p]));
+      const today = new Date().toISOString().slice(0,10);
+      const enAttente = state.leaveRequests.filter(c=>c.statut==='Demandé');
+      const enCongeAuj = state.leaveRequests.filter(c=>c.statut==='Validé' && c.dateDebut<=today && c.dateFin>=today);
+      const soldeFaible = state.personnel.filter(p=>p.statut==='Actif' && Number(p.soldeConges)<=3);
+      return `<div class="grid grid-kpi" style="margin-bottom:${enCongeAuj.length||enAttente.length?'12px':'0'};">
+        ${kpiCard('Personnel actif', state.personnel.filter(p=>p.statut==='Actif').length,'','users','var(--text)','', 'personnel')}
+        ${kpiCard('Congés en attente', enAttente.length,'','calendar', enAttente.length?'var(--accent)':'var(--success)','à valider','conges')}
+        ${kpiCard("En congé aujourd'hui", enCongeAuj.length,'','calendar','var(--steel)','', 'conges')}
+        ${kpiCard('Soldes faibles (≤3j)', soldeFaible.length,'','alert', soldeFaible.length?'var(--danger)':'var(--success)','', 'personnel')}
+      </div>
+      ${enCongeAuj.length>0?`<div style="font-size:12px;color:var(--muted);border-top:1px solid var(--border);padding-top:10px;">En congé : ${enCongeAuj.map(c=>esc(pm[c.personnelId]?pm[c.personnelId].nom:'?')).join(', ')}</div>`:''}`;
+    })()}
   </div>`;
 }
 
@@ -1013,7 +1055,7 @@ function importFleetRows(rows){
 function matchUnite(raw){
   if(!raw) return 'Pièce (PCE)';
   const r = String(raw).trim().toLowerCase();
-  for(const u of UNITES_ARTICLE){
+  for(const u of state.unitesArticle){
     const abbrevMatch = u.match(/\(([^)]+)\)/);
     const abbrev = abbrevMatch ? abbrevMatch[1].toLowerCase() : '';
     const label = u.split(' (')[0].toLowerCase();
@@ -1078,7 +1120,7 @@ function importPartsRows(rows){
     const fournisseursAlternatifs = String(findCol(r,['Fournisseurs alternatifs','Alternatifs'])||'');
     const delaiLivraison = Number(findCol(r,['Délai livraison','Delai livraison']))||0;
     const conditions = String(findCol(r,['Conditions'])||'');
-    const categorie = String(findCol(r,['Catégorie','Categorie'])||CATEGORIES_ARTICLE[4]);
+    const categorie = String(findCol(r,['Catégorie','Categorie'])||state.categoriesArticle[4]);
     const uniteRaw = String(findCol(r,['Unité','Unite','UM',"Unité de mesure",'Unite de mesure'])||'');
     const codeSAP = String(findCol(r,['Code SAP','Code SAP/MM','Code MM'])||'');
     const localisation = String(findCol(r,['Localisation'])||'');
@@ -1091,12 +1133,12 @@ function importPartsRows(rows){
     const existing = state.parts.find(p=>(ref && p.ref && p.ref.toLowerCase()===ref.toLowerCase()) || p.nom.toLowerCase()===nom.toLowerCase());
     const obj = {ref, nom, quantite, seuil, seuilMax, pointReappro, coutUnitaire,
       fournisseurPrincipal:fournisseur, fournisseursAlternatifs, delaiLivraison, conditions, codeSAP,
-      categorie: CATEGORIES_ARTICLE.includes(categorie)?categorie:CATEGORIES_ARTICLE[4],
+      categorie: state.categoriesArticle.includes(categorie)?categorie:state.categoriesArticle[4],
       unite: matchUnite(uniteRaw) || (existing?existing.unite:'Pièce (PCE)'),
       localisation: localisation || (existing?existing.localisation:''),
       statutStock: STATUTS_STOCK.includes(statutStockRaw)?statutStockRaw:(existing?existing.statutStock:'Libre'),
       critique: critiqueRaw ? ['oui','yes','vrai','true','1','x'].includes(critiqueRaw) : (existing?existing.critique:false),
-      niveauCriticite: NIVEAUX_CRITICITE.includes(niveauCriticite)?niveauCriticite:(existing?existing.niveauCriticite:'C'),
+      niveauCriticite: state.niveauxCriticite.includes(niveauCriticite)?niveauCriticite:(existing?existing.niveauCriticite:'C'),
       mtbf: mtbf||(existing?existing.mtbf:0), mttr: mttr||(existing?existing.mttr:0),
       politiqueStockTampon: politiqueStockTampon || (existing?existing.politiqueStockTampon:'')};
     if(existing) Object.assign(existing, obj); else state.parts.push({...obj, id:uid()});
@@ -1115,12 +1157,12 @@ function importPersonnelRows(rows){
     if(!nom) return;
     const poste = String(findCol(r,['Poste','Métier','Metier'])||state.postes[0]);
     if(!state.postes.includes(poste)) state.postes.push(poste);
-    const affectation = String(findCol(r,['Affectation'])||AFFECTATIONS[0]);
+    const affectation = String(findCol(r,['Affectation'])||state.affectations[0]);
     const statut = String(findCol(r,['Statut'])||'Actif');
     const telephone = String(findCol(r,['Téléphone','Telephone','Tel'])||'');
     const dateEmbauche = String(findCol(r,['Date embauche',"Date d'embauche"])||'');
     const existing = state.personnel.find(p=>p.nom.toLowerCase()===nom.toLowerCase());
-    const obj = { nom, poste, affectation: AFFECTATIONS.includes(affectation)?affectation:AFFECTATIONS[0], statut: PERSONNEL_STATUTS.includes(statut)?statut:'Actif', telephone, dateEmbauche };
+    const obj = { nom, poste, affectation: state.affectations.includes(affectation)?affectation:state.affectations[0], statut: PERSONNEL_STATUTS.includes(statut)?statut:'Actif', telephone, dateEmbauche };
     if(existing) Object.assign(existing, obj); else state.personnel.push({...obj, id:uid()});
     count++;
   });
@@ -2204,7 +2246,7 @@ function mvtForm(m){
   return `
   <div class="formgrid">
     <label class="field span2"><span>Article</span><select data-f="partId">${partOpts||'<option value="">Aucune pièce</option>'}</select></label>
-    <label class="field"><span>Type d'entrée</span><select data-f="type">${TYPES_MOUVEMENT.map(t=>`<option>${t}</option>`).join('')}</select></label>
+    <label class="field"><span>Type d'entrée</span><select data-f="type">${state.typesMouvement.map(t=>`<option>${t}</option>`).join('')}</select></label>
     <label class="field"><span>Quantité</span><input type="number" data-f="quantite" value="1" min="1"/></label>
     <label class="field span2"><span>Fournisseur / commentaire</span><input data-f="commentaire" placeholder="Ex: BC-1234 / retour atelier"/></label>
     <label class="field span2"><span>Date</span><input type="date" data-f="date" value="${new Date().toISOString().slice(0,10)}"/></label>
@@ -2281,9 +2323,9 @@ function partForm(p){
     <label class="field"><span>Code article</span><input data-f="ref" value="${esc(p.ref)}" placeholder="Ex: 6000611"/></label>
     <label class="field"><span>Code SAP/MM (optionnel)</span><input data-f="codeSAP" value="${esc(p.codeSAP)}"/></label>
     <label class="field span2"><span>Désignation</span><input data-f="nom" value="${esc(p.nom)}"/></label>
-    <label class="field"><span>Catégorie</span><select data-f="categorie">${CATEGORIES_ARTICLE.map(c=>`<option ${p.categorie===c?'selected':''}>${c}</option>`).join('')}</select></label>
+    <label class="field"><span>Catégorie</span><select data-f="categorie">${state.categoriesArticle.map(c=>`<option ${p.categorie===c?'selected':''}>${c}</option>`).join('')}</select></label>
     <label class="field"><span>Fournisseur principal</span><input data-f="fournisseurPrincipal" value="${esc(p.fournisseurPrincipal||p.fournisseur)}"/></label>
-    <label class="field"><span>Unité de mesure</span><select data-f="unite">${UNITES_ARTICLE.map(u=>`<option ${p.unite===u?'selected':''}>${u}</option>`).join('')}</select></label>
+    <label class="field"><span>Unité de mesure</span><select data-f="unite">${state.unitesArticle.map(u=>`<option ${p.unite===u?'selected':''}>${u}</option>`).join('')}</select></label>
   </div>
   <div style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-family:'Oswald',sans-serif;margin:16px 0 8px;">Stock actuel</div>
   <div class="formgrid">
@@ -2311,7 +2353,7 @@ function partForm(p){
   <div style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-family:'Oswald',sans-serif;margin:16px 0 8px;">Criticité</div>
   <div class="formgrid">
     <label class="field" style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" data-f="critique" ${p.critique?'checked':''} style="width:auto;"/><span>Pièce critique / stratégique</span></label>
-    <label class="field"><span>Niveau (A/B/C)</span><select data-f="niveauCriticite">${NIVEAUX_CRITICITE.map(n=>`<option ${p.niveauCriticite===n?'selected':''}>${n}</option>`).join('')}</select></label>
+    <label class="field"><span>Niveau (A/B/C)</span><select data-f="niveauCriticite">${state.niveauxCriticite.map(n=>`<option ${p.niveauCriticite===n?'selected':''}>${n}</option>`).join('')}</select></label>
     <label class="field"><span>MTBF associé (h)</span><input type="number" data-f="mtbf" value="${p.mtbf||0}"/></label>
     <label class="field"><span>MTTR associé (h)</span><input type="number" data-f="mttr" value="${p.mttr||0}"/></label>
     <label class="field span2"><span>Politique de stock tampon</span><input data-f="politiqueStockTampon" value="${esc(p.politiqueStockTampon)}"/></label>
@@ -2365,7 +2407,7 @@ function flocForm(l){
   return `
   <div class="formgrid">
     <label class="field"><span>Code</span><input data-f="code" value="${esc(l.code)}" placeholder="USINE-L1"/></label>
-    <label class="field"><span>Type</span><select data-f="type">${LOCATION_TYPES.map(t=>`<option ${l.type===t?'selected':''}>${t}</option>`).join('')}</select></label>
+    <label class="field"><span>Type</span><select data-f="type">${state.locationTypes.map(t=>`<option ${l.type===t?'selected':''}>${t}</option>`).join('')}</select></label>
     <label class="field span2"><span>Nom</span><input data-f="nom" value="${esc(l.nom)}"/></label>
     <label class="field span2"><span>Emplacement parent (optionnel)</span><select data-f="parentId"><option value="">— Aucun (racine) —</option>${parentOpts}</select></label>
   </div>`;
@@ -2629,7 +2671,7 @@ function viewPersonnel(){
       </div>
     </div>
     <div style="font-size:12px;color:var(--muted);margin-top:8px;border-top:1px solid var(--border);padding-top:8px;">
-      ${p.telephone?`${esc(p.telephone)} · `:''}${woCount[p.nom]||0} OT réalisé(s)
+      ${p.telephone?`${esc(p.telephone)} · `:''}${woCount[p.nom]||0} OT réalisé(s) · <span style="color:${Number(p.soldeConges)<=3?'var(--danger)':'var(--text)'};">${fmt(p.soldeConges!==undefined?p.soldeConges:26)} j. congés</span>
     </div>
   </div>`).join('')}
   </div>`}`;
@@ -2639,11 +2681,93 @@ function personnelForm(p){
   <div class="formgrid">
     <label class="field span2"><span>Nom complet</span><input data-f="nom" value="${esc(p.nom)}" placeholder="Ex: Kouassi Jean"/></label>
     <label class="field"><span>Poste / métier</span><select data-f="poste">${state.postes.map(t=>`<option ${p.poste===t?'selected':''}>${t}</option>`).join('')}</select></label>
-    <label class="field"><span>Affectation</span><select data-f="affectation">${AFFECTATIONS.map(a=>`<option ${p.affectation===a?'selected':''}>${a}</option>`).join('')}</select></label>
+    <label class="field"><span>Affectation</span><select data-f="affectation">${state.affectations.map(a=>`<option ${p.affectation===a?'selected':''}>${a}</option>`).join('')}</select></label>
     <label class="field"><span>Statut</span><select data-f="statut">${PERSONNEL_STATUTS.map(s=>`<option ${p.statut===s?'selected':''}>${s}</option>`).join('')}</select></label>
     <label class="field"><span>Téléphone</span><input data-f="telephone" value="${esc(p.telephone)}"/></label>
+    <label class="field"><span>Solde congés (jours)</span><input type="number" step="0.5" data-f="soldeConges" value="${p.soldeConges!==undefined&&p.soldeConges!==null?p.soldeConges:26}"/></label>
     <label class="field span2"><span>Date d'embauche</span><input type="date" data-f="dateEmbauche" value="${p.dateEmbauche||''}"/></label>
   </div>`;
+}
+
+/* ============ CONGÉS ============ */
+let congesFilterStatut = 'Tous';
+let congesFilterPersonnel = 'Tous';
+function leaveDays(dateDebut, dateFin){
+  if(!dateDebut||!dateFin) return 0;
+  const d1 = new Date(dateDebut), d2 = new Date(dateFin);
+  const diff = Math.round((d2-d1)/86400000)+1;
+  return diff>0?diff:0;
+}
+function congeStatutColor(s){
+  return { 'Demandé':'var(--accent)', 'Validé':'var(--success)', 'Refusé':'var(--danger)', 'Annulé':'var(--muted)' }[s] || 'var(--muted)';
+}
+function congeForm(c){
+  return `
+  <div class="formgrid">
+    <label class="field span2"><span>Personnel</span><select data-f="personnelId">${state.personnel.filter(p=>p.statut!=='Inactif').map(p=>`<option value="${p.id}" ${c.personnelId===p.id?'selected':''}>${esc(p.nom)} — ${esc(p.poste)} (solde : ${fmt(p.soldeConges!==undefined?p.soldeConges:26)} j.)</option>`).join('')}</select></label>
+    <label class="field"><span>Type de congé</span><select data-f="type">${state.typesConge.map(t=>`<option ${c.type===t?'selected':''}>${t}</option>`).join('')}</select></label>
+    <label class="field"><span>Statut</span><select data-f="statut">${['Demandé','Validé','Refusé','Annulé'].map(s=>`<option ${c.statut===s?'selected':''}>${s}</option>`).join('')}</select></label>
+    <label class="field"><span>Date de début</span><input type="date" data-f="dateDebut" value="${c.dateDebut||''}"/></label>
+    <label class="field"><span>Date de fin</span><input type="date" data-f="dateFin" value="${c.dateFin||''}"/></label>
+    <label class="field span2"><span>Motif / commentaire</span><textarea data-f="motif" rows="2">${esc(c.motif||'')}</textarea></label>
+  </div>
+  <p style="font-size:11px;color:var(--muted);margin:8px 0 0;">Le nombre de jours est calculé automatiquement (jours calendaires inclusifs) et le solde n'est décompté qu'à la validation.</p>`;
+}
+function viewConges(){
+  const pm = Object.fromEntries(state.personnel.map(p=>[p.id,p]));
+  const canManageRH = currentUser && (currentUser.role==='admin' || currentUser.role==='rh');
+  let list = [...state.leaveRequests];
+  if(congesFilterStatut!=='Tous') list = list.filter(c=>c.statut===congesFilterStatut);
+  if(congesFilterPersonnel!=='Tous') list = list.filter(c=>c.personnelId===congesFilterPersonnel);
+  list.sort((a,b)=>(b.dateCreation||'').localeCompare(a.dateCreation||''));
+  const today = new Date().toISOString().slice(0,10);
+  const enCongeAujourdhui = state.leaveRequests.filter(c=>c.statut==='Validé' && c.dateDebut<=today && c.dateFin>=today);
+  return `
+  <div class="headrow">
+    <div><h1>Congés</h1><p class="subtitle" style="margin:0;">Demandes, validation et suivi des soldes</p></div>
+    <button class="btn btn-accent" data-open-modal="conge-new">${ICONS.plus} Nouvelle demande</button>
+  </div>
+  ${enCongeAujourdhui.length>0?`<div class="plate p14" style="margin-bottom:16px;border-color:var(--accent);">
+    <div class="row" style="margin-bottom:6px;">${ICONS.calendar}<strong style="font-size:13px;">En congé aujourd'hui (${enCongeAujourdhui.length})</strong></div>
+    <div style="font-size:12px;color:var(--muted);">${enCongeAujourdhui.map(c=>esc(pm[c.personnelId]?pm[c.personnelId].nom:'?')+' (jusqu\'au '+c.dateFin+')').join(' · ')}</div>
+  </div>`:''}
+  <div class="plate p14" style="margin-bottom:16px;">
+    <div class="row wrapwrap" style="gap:8px;">
+      <select id="conges-filter-statut" style="flex:1;min-width:150px;">
+        <option value="Tous" ${congesFilterStatut==='Tous'?'selected':''}>Tous statuts</option>
+        ${['Demandé','Validé','Refusé','Annulé'].map(s=>`<option ${congesFilterStatut===s?'selected':''}>${s}</option>`).join('')}
+      </select>
+      <select id="conges-filter-personnel" style="flex:1;min-width:180px;">
+        <option value="Tous" ${congesFilterPersonnel==='Tous'?'selected':''}>Tout le personnel</option>
+        ${state.personnel.map(p=>`<option value="${p.id}" ${congesFilterPersonnel===p.id?'selected':''}>${esc(p.nom)}</option>`).join('')}
+      </select>
+    </div>
+  </div>
+  ${list.length===0?`<div class="plate p16"><div class="empty">${ICONS.calendar}<span>Aucune demande de congé.</span></div></div>`:
+  `<div style="display:flex;flex-direction:column;gap:8px;">
+  ${list.map(c=>{ const p = pm[c.personnelId]; const jours = c.nbJours!=null?c.nbJours:leaveDays(c.dateDebut,c.dateFin);
+    return `<div class="plate p14">
+    <div class="between wrapwrap" style="gap:12px;">
+      <div class="row">
+        <span class="led" style="background:${congeStatutColor(c.statut)}"></span>
+        <div>
+          <div class="row" style="flex-wrap:wrap;">
+            <span style="font-size:13px;font-weight:500;">${p?esc(p.nom):'Personne supprimée'}</span>
+            <span class="badge">${esc(c.type)}</span>
+            <span class="badge" style="color:${congeStatutColor(c.statut)};border-color:${congeStatutColor(c.statut)};">${c.statut}</span>
+          </div>
+          <div style="font-size:12px;color:var(--muted);">${c.dateDebut} → ${c.dateFin} · ${jours} jour(s)${c.motif?' · '+esc(c.motif):''}</div>
+        </div>
+      </div>
+      <div class="row">
+        ${canManageRH && c.statut==='Demandé' ? `<button class="btn btn-ghost" style="font-size:11px;padding:3px 8px;color:var(--success);" data-valider-conge="${c.id}">${ICONS.check} Valider</button>` : ''}
+        ${canManageRH && c.statut==='Demandé' ? `<button class="btn btn-ghost" style="font-size:11px;padding:3px 8px;color:var(--danger);" data-refuser-conge="${c.id}">${ICONS.close} Refuser</button>` : ''}
+        ${canManageRH ? `<button class="icon-btn" data-edit-conge="${c.id}">${ICONS.edit}</button>` : ''}
+        ${canManageRH ? `<button class="icon-btn" data-del-conge="${c.id}">${ICONS.trash}</button>` : ''}
+      </div>
+    </div>
+  </div>`;}).join('')}
+  </div>`}`;
 }
 
 let allUsers = [];
@@ -2695,13 +2819,13 @@ function userEditForm(u){
   <div class="formgrid">
     <label class="field"><span>Identifiant</span><input value="${esc(u.identifiant)}" disabled style="opacity:.6"/></label>
     <label class="field"><span>Nom complet</span><input data-f="nom_complet" value="${esc(u.nom_complet)}"/></label>
-    <label class="field"><span>Fonction / poste</span><select data-f="fonction">${FONCTIONS.map(f=>`<option ${u.fonction===f?'selected':''}>${f}</option>`).join('')}</select></label>
+    <label class="field"><span>Fonction / poste</span><select data-f="fonction">${state.fonctions.map(f=>`<option ${u.fonction===f?'selected':''}>${f}</option>`).join('')}</select></label>
     <label class="field"><span>Niveau hiérarchique (1-5)</span><select data-f="niveau_hierarchique">${NIVEAUX_HIER.map(n=>`<option value="${n}" ${Number(u.niveau_hierarchique)===n?'selected':''}>${n}</option>`).join('')}</select></label>
     <label class="field"><span>Statut</span><select data-f="statut_compte">${STATUTS_COMPTE.map(s=>`<option ${u.statut_compte===s?'selected':''}>${s}</option>`).join('')}</select></label>
     <label class="field"><span>Rôle applicatif</span><select data-f="role" ${u.user_id===currentUser.id?'disabled title="Tu ne peux pas changer ton propre rôle"':''}>${Object.keys(ROLE_LABELS).map(r=>`<option value="${r}" ${u.role===r?'selected':''}>${ROLE_LABELS[r]}</option>`).join('')}</select></label>
-    <label class="field"><span>Affectation (équipements visibles)</span><select data-f="affectation">${AFFECTATIONS.map(a=>`<option ${(u.affectation||'Les deux')===a?'selected':''}>${a}</option>`).join('')}</select></label>
+    <label class="field"><span>Affectation (équipements visibles)</span><select data-f="affectation">${state.affectations.map(a=>`<option ${(u.affectation||'Les deux')===a?'selected':''}>${a}</option>`).join('')}</select></label>
     <label class="field span2"><span>Supérieur hiérarchique direct</span><select data-f="superieur_id"><option value="">— Aucun —</option>${others.map(o=>`<option value="${o.user_id}" ${u.superieur_id===o.user_id?'selected':''}>${esc(o.nom_complet)} (${esc(o.identifiant)||o.email})</option>`).join('')}</select></label>
-    <label class="field span2"><span>Niveau d'approbation</span><select data-f="niveau_approbation">${NIVEAUX_APPROBATION.map(n=>`<option ${u.niveau_approbation===n?'selected':''}>${n}</option>`).join('')}</select></label>
+    <label class="field span2"><span>Niveau d'approbation</span><select data-f="niveau_approbation">${state.niveauxApprobation.map(n=>`<option ${u.niveau_approbation===n?'selected':''}>${n}</option>`).join('')}</select></label>
   </div>
   <div style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-family:'Oswald',sans-serif;margin:16px 0 8px;">Accès par module</div>
   <div class="formgrid">
@@ -2743,7 +2867,10 @@ function editableListBlock(title, stateKey, prefix, placeholder){
     </div>
   </div>`;
 }
-const EDITABLE_LIST_KEYS = { 'wo-typetravail':'typesTravail', 'wo-type':'woTypes', 'wo-priorite':'woPriorites' };
+const EDITABLE_LIST_KEYS = { 'wo-typetravail':'typesTravail', 'wo-type':'woTypes', 'wo-priorite':'woPriorites',
+  'cat-article':'categoriesArticle', 'unite-article':'unitesArticle', 'niveau-critic':'niveauxCriticite',
+  'type-mvt':'typesMouvement', 'loc-type':'locationTypes', 'affectation':'affectations', 'fonction':'fonctions', 'niveau-appro':'niveauxApprobation',
+  'type-conge':'typesConge' };
 function wireEditableLists(){
   document.querySelectorAll('[data-elist-add]').forEach(b=>b.addEventListener('click',()=>{
     const prefix = b.dataset.elistAdd; const key = EDITABLE_LIST_KEYS[prefix];
@@ -2754,9 +2881,24 @@ function wireEditableLists(){
   document.querySelectorAll('[data-elist-del]').forEach(b=>b.addEventListener('click',()=>{
     const [prefix, iStr] = b.dataset.elistDel.split(':'); const key = EDITABLE_LIST_KEYS[prefix]; const i = Number(iStr);
     if(state[key].length<=1){ alert('Il doit rester au moins une valeur dans la liste.'); return; }
-    const used = state.workOrders.some(w=>(prefix==='wo-typetravail'&&w.typeTravail===state[key][i])||(prefix==='wo-type'&&w.type===state[key][i])||(prefix==='wo-priorite'&&w.priorite===state[key][i]));
+    const val = state[key][i];
+    const usageCheckers = {
+      'wo-typetravail': ()=>state.workOrders.some(w=>w.typeTravail===val),
+      'wo-type': ()=>state.workOrders.some(w=>w.type===val),
+      'wo-priorite': ()=>state.workOrders.some(w=>w.priorite===val),
+      'cat-article': ()=>state.parts.some(p=>p.categorie===val),
+      'unite-article': ()=>state.parts.some(p=>p.unite===val),
+      'niveau-critic': ()=>state.parts.some(p=>p.niveauCriticite===val),
+      'type-mvt': ()=>(state.stockMovements||[]).some(m=>m.type===val),
+      'loc-type': ()=>state.locations.some(l=>l.type===val),
+      'affectation': ()=>state.personnel.some(p=>p.affectation===val),
+      'fonction': ()=>state.personnel.some(p=>p.fonction===val),
+      'niveau-appro': ()=>false,
+      'type-conge': ()=>state.leaveRequests.some(c=>c.type===val),
+    };
+    const used = usageCheckers[prefix] ? usageCheckers[prefix]() : false;
     const doDelete = ()=>{ state[key].splice(i,1); persist(); render(); };
-    if(used) confirmModal('Cette valeur est utilisée par au moins un ordre de travail. La supprimer quand même ?', doDelete, {danger:true, okLabel:'Supprimer quand même'});
+    if(used) confirmModal('Cette valeur est utilisée par au moins un élément existant. La supprimer quand même ?', doDelete, {danger:true, okLabel:'Supprimer quand même'});
     else doDelete();
   }));
   document.querySelectorAll('[data-elist-up]').forEach(b=>b.addEventListener('click',()=>{
@@ -2808,6 +2950,15 @@ function viewSettings(){
       ${editableListBlock('Types de travail (nature technique)', 'typesTravail', 'wo-typetravail', 'Nouveau type (ex: Lubrification)')}
       ${editableListBlock("Types d'ordre (catégorie)", 'woTypes', 'wo-type', 'Nouveau type (ex: Amélioration continue)')}
       ${editableListBlock('Priorités', 'woPriorites', 'wo-priorite', 'Nouvelle priorité (ex: Critique)')}
+      ${editableListBlock('Catégories de pièces', 'categoriesArticle', 'cat-article', 'Nouvelle catégorie (ex: Pneumatique)')}
+      ${editableListBlock('Unités de mesure (pièces)', 'unitesArticle', 'unite-article', 'Nouvelle unité — format "Label (ABBR)"')}
+      ${editableListBlock('Niveaux de criticité (pièces)', 'niveauxCriticite', 'niveau-critic', 'Nouveau niveau (ex: D)')}
+      ${editableListBlock('Types de mouvement de stock', 'typesMouvement', 'type-mvt', 'Nouveau type (ex: Transfert)')}
+      ${editableListBlock('Types d\'emplacement fonctionnel', 'locationTypes', 'loc-type', 'Nouveau type (ex: Cellule)')}
+      ${editableListBlock('Affectations du personnel', 'affectations', 'affectation', 'Nouvelle affectation (ex: Administration)')}
+      ${editableListBlock('Fonctions RH', 'fonctions', 'fonction', 'Nouvelle fonction (ex: Chef d\'équipe)')}
+      ${editableListBlock('Niveaux d\'approbation (utilisateurs)', 'niveauxApprobation', 'niveau-appro', 'Nouveau niveau (ex: Direction générale)')}
+      ${editableListBlock('Types de congé', 'typesConge', 'type-conge', 'Nouveau type (ex: Congé exceptionnel)')}
 
       <div class="plate p16">
         <h3 class="oswald" style="text-transform:uppercase;font-size:14px;margin:0 0 10px;">Autres référentiels</h3>
@@ -4055,7 +4206,7 @@ function attachHandlers(){
   if(ps) ps.addEventListener('input', e=>{ partsSearch=e.target.value; render(); const el=document.getElementById('parts-search'); if(el){ el.focus(); el.selectionStart = el.value.length; } });
   const pn = document.querySelector('[data-open-modal="part-new"]');
   if(pn) pn.addEventListener('click', ()=>{
-    const p = {id:null, ref:'', nom:'', categorie:CATEGORIES_ARTICLE[0], fournisseurPrincipal:'', codeSAP:'', unite:'Pièce (PCE)',
+    const p = {id:null, ref:'', nom:'', categorie:state.categoriesArticle[0], fournisseurPrincipal:'', codeSAP:'', unite:'Pièce (PCE)',
       quantite:0, localisation:'', statutStock:'Libre', dateDernierMouvement:'',
       seuil:2, seuilMax:0, pointReappro:0, coutUnitaire:0, centreCoutId:'',
       fournisseursAlternatifs:'', delaiLivraison:0, conditions:'',
@@ -4099,7 +4250,7 @@ function attachHandlers(){
   // Emplacements fonctionnels
   const flocn = document.querySelector('[data-open-modal="floc-new"]');
   if(flocn) flocn.addEventListener('click', ()=>{
-    const l = {id:null, code:'', nom:'', type:LOCATION_TYPES[0], parentId:''};
+    const l = {id:null, code:'', nom:'', type:state.locationTypes[0], parentId:''};
     openModal('Nouvel emplacement', flocForm(l), (data)=>{
       if(!data.code||!data.nom){ alert('Code et nom requis'); return; }
       const parentId = data.parentId||null;
@@ -4515,9 +4666,10 @@ function attachHandlers(){
   }
   const pern = document.querySelector('[data-open-modal="personnel-new"]');
   if(pern) pern.addEventListener('click', ()=>{
-    const p = {id:null, nom:'', poste:state.postes[0], affectation:AFFECTATIONS[0], statut:'Actif', telephone:'', dateEmbauche:''};
+    const p = {id:null, nom:'', poste:state.postes[0], affectation:state.affectations[0], statut:'Actif', telephone:'', dateEmbauche:'', soldeConges:26};
     openModal('Nouvelle personne', personnelForm(p), (data)=>{
       if(!data.nom){ alert('Nom requis'); return; }
+      data.soldeConges = Number(data.soldeConges)||0;
       state.personnel.push({...data, id:uid()});
       persist(); closeModal(); render(); toast('Personne ajoutée');
     });
@@ -4525,6 +4677,7 @@ function attachHandlers(){
   document.querySelectorAll('[data-edit-personnel]').forEach(b=>b.addEventListener('click',()=>{
     const p = state.personnel.find(x=>x.id===b.dataset.editPersonnel);
     openModal('Modifier la personne', personnelForm(p), (data)=>{
+      data.soldeConges = Number(data.soldeConges)||0;
       Object.assign(p, data);
       persist(); closeModal(); render(); toast('Personne mise à jour');
     });
@@ -4534,6 +4687,63 @@ function attachHandlers(){
       state.personnel = state.personnel.filter(x=>x.id!==b.dataset.delPersonnel);
       persist(); render(); toast('Personne supprimée');
     }, {danger:true, okLabel:'Supprimer'});
+  }));
+
+  // Congés
+  const cfs = document.getElementById('conges-filter-statut');
+  if(cfs) cfs.addEventListener('change', e=>{ congesFilterStatut=e.target.value; render(); });
+  const cfp = document.getElementById('conges-filter-personnel');
+  if(cfp) cfp.addEventListener('change', e=>{ congesFilterPersonnel=e.target.value; render(); });
+  const congeNewBtn = document.querySelector('[data-open-modal="conge-new"]');
+  if(congeNewBtn) congeNewBtn.addEventListener('click', ()=>{
+    const c = {id:null, personnelId: state.personnel[0]?state.personnel[0].id:'', type: state.typesConge[0], statut:'Demandé', dateDebut:'', dateFin:'', motif:''};
+    openModal('Nouvelle demande de congé', congeForm(c), (data)=>{
+      if(!data.personnelId){ alert('Sélectionne une personne'); return; }
+      if(!data.dateDebut || !data.dateFin){ alert('Dates de début et de fin requises'); return; }
+      if(data.dateFin < data.dateDebut){ alert('La date de fin doit être postérieure à la date de début'); return; }
+      const nbJours = leaveDays(data.dateDebut, data.dateFin);
+      state.leaveRequests.push({...data, id:uid(), nbJours, dateCreation:new Date().toISOString().slice(0,10), demandePar: currentUser?currentUser.nomComplet:''});
+      persist(); closeModal(); render(); toast('Demande de congé créée');
+    });
+  });
+  document.querySelectorAll('[data-edit-conge]').forEach(b=>b.addEventListener('click',()=>{
+    const c = state.leaveRequests.find(x=>x.id===b.dataset.editConge);
+    openModal('Modifier la demande de congé', congeForm(c), (data)=>{
+      if(data.dateFin < data.dateDebut){ alert('La date de fin doit être postérieure à la date de début'); return; }
+      data.nbJours = leaveDays(data.dateDebut, data.dateFin);
+      Object.assign(c, data);
+      persist(); closeModal(); render(); toast('Demande mise à jour');
+    });
+  }));
+  document.querySelectorAll('[data-del-conge]').forEach(b=>b.addEventListener('click',()=>{
+    confirmModal('Supprimer cette demande de congé ?', ()=>{
+      state.leaveRequests = state.leaveRequests.filter(x=>x.id!==b.dataset.delConge);
+      persist(); render(); toast('Demande supprimée');
+    }, {danger:true, okLabel:'Supprimer'});
+  }));
+  document.querySelectorAll('[data-valider-conge]').forEach(b=>b.addEventListener('click',()=>{
+    const c = state.leaveRequests.find(x=>x.id===b.dataset.validerConge);
+    if(!c) return;
+    const p = state.personnel.find(x=>x.id===c.personnelId);
+    const jours = c.nbJours!=null?c.nbJours:leaveDays(c.dateDebut,c.dateFin);
+    const proceed = ()=>{
+      c.statut = 'Validé'; c.validePar = currentUser?currentUser.nomComplet:''; c.dateValidation = new Date().toISOString().slice(0,10);
+      if(p && c.type==='Congé annuel'){ p.soldeConges = Math.round(((Number(p.soldeConges)||0) - jours)*10)/10; }
+      logAudit('Congé validé pour '+(p?p.nom:'?')+' — '+jours+' j. ('+c.type+')');
+      persist(); render(); toast('Congé validé');
+    };
+    if(p && c.type==='Congé annuel' && Number(p.soldeConges)<jours){
+      confirmModal('Le solde de '+p.nom+' ('+fmt(p.soldeConges)+' j.) est inférieur aux '+jours+' j. demandés. Valider quand même ?', proceed, {danger:true, okLabel:'Valider quand même'});
+    } else proceed();
+  }));
+  document.querySelectorAll('[data-refuser-conge]').forEach(b=>b.addEventListener('click',()=>{
+    const c = state.leaveRequests.find(x=>x.id===b.dataset.refuserConge);
+    if(!c) return;
+    confirmModal('Refuser cette demande de congé ?', ()=>{
+      c.statut = 'Refusé'; c.validePar = currentUser?currentUser.nomComplet:''; c.dateValidation = new Date().toISOString().slice(0,10);
+      logAudit('Congé refusé pour '+(state.personnel.find(x=>x.id===c.personnelId)?.nom||'?'));
+      persist(); render(); toast('Congé refusé');
+    }, {danger:true, okLabel:'Refuser'});
   }));
 }
 
@@ -4620,9 +4830,19 @@ async function init(){
     data.typesTravail = (data.typesTravail && data.typesTravail.length) ? data.typesTravail : ["Inspection","Remplacement pièces","Intervention","Révision","Autre"];
     data.woTypes = (data.woTypes && data.woTypes.length) ? data.woTypes : ["Panne / Correctif","Préventif","Inspection","Amélioration"];
     data.woPriorites = (data.woPriorites && data.woPriorites.length) ? data.woPriorites : ["Basse","Normale","Haute","Urgente"];
+    data.categoriesArticle = (data.categoriesArticle && data.categoriesArticle.length) ? data.categoriesArticle : ["Mécanique","Électrique","HSE","Consommable","Autre"];
+    data.unitesArticle = (data.unitesArticle && data.unitesArticle.length) ? data.unitesArticle : ["Pièce (PCE)","Unité (UN)","Kilogramme (KG)","Gramme (G)","Tonne (T)","Litre (L)","Millilitre (ML)","Mètre (M)","Mètre carré (M2)","Mètre cube (M3)","Boîte (BT)","Carton (CAR)","Sachet (SAC)","Bidon (BID)","Rouleau (RLO)","Paire (PR)","Jeu / Kit (JEU)","Lot (LOT)","Bouteille (BOU)","Sac (SC)","Barre (BAR)","Autre"];
+    data.niveauxCriticite = (data.niveauxCriticite && data.niveauxCriticite.length) ? data.niveauxCriticite : ["A","B","C"];
+    data.typesMouvement = (data.typesMouvement && data.typesMouvement.length) ? data.typesMouvement : ["Achat","Retour","Réparation"];
+    data.locationTypes = (data.locationTypes && data.locationTypes.length) ? data.locationTypes : ["Site","Atelier","Ligne","Machine"];
+    data.affectations = (data.affectations && data.affectations.length) ? data.affectations : ["Flotte","Usine","Les deux"];
+    data.fonctions = (data.fonctions && data.fonctions.length) ? data.fonctions : ["Technicien","Planificateur","Superviseur","Responsable","Administrateur"];
+    data.niveauxApprobation = (data.niveauxApprobation && data.niveauxApprobation.length) ? data.niveauxApprobation : ["Technique","Financière","Stratégique"];
+    data.leaveRequests = data.leaveRequests || [];
+    data.typesConge = (data.typesConge && data.typesConge.length) ? data.typesConge : ["Congé annuel","Congé maladie","Congé sans solde","Congé maternité / paternité","Autre"];
     (data.parts||[]).forEach(p=>{
       if(p.fournisseurPrincipal===undefined) p.fournisseurPrincipal = p.fournisseur||'';
-      if(!p.categorie) p.categorie = CATEGORIES_ARTICLE[4];
+      if(!p.categorie) p.categorie = state.categoriesArticle[4];
       if(!p.statutStock) p.statutStock = 'Libre';
       if(p.seuilMax===undefined) p.seuilMax = 0;
       if(p.pointReappro===undefined) p.pointReappro = 0;
