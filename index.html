@@ -288,7 +288,7 @@ function canSee(navId){
   if(currentUser.statutCompte==='Inactif') return false;
   if(currentUser.role==='admin') return true;
   const moduleOf = { wo:'maintenance', pm:'maintenance', notif:'maintenance', floc:'maintenance', plant:'maintenance', production:'maintenance', measures:'maintenance', fleet:'maintenance', fuel:'maintenance',
-    parts:'stock', resa:'stock', da:'achats', bc:'achats', personnel:'rh', conges:'rh', dashboard:'reporting', costs:'reporting', reports:'reporting' };
+    parts:'stock', resa:'stock', da:'achats', bc:'achats', personnel:'rh', conges:'rh', formations:'rh', effectifs:'rh', recrutement:'rh', maternite:'rh', dashboard:'reporting', costs:'reporting', reports:'reporting' };
   const mod = moduleOf[navId];
   if(mod && currentUser.modules && currentUser.modules[mod]==='Aucun') return false;
   const restricted = {
@@ -352,6 +352,11 @@ function normalizeState(){
   if(!Array.isArray(state.niveauxApprobation) || state.niveauxApprobation.length===0) state.niveauxApprobation = ["Technique","Financière","Stratégique"];
   if(!Array.isArray(state.leaveRequests)) state.leaveRequests = [];
   if(!Array.isArray(state.typesConge) || state.typesConge.length===0) state.typesConge = ["Congé annuel","Congé maladie","Congé sans solde","Congé maternité / paternité","Autre"];
+  if(!Array.isArray(state.trainings)) state.trainings = [];
+  if(!Array.isArray(state.typesFormation) || state.typesFormation.length===0) state.typesFormation = ["Formation technique","Habilitation sécurité","Certification","Recyclage","Autre"];
+  if(!Array.isArray(state.candidatures)) state.candidatures = [];
+  if(!Array.isArray(state.statutsRecrutement) || state.statutsRecrutement.length===0) state.statutsRecrutement = ["Reçue","Présélection","Entretien","Test technique","Offre","Embauché","Refusée"];
+  if(!Array.isArray(state.maternityPlans)) state.maternityPlans = [];
   state.personnel.forEach(p=>{ if(p.soldeConges===undefined || p.soldeConges===null || p.soldeConges==='') p.soldeConges = 26; });
 }
 async function loadRemote(){
@@ -565,7 +570,10 @@ let state = { fleet: [], workOrders: [], fuelLogs: [], parts: [], pmPlans: [], l
   affectations: ["Flotte","Usine","Les deux"],
   fonctions: ["Technicien","Planificateur","Superviseur","Responsable","Administrateur"],
   niveauxApprobation: ["Technique","Financière","Stratégique"],
-  leaveRequests: [], typesConge: ["Congé annuel","Congé maladie","Congé sans solde","Congé maternité / paternité","Autre"] };
+  leaveRequests: [], typesConge: ["Congé annuel","Congé maladie","Congé sans solde","Congé maternité / paternité","Autre"],
+  trainings: [], typesFormation: ["Formation technique","Habilitation sécurité","Certification","Recyclage","Autre"],
+  candidatures: [], statutsRecrutement: ["Reçue","Présélection","Entretien","Test technique","Offre","Embauché","Refusée"],
+  maternityPlans: [] };
 let currentView = 'dashboard';
 
 /* ============ HELPERS ============ */
@@ -644,6 +652,10 @@ const NAV = [
   { section:'RH', items:[
     {id:'personnel', label:'Personnel', icon:'users'},
     {id:'conges', label:'Congés', icon:'calendar'},
+    {id:'formations', label:'Formations', icon:'activity'},
+    {id:'effectifs', label:'Effectifs', icon:'layers'},
+    {id:'recrutement', label:'Recrutement', icon:'search'},
+    {id:'maternite', label:'Congé maternité', icon:'bell'},
   ]},
   { section:'Achats', items:[
     {id:'da', label:'Demandes d\'achat', icon:'cart'},
@@ -736,6 +748,10 @@ function render(){
   else if(currentView==='costs') c.innerHTML = viewCosts();
   else if(currentView==='personnel') c.innerHTML = viewPersonnel();
   else if(currentView==='conges') c.innerHTML = viewConges();
+  else if(currentView==='formations') c.innerHTML = viewFormations();
+  else if(currentView==='effectifs') c.innerHTML = viewEffectifs();
+  else if(currentView==='recrutement') c.innerHTML = viewRecrutement();
+  else if(currentView==='maternite') c.innerHTML = viewMaternite();
   else if(currentView==='reports') c.innerHTML = viewReports();
   else if(currentView==='settings') c.innerHTML = viewSettings();
   else if(currentView==='users') c.innerHTML = viewUsers();
@@ -932,11 +948,17 @@ function viewDashboard(){
       const enAttente = state.leaveRequests.filter(c=>c.statut==='Demandé');
       const enCongeAuj = state.leaveRequests.filter(c=>c.statut==='Validé' && c.dateDebut<=today && c.dateFin>=today);
       const soldeFaible = state.personnel.filter(p=>p.statut==='Actif' && Number(p.soldeConges)<=3);
+      const today2 = new Date().toISOString().slice(0,10);
+      const in60d = new Date(Date.now()+60*86400000).toISOString().slice(0,10);
+      const habilitationsAExpirer = state.trainings.filter(f=>f.dateExpiration && f.dateExpiration>=today2 && f.dateExpiration<=in60d);
+      const candidaturesActives = state.candidatures.filter(c=>!['Embauché','Refusée'].includes(c.statut));
       return `<div class="grid grid-kpi" style="margin-bottom:${enCongeAuj.length||enAttente.length?'12px':'0'};">
         ${kpiCard('Personnel actif', state.personnel.filter(p=>p.statut==='Actif').length,'','users','var(--text)','', 'personnel')}
         ${kpiCard('Congés en attente', enAttente.length,'','calendar', enAttente.length?'var(--accent)':'var(--success)','à valider','conges')}
         ${kpiCard("En congé aujourd'hui", enCongeAuj.length,'','calendar','var(--steel)','', 'conges')}
         ${kpiCard('Soldes faibles (≤3j)', soldeFaible.length,'','alert', soldeFaible.length?'var(--danger)':'var(--success)','', 'personnel')}
+        ${kpiCard('Habilitations à renouveler', habilitationsAExpirer.length,'','bell', habilitationsAExpirer.length?'var(--danger)':'var(--success)','sous 60 jours', 'formations')}
+        ${kpiCard('Candidatures en cours', candidaturesActives.length,'','search','var(--steel)','', 'recrutement')}
       </div>
       ${enCongeAuj.length>0?`<div style="font-size:12px;color:var(--muted);border-top:1px solid var(--border);padding-top:10px;">En congé : ${enCongeAuj.map(c=>esc(pm[c.personnelId]?pm[c.personnelId].nom:'?')).join(', ')}</div>`:''}`;
     })()}
@@ -2770,6 +2792,249 @@ function viewConges(){
   </div>`}`;
 }
 
+/* ============ FORMATIONS ============ */
+let formationsFilterStatut = 'Tous';
+let formationsFilterPersonnel = 'Tous';
+function formationStatutColor(s){
+  return { 'Planifiée':'var(--steel)', 'En cours':'var(--accent)', 'Terminée':'var(--success)', 'Annulée':'var(--muted)' }[s] || 'var(--muted)';
+}
+function formationForm(f){
+  return `
+  <div class="formgrid">
+    <label class="field span2"><span>Intitulé</span><input data-f="intitule" value="${esc(f.intitule)}" placeholder="Ex: Habilitation électrique B1V"/></label>
+    <label class="field"><span>Personnel</span><select data-f="personnelId">${state.personnel.map(p=>`<option value="${p.id}" ${f.personnelId===p.id?'selected':''}>${esc(p.nom)} — ${esc(p.poste)}</option>`).join('')}</select></label>
+    <label class="field"><span>Type</span><select data-f="type">${state.typesFormation.map(t=>`<option ${f.type===t?'selected':''}>${t}</option>`).join('')}</select></label>
+    <label class="field"><span>Organisme</span><input data-f="organisme" value="${esc(f.organisme||'')}" placeholder="Ex: APAVE"/></label>
+    <label class="field"><span>Statut</span><select data-f="statut">${['Planifiée','En cours','Terminée','Annulée'].map(s=>`<option ${f.statut===s?'selected':''}>${s}</option>`).join('')}</select></label>
+    <label class="field"><span>Date de début</span><input type="date" data-f="dateDebut" value="${f.dateDebut||''}"/></label>
+    <label class="field"><span>Date de fin</span><input type="date" data-f="dateFin" value="${f.dateFin||''}"/></label>
+    <label class="field"><span>Date d'expiration (habilitation/certif)</span><input type="date" data-f="dateExpiration" value="${f.dateExpiration||''}"/></label>
+    <label class="field"><span>Coût (FCFA)</span><input type="number" data-f="cout" value="${f.cout||0}"/></label>
+    <label class="field span2"><span>Notes</span><textarea data-f="notes" rows="2">${esc(f.notes||'')}</textarea></label>
+  </div>
+  <p style="font-size:11px;color:var(--muted);margin:8px 0 0;">Renseigne la date d'expiration pour les habilitations et certifications à renouveler périodiquement (ATEX, électrique, etc.) — une alerte apparaît sur le tableau de bord 60 jours avant échéance.</p>`;
+}
+function viewFormations(){
+  const pm = Object.fromEntries(state.personnel.map(p=>[p.id,p]));
+  let list = [...state.trainings];
+  if(formationsFilterStatut!=='Tous') list = list.filter(f=>f.statut===formationsFilterStatut);
+  if(formationsFilterPersonnel!=='Tous') list = list.filter(f=>f.personnelId===formationsFilterPersonnel);
+  list.sort((a,b)=>(b.dateDebut||'').localeCompare(a.dateDebut||''));
+  const today = new Date().toISOString().slice(0,10);
+  const in60 = new Date(Date.now()+60*86400000).toISOString().slice(0,10);
+  const expirantes = state.trainings.filter(f=>f.dateExpiration && f.dateExpiration>=today && f.dateExpiration<=in60);
+  const expirees = state.trainings.filter(f=>f.dateExpiration && f.dateExpiration<today);
+  return `
+  <div class="headrow">
+    <div><h1>Formations & habilitations</h1><p class="subtitle" style="margin:0;">Suivi des formations, certifications et habilitations sécurité</p></div>
+    <button class="btn btn-accent" data-open-modal="formation-new">${ICONS.plus} Nouvelle formation</button>
+  </div>
+  ${expirees.length>0?`<div class="plate p14" style="margin-bottom:12px;border-color:var(--danger);">
+    <div class="row" style="margin-bottom:6px;">${ICONS.alert}<strong style="font-size:13px;color:var(--danger);">Habilitations expirées (${expirees.length})</strong></div>
+    <div style="font-size:12px;color:var(--muted);">${expirees.map(f=>esc(pm[f.personnelId]?pm[f.personnelId].nom:'?')+' — '+esc(f.intitule)+' (expirée le '+f.dateExpiration+')').join(' · ')}</div>
+  </div>`:''}
+  ${expirantes.length>0?`<div class="plate p14" style="margin-bottom:16px;border-color:var(--accent);">
+    <div class="row" style="margin-bottom:6px;">${ICONS.bell}<strong style="font-size:13px;">À renouveler sous 60 jours (${expirantes.length})</strong></div>
+    <div style="font-size:12px;color:var(--muted);">${expirantes.map(f=>esc(pm[f.personnelId]?pm[f.personnelId].nom:'?')+' — '+esc(f.intitule)+' (jusqu\'au '+f.dateExpiration+')').join(' · ')}</div>
+  </div>`:''}
+  <div class="plate p14" style="margin-bottom:16px;">
+    <div class="row wrapwrap" style="gap:8px;">
+      <select id="formations-filter-statut" style="flex:1;min-width:150px;">
+        <option value="Tous" ${formationsFilterStatut==='Tous'?'selected':''}>Tous statuts</option>
+        ${['Planifiée','En cours','Terminée','Annulée'].map(s=>`<option ${formationsFilterStatut===s?'selected':''}>${s}</option>`).join('')}
+      </select>
+      <select id="formations-filter-personnel" style="flex:1;min-width:180px;">
+        <option value="Tous" ${formationsFilterPersonnel==='Tous'?'selected':''}>Tout le personnel</option>
+        ${state.personnel.map(p=>`<option value="${p.id}" ${formationsFilterPersonnel===p.id?'selected':''}>${esc(p.nom)}</option>`).join('')}
+      </select>
+    </div>
+  </div>
+  ${list.length===0?`<div class="plate p16"><div class="empty">${ICONS.activity}<span>Aucune formation enregistrée.</span></div></div>`:
+  `<div style="display:flex;flex-direction:column;gap:8px;">
+  ${list.map(f=>{ const p = pm[f.personnelId];
+    const expBadge = f.dateExpiration ? (f.dateExpiration<today?`<span class="badge badge-danger">Expirée</span>`: f.dateExpiration<=in60?`<span class="badge" style="color:var(--accent);border-color:var(--accent);">Expire le ${f.dateExpiration}</span>`:`<span class="badge" style="color:var(--muted);">Valide jusqu'au ${f.dateExpiration}</span>`) : '';
+    return `<div class="plate p14">
+    <div class="between wrapwrap" style="gap:12px;">
+      <div class="row">
+        <span class="led" style="background:${formationStatutColor(f.statut)}"></span>
+        <div>
+          <div class="row" style="flex-wrap:wrap;">
+            <span style="font-size:13px;font-weight:500;">${esc(f.intitule)}</span>
+            <span class="badge">${esc(f.type)}</span>
+            <span class="badge" style="color:${formationStatutColor(f.statut)};border-color:${formationStatutColor(f.statut)};">${f.statut}</span>
+            ${expBadge}
+          </div>
+          <div style="font-size:12px;color:var(--muted);">${p?esc(p.nom):'Personne supprimée'}${f.organisme?' · '+esc(f.organisme):''}${f.dateDebut?' · '+f.dateDebut+(f.dateFin?' → '+f.dateFin:''):''}</div>
+        </div>
+      </div>
+      <div class="row">
+        <button class="icon-btn" data-edit-formation="${f.id}">${ICONS.edit}</button>
+        <button class="icon-btn" data-del-formation="${f.id}">${ICONS.trash}</button>
+      </div>
+    </div>
+  </div>`;}).join('')}
+  </div>`}`;
+}
+
+/* ============ EFFECTIFS ============ */
+let effectifsMonth = new Date().toISOString().slice(0,7);
+function viewEffectifs(){
+  const byPoste = {};
+  state.personnel.filter(p=>p.statut==='Actif').forEach(p=>{ byPoste[p.poste]=(byPoste[p.poste]||0)+1; });
+  const [y,m] = effectifsMonth.split('-').map(Number);
+  const monthStart = effectifsMonth+'-01';
+  const monthEnd = new Date(y, m, 0).toISOString().slice(0,10);
+  const joursMois = new Date(y, m, 0).getDate();
+  const active = state.personnel.filter(p=>p.statut!=='Inactif');
+  const rows = active.map(p=>{
+    const conges = state.leaveRequests.filter(c=>c.personnelId===p.id && c.statut==='Validé' && c.dateDebut<=monthEnd && c.dateFin>=monthStart);
+    const joursAbs = conges.reduce((a,c)=>{
+      const debut = c.dateDebut<monthStart?monthStart:c.dateDebut;
+      const fin = c.dateFin>monthEnd?monthEnd:c.dateFin;
+      return a + Math.max(0, leaveDays(debut,fin));
+    },0);
+    return { p, joursAbs, dispo: joursMois-joursAbs };
+  });
+  const totalCapacite = active.length*joursMois;
+  const totalAbs = rows.reduce((a,r)=>a+r.joursAbs,0);
+  return `
+  <div class="headrow">
+    <div><h1>Planification des effectifs</h1><p class="subtitle" style="margin:0;">Capacité de travail par poste et disponibilité mensuelle</p></div>
+    <input type="month" id="effectifs-month" value="${effectifsMonth}"/>
+  </div>
+  <div class="grid grid-kpi" style="margin-bottom:16px;">
+    ${kpiCard('Effectif actif', active.filter(p=>p.statut==='Actif').length,'personnes','users','var(--text)','')}
+    ${kpiCard('Capacité du mois', fmt(totalCapacite),'j.-homme','calendar','var(--steel)','')}
+    ${kpiCard('Jours d\'absence (congés)', fmt(totalAbs),'j.','calendar', totalAbs>0?'var(--accent)':'var(--success)','')}
+    ${kpiCard('Taux de disponibilité', totalCapacite?Math.round((1-totalAbs/totalCapacite)*100):100,'%','activity','var(--success)','')}
+  </div>
+  <div class="plate p16" style="margin-bottom:16px;">
+    <h3 class="oswald" style="text-transform:uppercase;font-size:14px;margin:0 0 10px;">Effectif actif par poste</h3>
+    <div style="display:flex;flex-direction:column;gap:6px;">
+      ${Object.entries(byPoste).sort((a,b)=>b[1]-a[1]).map(([poste,n])=>`<div class="between" style="font-size:12px;padding:4px 0;border-bottom:1px solid var(--border);"><span>${esc(poste)}</span><span class="mono">${n}</span></div>`).join('')||`<span style="font-size:12px;color:var(--muted);">Aucun personnel actif.</span>`}
+    </div>
+  </div>
+  <div class="plate" style="overflow:hidden;">
+  <table><thead><tr><th>Personnel</th><th>Poste</th><th>Affectation</th><th class="right">Jours d'absence (mois)</th><th class="right">Jours disponibles</th></tr></thead>
+  <tbody>
+  ${rows.sort((a,b)=>b.joursAbs-a.joursAbs).map(({p,joursAbs,dispo})=>`<tr>
+    <td>${esc(p.nom)}</td><td style="color:var(--muted)">${esc(p.poste)}</td><td style="color:var(--muted)">${esc(p.affectation)}</td>
+    <td class="right mono" style="color:${joursAbs>0?'var(--accent)':'var(--muted)'}">${joursAbs}</td>
+    <td class="right mono">${dispo}</td>
+  </tr>`).join('')}
+  </tbody></table></div>`;
+}
+
+/* ============ RECRUTEMENT ============ */
+let recrutFilterStatut = 'Tous';
+function recrutStatutColor(s){
+  return { 'Reçue':'var(--muted)', 'Présélection':'var(--steel)', 'Entretien':'var(--steel)', 'Test technique':'var(--accent)', 'Offre':'var(--accent)', 'Embauché':'var(--success)', 'Refusée':'var(--danger)' }[s] || 'var(--muted)';
+}
+function candidatureForm(cd){
+  return `
+  <div class="formgrid">
+    <label class="field span2"><span>Nom complet du candidat</span><input data-f="nom" value="${esc(cd.nom)}" placeholder="Ex: Koffi Marie"/></label>
+    <label class="field"><span>Poste recherché</span><input data-f="poste" value="${esc(cd.poste||'')}" list="candidature-postes" placeholder="Ex: Mécanicien"/></label>
+    <datalist id="candidature-postes">${[...state.postes, ...state.fonctions].map(p=>`<option value="${esc(p)}">`).join('')}</datalist>
+    <label class="field"><span>Statut</span><select data-f="statut">${state.statutsRecrutement.map(s=>`<option ${cd.statut===s?'selected':''}>${s}</option>`).join('')}</select></label>
+    <label class="field"><span>Téléphone</span><input data-f="telephone" value="${esc(cd.telephone||'')}"/></label>
+    <label class="field"><span>Email</span><input data-f="email" value="${esc(cd.email||'')}"/></label>
+    <label class="field"><span>Source</span><input data-f="source" value="${esc(cd.source||'')}" placeholder="Ex: Recommandation, LinkedIn..."/></label>
+    <label class="field"><span>Date de candidature</span><input type="date" data-f="dateCandidature" value="${cd.dateCandidature||new Date().toISOString().slice(0,10)}"/></label>
+    <label class="field span2"><span>Notes / évaluation</span><textarea data-f="notes" rows="3">${esc(cd.notes||'')}</textarea></label>
+  </div>`;
+}
+function viewRecrutement(){
+  let list = [...state.candidatures];
+  if(recrutFilterStatut!=='Tous') list = list.filter(c=>c.statut===recrutFilterStatut);
+  list.sort((a,b)=>(b.dateCandidature||'').localeCompare(a.dateCandidature||''));
+  const counts = {};
+  state.candidatures.forEach(c=>{ counts[c.statut]=(counts[c.statut]||0)+1; });
+  return `
+  <div class="headrow">
+    <div><h1>Recrutement</h1><p class="subtitle" style="margin:0;">Suivi des candidatures, de la réception à l'embauche</p></div>
+    <button class="btn btn-accent" data-open-modal="candidature-new">${ICONS.plus} Nouvelle candidature</button>
+  </div>
+  <div class="plate p14" style="margin-bottom:16px;">
+    <div class="row wrapwrap" style="gap:8px;">
+      <button class="btn ${recrutFilterStatut==='Tous'?'btn-accent':'btn-ghost'}" style="font-size:11px;padding:5px 10px;" data-recrut-filter="Tous">Tous (${state.candidatures.length})</button>
+      ${state.statutsRecrutement.map(s=>`<button class="btn ${recrutFilterStatut===s?'btn-accent':'btn-ghost'}" style="font-size:11px;padding:5px 10px;" data-recrut-filter="${esc(s)}">${esc(s)} (${counts[s]||0})</button>`).join('')}
+    </div>
+  </div>
+  ${list.length===0?`<div class="plate p16"><div class="empty">${ICONS.search}<span>Aucune candidature.</span></div></div>`:
+  `<div style="display:flex;flex-direction:column;gap:8px;">
+  ${list.map(cd=>`<div class="plate p14">
+    <div class="between wrapwrap" style="gap:12px;">
+      <div class="row">
+        <span class="led" style="background:${recrutStatutColor(cd.statut)}"></span>
+        <div>
+          <div class="row" style="flex-wrap:wrap;">
+            <span style="font-size:13px;font-weight:500;">${esc(cd.nom)}</span>
+            <span class="badge">${esc(cd.poste||'—')}</span>
+            <span class="badge" style="color:${recrutStatutColor(cd.statut)};border-color:${recrutStatutColor(cd.statut)};">${esc(cd.statut)}</span>
+          </div>
+          <div style="font-size:12px;color:var(--muted);">${cd.telephone?esc(cd.telephone)+' · ':''}${cd.email?esc(cd.email)+' · ':''}Candidature du ${cd.dateCandidature||'—'}${cd.source?' · '+esc(cd.source):''}</div>
+        </div>
+      </div>
+      <div class="row">
+        ${cd.statut==='Embauché'?`<button class="btn btn-ghost" style="font-size:11px;padding:3px 8px;color:var(--success);" data-hire-candidature="${cd.id}">${ICONS.users} Créer la fiche personnel</button>`:''}
+        <button class="icon-btn" data-edit-candidature="${cd.id}">${ICONS.edit}</button>
+        <button class="icon-btn" data-del-candidature="${cd.id}">${ICONS.trash}</button>
+      </div>
+    </div>
+  </div>`).join('')}
+  </div>`}`;
+}
+
+/* ============ CONGÉ MATERNITÉ ============ */
+function maternityForm(mp){
+  return `
+  <div class="formgrid">
+    <label class="field span2"><span>Personnel</span><select data-f="personnelId">${state.personnel.map(p=>`<option value="${p.id}" ${mp.personnelId===p.id?'selected':''}>${esc(p.nom)} — ${esc(p.poste)}</option>`).join('')}</select></label>
+    <label class="field"><span>Date de départ en congé</span><input type="date" data-f="dateDebut" value="${mp.dateDebut||''}"/></label>
+    <label class="field"><span>Durée (jours)</span><input type="number" data-f="dureeJours" value="${mp.dureeJours||98}"/></label>
+    <label class="field"><span>Date d'accouchement prévue</span><input type="date" data-f="dateAccouchementPrevue" value="${mp.dateAccouchementPrevue||''}"/></label>
+    <label class="field"><span>Date de retour prévue</span><input type="date" data-f="dateRetourPrevue" value="${mp.dateRetourPrevue||''}"/></label>
+    <label class="field span2"><span>Remplacement (optionnel)</span><select data-f="remplacantId"><option value="">— Aucun —</option>${state.personnel.map(p=>`<option value="${p.id}" ${mp.remplacantId===p.id?'selected':''}>${esc(p.nom)} — ${esc(p.poste)}</option>`).join('')}</select></label>
+    <label class="field"><span>Statut</span><select data-f="statut">${['Planifié','En cours','Terminé'].map(s=>`<option ${mp.statut===s?'selected':''}>${s}</option>`).join('')}</select></label>
+    <label class="field span2"><span>Notes</span><textarea data-f="notes" rows="2">${esc(mp.notes||'')}</textarea></label>
+  </div>
+  <p style="font-size:11px;color:var(--muted);margin:8px 0 0;">La durée par défaut (98 jours) est indicative — vérifie la durée légale applicable selon le code du travail et votre convention collective avant de valider.</p>`;
+}
+function viewMaternite(){
+  const pm = Object.fromEntries(state.personnel.map(p=>[p.id,p]));
+  const list = [...state.maternityPlans].sort((a,b)=>(b.dateDebut||'').localeCompare(a.dateDebut||''));
+  return `
+  <div class="headrow">
+    <div><h1>Congé maternité</h1><p class="subtitle" style="margin:0;">Planification, remplacement et suivi des retours</p></div>
+    <button class="btn btn-accent" data-open-modal="maternity-new">${ICONS.plus} Nouveau plan</button>
+  </div>
+  ${list.length===0?`<div class="plate p16"><div class="empty">${ICONS.bell}<span>Aucun plan de congé maternité enregistré.</span></div></div>`:
+  `<div style="display:flex;flex-direction:column;gap:8px;">
+  ${list.map(mp=>{ const p = pm[mp.personnelId]; const rp = mp.remplacantId?pm[mp.remplacantId]:null;
+    const statutColor = mp.statut==='Terminé'?'var(--success)':mp.statut==='En cours'?'var(--accent)':'var(--steel)';
+    return `<div class="plate p14">
+    <div class="between wrapwrap" style="gap:12px;">
+      <div class="row">
+        <span class="led" style="background:${statutColor}"></span>
+        <div>
+          <div class="row" style="flex-wrap:wrap;">
+            <span style="font-size:13px;font-weight:500;">${p?esc(p.nom):'Personne supprimée'}</span>
+            <span class="badge" style="color:${statutColor};border-color:${statutColor};">${esc(mp.statut)}</span>
+          </div>
+          <div style="font-size:12px;color:var(--muted);">Départ le ${mp.dateDebut||'—'} · ${mp.dureeJours||98} j. · retour prévu le ${mp.dateRetourPrevue||'—'}${rp?' · remplacée par '+esc(rp.nom):''}</div>
+        </div>
+      </div>
+      <div class="row">
+        ${!mp.congeLie?`<button class="btn btn-ghost" style="font-size:11px;padding:3px 8px;color:var(--steel);" data-link-conge="${mp.id}">${ICONS.calendar} Créer la demande de congé liée</button>`:`<span class="badge" style="color:var(--success);border-color:var(--success);">Congé lié créé</span>`}
+        <button class="icon-btn" data-edit-maternity="${mp.id}">${ICONS.edit}</button>
+        <button class="icon-btn" data-del-maternity="${mp.id}">${ICONS.trash}</button>
+      </div>
+    </div>
+  </div>`;}).join('')}
+  </div>`}`;
+}
+
 let allUsers = [];
 async function loadAllUsers(){
   try{
@@ -2870,7 +3135,7 @@ function editableListBlock(title, stateKey, prefix, placeholder){
 const EDITABLE_LIST_KEYS = { 'wo-typetravail':'typesTravail', 'wo-type':'woTypes', 'wo-priorite':'woPriorites',
   'cat-article':'categoriesArticle', 'unite-article':'unitesArticle', 'niveau-critic':'niveauxCriticite',
   'type-mvt':'typesMouvement', 'loc-type':'locationTypes', 'affectation':'affectations', 'fonction':'fonctions', 'niveau-appro':'niveauxApprobation',
-  'type-conge':'typesConge' };
+  'type-conge':'typesConge', 'type-formation':'typesFormation', 'statut-recrut':'statutsRecrutement' };
 function wireEditableLists(){
   document.querySelectorAll('[data-elist-add]').forEach(b=>b.addEventListener('click',()=>{
     const prefix = b.dataset.elistAdd; const key = EDITABLE_LIST_KEYS[prefix];
@@ -2895,6 +3160,8 @@ function wireEditableLists(){
       'fonction': ()=>state.personnel.some(p=>p.fonction===val),
       'niveau-appro': ()=>false,
       'type-conge': ()=>state.leaveRequests.some(c=>c.type===val),
+      'type-formation': ()=>state.trainings.some(f=>f.type===val),
+      'statut-recrut': ()=>state.candidatures.some(c=>c.statut===val),
     };
     const used = usageCheckers[prefix] ? usageCheckers[prefix]() : false;
     const doDelete = ()=>{ state[key].splice(i,1); persist(); render(); };
@@ -2959,6 +3226,8 @@ function viewSettings(){
       ${editableListBlock('Fonctions RH', 'fonctions', 'fonction', 'Nouvelle fonction (ex: Chef d\'équipe)')}
       ${editableListBlock('Niveaux d\'approbation (utilisateurs)', 'niveauxApprobation', 'niveau-appro', 'Nouveau niveau (ex: Direction générale)')}
       ${editableListBlock('Types de congé', 'typesConge', 'type-conge', 'Nouveau type (ex: Congé exceptionnel)')}
+      ${editableListBlock('Types de formation', 'typesFormation', 'type-formation', 'Nouveau type (ex: Sécurité incendie)')}
+      ${editableListBlock('Statuts de recrutement', 'statutsRecrutement', 'statut-recrut', 'Nouveau statut (ex: Vivier)')}
 
       <div class="plate p16">
         <h3 class="oswald" style="text-transform:uppercase;font-size:14px;margin:0 0 10px;">Autres référentiels</h3>
@@ -4745,6 +5014,118 @@ function attachHandlers(){
       persist(); render(); toast('Congé refusé');
     }, {danger:true, okLabel:'Refuser'});
   }));
+
+  // Formations
+  const ffs = document.getElementById('formations-filter-statut');
+  if(ffs) ffs.addEventListener('change', e=>{ formationsFilterStatut=e.target.value; render(); });
+  const ffp = document.getElementById('formations-filter-personnel');
+  if(ffp) ffp.addEventListener('change', e=>{ formationsFilterPersonnel=e.target.value; render(); });
+  const formationNewBtn = document.querySelector('[data-open-modal="formation-new"]');
+  if(formationNewBtn) formationNewBtn.addEventListener('click', ()=>{
+    const f = {id:null, personnelId: state.personnel[0]?state.personnel[0].id:'', type: state.typesFormation[0], organisme:'', statut:'Planifiée', dateDebut:'', dateFin:'', dateExpiration:'', cout:0, notes:''};
+    openModal('Nouvelle formation', formationForm(f), (data)=>{
+      if(!data.intitule){ alert('Intitulé requis'); return; }
+      data.cout = Number(data.cout)||0;
+      state.trainings.push({...data, id:uid()});
+      persist(); closeModal(); render(); toast('Formation ajoutée');
+    });
+  });
+  document.querySelectorAll('[data-edit-formation]').forEach(b=>b.addEventListener('click',()=>{
+    const f = state.trainings.find(x=>x.id===b.dataset.editFormation);
+    openModal('Modifier la formation', formationForm(f), (data)=>{
+      data.cout = Number(data.cout)||0;
+      Object.assign(f, data);
+      persist(); closeModal(); render(); toast('Formation mise à jour');
+    });
+  }));
+  document.querySelectorAll('[data-del-formation]').forEach(b=>b.addEventListener('click',()=>{
+    confirmModal('Supprimer cette formation ?', ()=>{
+      state.trainings = state.trainings.filter(x=>x.id!==b.dataset.delFormation);
+      persist(); render(); toast('Formation supprimée');
+    }, {danger:true, okLabel:'Supprimer'});
+  }));
+
+  // Effectifs
+  const effMonth = document.getElementById('effectifs-month');
+  if(effMonth) effMonth.addEventListener('change', e=>{ effectifsMonth=e.target.value; render(); });
+
+  // Recrutement
+  document.querySelectorAll('[data-recrut-filter]').forEach(b=>b.addEventListener('click',()=>{ recrutFilterStatut=b.dataset.recrutFilter; render(); }));
+  const candNewBtn = document.querySelector('[data-open-modal="candidature-new"]');
+  if(candNewBtn) candNewBtn.addEventListener('click', ()=>{
+    const cd = {id:null, nom:'', poste:'', statut: state.statutsRecrutement[0], telephone:'', email:'', source:'', dateCandidature:new Date().toISOString().slice(0,10), notes:''};
+    openModal('Nouvelle candidature', candidatureForm(cd), (data)=>{
+      if(!data.nom){ alert('Nom du candidat requis'); return; }
+      state.candidatures.push({...data, id:uid()});
+      persist(); closeModal(); render(); toast('Candidature enregistrée');
+    });
+  });
+  document.querySelectorAll('[data-edit-candidature]').forEach(b=>b.addEventListener('click',()=>{
+    const cd = state.candidatures.find(x=>x.id===b.dataset.editCandidature);
+    openModal('Modifier la candidature', candidatureForm(cd), (data)=>{
+      Object.assign(cd, data);
+      persist(); closeModal(); render(); toast('Candidature mise à jour');
+    });
+  }));
+  document.querySelectorAll('[data-del-candidature]').forEach(b=>b.addEventListener('click',()=>{
+    confirmModal('Supprimer cette candidature ?', ()=>{
+      state.candidatures = state.candidatures.filter(x=>x.id!==b.dataset.delCandidature);
+      persist(); render(); toast('Candidature supprimée');
+    }, {danger:true, okLabel:'Supprimer'});
+  }));
+  document.querySelectorAll('[data-hire-candidature]').forEach(b=>b.addEventListener('click',()=>{
+    const cd = state.candidatures.find(x=>x.id===b.dataset.hireCandidature);
+    if(!cd) return;
+    const p = {id:null, nom:cd.nom, poste:state.postes.includes(cd.poste)?cd.poste:state.postes[0], affectation:state.affectations[0], statut:'Actif', telephone:cd.telephone||'', dateEmbauche:new Date().toISOString().slice(0,10), soldeConges:26};
+    openModal('Créer la fiche personnel — '+cd.nom, personnelForm(p), (data)=>{
+      if(!data.nom){ alert('Nom requis'); return; }
+      data.soldeConges = Number(data.soldeConges)||26;
+      state.personnel.push({...data, id:uid()});
+      persist(); closeModal(); render(); toast('Personnel créé à partir de la candidature');
+    });
+  }));
+
+  // Congé maternité
+  const matNewBtn = document.querySelector('[data-open-modal="maternity-new"]');
+  if(matNewBtn) matNewBtn.addEventListener('click', ()=>{
+    const mp = {id:null, personnelId: state.personnel[0]?state.personnel[0].id:'', dateDebut:'', dureeJours:98, dateAccouchementPrevue:'', dateRetourPrevue:'', remplacantId:'', statut:'Planifié', notes:'', congeLie:false};
+    openModal('Nouveau plan de congé maternité', maternityForm(mp), (data)=>{
+      if(!data.personnelId || !data.dateDebut){ alert('Personnel et date de départ requis'); return; }
+      data.dureeJours = Number(data.dureeJours)||98;
+      if(!data.dateRetourPrevue && data.dateDebut){ data.dateRetourPrevue = new Date(new Date(data.dateDebut).getTime()+data.dureeJours*86400000).toISOString().slice(0,10); }
+      state.maternityPlans.push({...data, id:uid(), congeLie:false});
+      persist(); closeModal(); render(); toast('Plan de congé maternité créé');
+    });
+  });
+  document.querySelectorAll('[data-edit-maternity]').forEach(b=>b.addEventListener('click',()=>{
+    const mp = state.maternityPlans.find(x=>x.id===b.dataset.editMaternity);
+    openModal('Modifier le plan de congé maternité', maternityForm(mp), (data)=>{
+      data.dureeJours = Number(data.dureeJours)||98;
+      Object.assign(mp, data);
+      persist(); closeModal(); render(); toast('Plan mis à jour');
+    });
+  }));
+  document.querySelectorAll('[data-del-maternity]').forEach(b=>b.addEventListener('click',()=>{
+    confirmModal('Supprimer ce plan de congé maternité ?', ()=>{
+      state.maternityPlans = state.maternityPlans.filter(x=>x.id!==b.dataset.delMaternity);
+      persist(); render(); toast('Plan supprimé');
+    }, {danger:true, okLabel:'Supprimer'});
+  }));
+  document.querySelectorAll('[data-link-conge]').forEach(b=>b.addEventListener('click',()=>{
+    const mp = state.maternityPlans.find(x=>x.id===b.dataset.linkConge);
+    if(!mp) return;
+    confirmModal('Créer la demande de congé associée à ce plan (statut Validé) ?', ()=>{
+      const typeM = state.typesConge.find(t=>t.toLowerCase().includes('maternité')) || state.typesConge[0];
+      const nbJours = leaveDays(mp.dateDebut, mp.dateRetourPrevue || mp.dateDebut);
+      state.leaveRequests.push({ id:uid(), personnelId:mp.personnelId, type:typeM, statut:'Validé',
+        dateDebut:mp.dateDebut, dateFin:mp.dateRetourPrevue||mp.dateDebut, nbJours,
+        motif:'Congé maternité (plan lié)', dateCreation:new Date().toISOString().slice(0,10),
+        demandePar: currentUser?currentUser.nomComplet:'', validePar: currentUser?currentUser.nomComplet:'', dateValidation:new Date().toISOString().slice(0,10) });
+      mp.congeLie = true;
+      logAudit('Congé maternité lié créé pour '+(state.personnel.find(x=>x.id===mp.personnelId)?.nom||'?'));
+      persist(); render(); toast('Demande de congé créée et validée');
+    });
+  }));
 }
 
 /* ============ INIT ============ */
@@ -4840,6 +5221,11 @@ async function init(){
     data.niveauxApprobation = (data.niveauxApprobation && data.niveauxApprobation.length) ? data.niveauxApprobation : ["Technique","Financière","Stratégique"];
     data.leaveRequests = data.leaveRequests || [];
     data.typesConge = (data.typesConge && data.typesConge.length) ? data.typesConge : ["Congé annuel","Congé maladie","Congé sans solde","Congé maternité / paternité","Autre"];
+    data.trainings = data.trainings || [];
+    data.typesFormation = (data.typesFormation && data.typesFormation.length) ? data.typesFormation : ["Formation technique","Habilitation sécurité","Certification","Recyclage","Autre"];
+    data.candidatures = data.candidatures || [];
+    data.statutsRecrutement = (data.statutsRecrutement && data.statutsRecrutement.length) ? data.statutsRecrutement : ["Reçue","Présélection","Entretien","Test technique","Offre","Embauché","Refusée"];
+    data.maternityPlans = data.maternityPlans || [];
     (data.parts||[]).forEach(p=>{
       if(p.fournisseurPrincipal===undefined) p.fournisseurPrincipal = p.fournisseur||'';
       if(!p.categorie) p.categorie = state.categoriesArticle[4];
