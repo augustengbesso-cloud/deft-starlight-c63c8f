@@ -56,6 +56,7 @@ h1{font-family:'Oswald',sans-serif;text-transform:uppercase;letter-spacing:.03em
 .grid-2{grid-template-columns:1fr 1fr;}
 .grid-fleet{grid-template-columns:repeat(auto-fill,minmax(230px,1fr));}
 .grid-status{grid-template-columns:repeat(auto-fill,minmax(90px,1fr));}
+.grid-settings{grid-template-columns:repeat(auto-fill,minmax(300px,1fr));}
 @media(max-width:800px){.grid-2{grid-template-columns:1fr;}}
 /* KPI card */
 .kpi-label{font-family:'Oswald',sans-serif;text-transform:uppercase;font-size:11px;color:var(--muted);letter-spacing:.03em;}
@@ -3183,7 +3184,7 @@ function viewSettings(){
   <h1>Paramétrage</h1>
   <p class="subtitle">Configuration centralisée de l'ERP — thème, référentiels, listes</p>
 
-  <div class="grid grid-2" style="align-items:start;margin-bottom:16px;">
+  <div class="grid grid-settings" style="align-items:start;">
     <div class="plate p16">
       <h3 class="oswald" style="text-transform:uppercase;font-size:14px;margin:0 0 12px;">Apparence / thème</h3>
       <div style="display:flex;flex-direction:column;gap:12px;">
@@ -3202,41 +3203,39 @@ function viewSettings(){
       </div>
     </div>
 
-    <div style="display:flex;flex-direction:column;gap:16px;">
-      <div class="plate p16">
-        <h3 class="oswald" style="text-transform:uppercase;font-size:14px;margin:0 0 10px;">Postes responsables</h3>
-        <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:10px;max-height:180px;overflow-y:auto;">
-          ${state.postes.map((p,i)=>`<div class="between card-item" style="padding:6px 10px;"><span style="font-size:13px;">${esc(p)}</span><div class="row" style="gap:2px;"><button class="icon-btn" data-poste-up="${i}" ${i===0?'disabled style="opacity:.3;"':''} title="Monter">${ICONS.arrowUp||'▲'}</button><button class="icon-btn" data-poste-down="${i}" ${i===state.postes.length-1?'disabled style="opacity:.3;"':''} title="Descendre">${ICONS.arrowDown||'▼'}</button><button class="icon-btn" data-poste-del="${i}">${ICONS.trash}</button></div></div>`).join('')}
-        </div>
-        <div class="row">
-          <input id="poste-new-input" placeholder="Nouveau poste (ex: Frigoriste)" style="flex:1;"/>
-          <button class="btn btn-ghost" id="poste-add" type="button">${ICONS.plus} Ajouter</button>
-        </div>
+    <div class="plate p16">
+      <h3 class="oswald" style="text-transform:uppercase;font-size:14px;margin:0 0 10px;">Postes responsables</h3>
+      <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:10px;max-height:180px;overflow-y:auto;">
+        ${state.postes.map((p,i)=>`<div class="between card-item" style="padding:6px 10px;"><span style="font-size:13px;">${esc(p)}</span><div class="row" style="gap:2px;"><button class="icon-btn" data-poste-up="${i}" ${i===0?'disabled style="opacity:.3;"':''} title="Monter">${ICONS.arrowUp||'▲'}</button><button class="icon-btn" data-poste-down="${i}" ${i===state.postes.length-1?'disabled style="opacity:.3;"':''} title="Descendre">${ICONS.arrowDown||'▼'}</button><button class="icon-btn" data-poste-del="${i}">${ICONS.trash}</button></div></div>`).join('')}
       </div>
+      <div class="row">
+        <input id="poste-new-input" placeholder="Nouveau poste (ex: Frigoriste)" style="flex:1;"/>
+        <button class="btn btn-ghost" id="poste-add" type="button">${ICONS.plus} Ajouter</button>
+      </div>
+    </div>
 
-      ${editableListBlock('Types de travail (nature technique)', 'typesTravail', 'wo-typetravail', 'Nouveau type (ex: Lubrification)')}
-      ${editableListBlock("Types d'ordre (catégorie)", 'woTypes', 'wo-type', 'Nouveau type (ex: Amélioration continue)')}
-      ${editableListBlock('Priorités', 'woPriorites', 'wo-priorite', 'Nouvelle priorité (ex: Critique)')}
-      ${editableListBlock('Catégories de pièces', 'categoriesArticle', 'cat-article', 'Nouvelle catégorie (ex: Pneumatique)')}
-      ${editableListBlock('Unités de mesure (pièces)', 'unitesArticle', 'unite-article', 'Nouvelle unité — format "Label (ABBR)"')}
-      ${editableListBlock('Niveaux de criticité (pièces)', 'niveauxCriticite', 'niveau-critic', 'Nouveau niveau (ex: D)')}
-      ${editableListBlock('Types de mouvement de stock', 'typesMouvement', 'type-mvt', 'Nouveau type (ex: Transfert)')}
-      ${editableListBlock('Types d\'emplacement fonctionnel', 'locationTypes', 'loc-type', 'Nouveau type (ex: Cellule)')}
-      ${editableListBlock('Affectations du personnel', 'affectations', 'affectation', 'Nouvelle affectation (ex: Administration)')}
-      ${editableListBlock('Fonctions RH', 'fonctions', 'fonction', 'Nouvelle fonction (ex: Chef d\'équipe)')}
-      ${editableListBlock('Niveaux d\'approbation (utilisateurs)', 'niveauxApprobation', 'niveau-appro', 'Nouveau niveau (ex: Direction générale)')}
-      ${editableListBlock('Types de congé', 'typesConge', 'type-conge', 'Nouveau type (ex: Congé exceptionnel)')}
-      ${editableListBlock('Types de formation', 'typesFormation', 'type-formation', 'Nouveau type (ex: Sécurité incendie)')}
-      ${editableListBlock('Statuts de recrutement', 'statutsRecrutement', 'statut-recrut', 'Nouveau statut (ex: Vivier)')}
+    ${editableListBlock('Types de travail (nature technique)', 'typesTravail', 'wo-typetravail', 'Nouveau type (ex: Lubrification)')}
+    ${editableListBlock("Types d'ordre (catégorie)", 'woTypes', 'wo-type', 'Nouveau type (ex: Amélioration continue)')}
+    ${editableListBlock('Priorités', 'woPriorites', 'wo-priorite', 'Nouvelle priorité (ex: Critique)')}
+    ${editableListBlock('Catégories de pièces', 'categoriesArticle', 'cat-article', 'Nouvelle catégorie (ex: Pneumatique)')}
+    ${editableListBlock('Unités de mesure (pièces)', 'unitesArticle', 'unite-article', 'Nouvelle unité — format "Label (ABBR)"')}
+    ${editableListBlock('Niveaux de criticité (pièces)', 'niveauxCriticite', 'niveau-critic', 'Nouveau niveau (ex: D)')}
+    ${editableListBlock('Types de mouvement de stock', 'typesMouvement', 'type-mvt', 'Nouveau type (ex: Transfert)')}
+    ${editableListBlock('Types d\'emplacement fonctionnel', 'locationTypes', 'loc-type', 'Nouveau type (ex: Cellule)')}
+    ${editableListBlock('Affectations du personnel', 'affectations', 'affectation', 'Nouvelle affectation (ex: Administration)')}
+    ${editableListBlock('Fonctions RH', 'fonctions', 'fonction', 'Nouvelle fonction (ex: Chef d\'équipe)')}
+    ${editableListBlock('Niveaux d\'approbation (utilisateurs)', 'niveauxApprobation', 'niveau-appro', 'Nouveau niveau (ex: Direction générale)')}
+    ${editableListBlock('Types de congé', 'typesConge', 'type-conge', 'Nouveau type (ex: Congé exceptionnel)')}
+    ${editableListBlock('Types de formation', 'typesFormation', 'type-formation', 'Nouveau type (ex: Sécurité incendie)')}
+    ${editableListBlock('Statuts de recrutement', 'statutsRecrutement', 'statut-recrut', 'Nouveau statut (ex: Vivier)')}
 
-      <div class="plate p16">
-        <h3 class="oswald" style="text-transform:uppercase;font-size:14px;margin:0 0 10px;">Autres référentiels</h3>
-        <div style="display:flex;flex-direction:column;gap:8px;">
-          <button class="btn btn-ghost" style="justify-content:space-between;" data-open-types="1">Familles d'équipement ${ICONS.convert}</button>
-          <button class="btn btn-ghost" style="justify-content:space-between;" data-nav="costs">Centres de coûts ${ICONS.convert}</button>
-          <button class="btn btn-ghost" style="justify-content:space-between;" data-nav="floc">Emplacements fonctionnels ${ICONS.convert}</button>
-          ${canSee('users')?`<button class="btn btn-ghost" style="justify-content:space-between;" data-nav="users">Utilisateurs & rôles ${ICONS.convert}</button>`:''}
-        </div>
+    <div class="plate p16">
+      <h3 class="oswald" style="text-transform:uppercase;font-size:14px;margin:0 0 10px;">Autres référentiels</h3>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <button class="btn btn-ghost" style="justify-content:space-between;" data-open-types="1">Familles d'équipement ${ICONS.convert}</button>
+        <button class="btn btn-ghost" style="justify-content:space-between;" data-nav="costs">Centres de coûts ${ICONS.convert}</button>
+        <button class="btn btn-ghost" style="justify-content:space-between;" data-nav="floc">Emplacements fonctionnels ${ICONS.convert}</button>
+        ${canSee('users')?`<button class="btn btn-ghost" style="justify-content:space-between;" data-nav="users">Utilisateurs & rôles ${ICONS.convert}</button>`:''}
       </div>
     </div>
   </div>`;
