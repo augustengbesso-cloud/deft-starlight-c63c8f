@@ -24,7 +24,7 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:'Inter',sans-se
 #app{display:flex;height:100vh;height:100dvh;}
 /* Sidebar */
 #sidebar{width:220px;flex-shrink:0;height:100%;overflow-y:auto;background:linear-gradient(180deg,var(--sidebar-bg) 0%,var(--sidebar-bg2) 100%);border-right:1px solid var(--border);display:flex;flex-direction:column;}
-.brand{padding:20px 16px;border-bottom:1px solid rgba(255,255,255,.1);}
+.brand{padding:20px 16px;border-bottom:1px solid rgba(255,255,255,.1);position:sticky;top:0;background:linear-gradient(180deg,var(--sidebar-bg) 0%,var(--sidebar-bg) 100%);z-index:2;}
 .brand-row{display:flex;align-items:center;gap:8px;}
 .dot{width:10px;height:10px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent);}
 .brand-logo{width:28px;height:28px;border-radius:8px;flex-shrink:0;box-shadow:0 2px 6px rgba(0,0,0,.25);}
@@ -71,7 +71,9 @@ h1{font-family:'Oswald',sans-serif;text-transform:uppercase;letter-spacing:.03em
 .kpi-sub{font-size:11px;color:var(--muted);margin-top:4px;}
 /* Buttons */
 button{font-family:'Inter',sans-serif;}
-.btn{padding:9px 14px;border-radius:6px;font-size:13px;font-weight:500;display:inline-flex;align-items:center;gap:6px;cursor:pointer;border:1px solid var(--borderL);background:var(--panelR);color:var(--text);}
+.btn{padding:7px 13px;border-radius:7px;font-size:12.5px;font-weight:500;display:inline-flex;align-items:center;gap:6px;cursor:pointer;border:1px solid var(--borderL);background:var(--panelR);color:var(--text);transition:transform .08s ease, box-shadow .08s ease;}
+.btn:hover{box-shadow:0 1px 4px rgba(0,0,0,.12);}
+.btn:active{transform:scale(.97);}
 .btn:hover{opacity:.85;}
 .btn-accent{background:var(--accent);border-color:var(--accent);color:#1A1508;}
 .btn-ghost{background:transparent;border-color:transparent;color:var(--muted);}
@@ -217,11 +219,11 @@ let authError = '';
 
 function envBadgeHtml(){
   const host = window.location.hostname;
-  let label, color, bg;
-  if(host === '2na-entreprise.github.io'){ label = '● VERSION PUBLIQUE — 2NA-Entreprise'; color = '#4CAF6D'; bg = 'rgba(76,175,109,.12)'; }
-  else if(host === 'localhost' || host === '127.0.0.1'){ label = '● LOCAL — sur cet ordinateur'; color = '#8B939A'; bg = 'rgba(139,147,154,.12)'; }
-  else { label = '● VERSION TEST — '+host; color = '#F2A63C'; bg = 'rgba(242,166,60,.12)'; }
-  return `<span style="display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.03em;color:${color};background:${bg};border:1px solid ${color};border-radius:20px;padding:3px 10px;white-space:nowrap;">${label}</span>`;
+  let label, full, color, bg;
+  if(host === '2na-entreprise.github.io'){ label = 'PUBLIQUE'; full = 'Version publique — 2NA-MAINT-PROD'; color = '#4CAF6D'; bg = 'rgba(76,175,109,.12)'; }
+  else if(host === 'localhost' || host === '127.0.0.1'){ label = 'LOCAL'; full = 'Local — sur cet ordinateur'; color = '#8B939A'; bg = 'rgba(139,147,154,.12)'; }
+  else { label = 'TEST'; full = 'Version test — '+host; color = '#F2A63C'; bg = 'rgba(242,166,60,.12)'; }
+  return `<span title="${full}" style="display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.03em;color:${color};background:${bg};border:1px solid ${color};border-radius:20px;padding:3px 10px;white-space:nowrap;">● ${label}</span>`;
 }
 function renderEnvBadges(){
   const b1 = document.getElementById('env-badge'); if(b1) b1.innerHTML = envBadgeHtml();
@@ -394,6 +396,7 @@ function normalizeState(){
 }
 async function loadRemote(){
   try{
+    const { data, error } = await sb.from('erp_data').select('data, updated_at').eq('id','main').maybeSingle();
     if(error) return { ok:false, error: error.message || JSON.stringify(error) };
     if(!data) return { ok:false, error: "Aucune ligne trouvée (id='main') dans la table erp_data" };
     return { ok:true, payload: data.data, updatedAt: data.updated_at };
@@ -483,7 +486,7 @@ function startPolling(){
       // on tolère 1 échec isolé (réseau faible) sans afficher d'erreur — seulement si ça persiste
       if(pollFailCount>=2) setSyncStatus(false, res.error);
     }
-  }, 15000);
+  }, 8000);
 }
 
 const uid = () => Math.random().toString(36).slice(2,10);
@@ -1547,7 +1550,7 @@ function viewWOEdit(){
   <div class="wo-headband">
     <div class="row wrapwrap" style="gap:24px;">
       <div><span class="wo-headband-label">Ordre</span><div class="mono" style="font-size:15px;">${w.numero||"Nouveau"}</div></div>
-      ${linkedNotif?`<div><span class="wo-headband-label">Avis</span><div class="mono" style="font-size:15px;">${linkedNotif.numero}</div></div>`:''}
+      ${linkedNotif?`<div><span class="wo-headband-label">Avis</span><div class="mono legend-clickable" id="wo-open-avis" style="font-size:15px;color:var(--steel);">${linkedNotif.numero} ${ICONS.convert||''}</div></div>`:''}
       <div style="flex:1;min-width:200px;"><span class="wo-headband-label">Statut système</span><div class="row wrapwrap" style="gap:4px;margin-top:4px;">${badges.map(b=>`<span class="badge" style="color:${b.c};border-color:${b.c};">${b.t}</span>`).join('')}</div></div>
     </div>
   </div>
@@ -1720,7 +1723,17 @@ function wireWOEditor(){
   const back = ()=>{ currentView='wo'; woDraft=null; render(); };
   const backBtn = document.getElementById('wo-back'); if(backBtn) backBtn.addEventListener('click', back);
   const backBtn2 = document.getElementById('wo-back-2'); if(backBtn2) backBtn2.addEventListener('click', back);
-  document.querySelectorAll('[data-wo-tab]').forEach(b=>b.addEventListener('click',()=>{ woEditTab=b.dataset.woTab; render(); }));
+  const openAvisBtn = document.getElementById('wo-open-avis');
+  if(openAvisBtn){
+    const linkedNotif = state.notifications.find(n=>n.workOrderId===w.id);
+    if(linkedNotif) openAvisBtn.addEventListener('click', ()=>{
+      openModal('Avis '+linkedNotif.numero, notifForm(linkedNotif), (data)=>{
+        Object.assign(linkedNotif, data);
+        persist(); closeModal(); render(); toast('Avis mis à jour');
+      });
+    });
+  }
+  document.querySelectorAll('[data-wo-tab]').forEach(b=>b.addEventListener('click',()=>{ syncGeneralFieldsFromDOM(); woEditTab=b.dataset.woTab; render(); }));
   function val(id, fallback){ const el = document.getElementById(id); return el ? el.value : fallback; }
   function syncFieldsIntoW(){
     w.titre = val('wo-f-titre', w.titre);
@@ -1744,6 +1757,7 @@ function wireWOEditor(){
   if(posteSel) posteSel.addEventListener('change', (e)=>{ syncFieldsIntoW(); w.poste = e.target.value; render(); });
 
   function quickTransition(newStatut, extra){
+    syncGeneralFieldsFromDOM();
     w.statut = newStatut;
     if((newStatut==='Terminé'||newStatut==='Clôturé') && !w.dateFin) w.dateFin = new Date().toISOString().slice(0,10);
     if(extra) Object.assign(w, extra);
@@ -1978,7 +1992,7 @@ function wireWOEditor(){
     });
   }
 
-  const saveHandler = ()=>{
+  function syncGeneralFieldsFromDOM(){
     w.equipementId = val('wo-f-equip', w.equipementId);
     w.titre = val('wo-f-titre', w.titre);
     w.description = val('wo-f-desc', w.description);
@@ -1994,6 +2008,9 @@ function wireWOEditor(){
     const permisEl = document.getElementById('wo-f-permis'); if(permisEl) w.permisTravail = permisEl.checked;
     const consigEl = document.getElementById('wo-f-consignation'); if(consigEl) w.consignation = consigEl.value;
     w.dateCreation = w.dateCreation || w.dateDebut;
+  }
+  const saveHandler = ()=>{
+    syncGeneralFieldsFromDOM();
     if(!w.titre || !w.equipementId){ alert('Libellé et équipement requis — vérifie l\'onglet "Données générales"'); woEditTab='general'; render(); return; }
     if((w.statut==='Terminé' || w.statut==='Clôturé') && !w.dateFin) w.dateFin = new Date().toISOString().slice(0,10);
     const eqForStatus = [...state.fleet,...state.plantEquipment].find(x=>x.id===w.equipementId);
@@ -2009,7 +2026,7 @@ function wireWOEditor(){
         else eqForStatus.statut='En maintenance';
       }
       logAudit('Création OT '+w.numero+' — '+w.titre);
-      persist(); currentView='wo'; woDraft=null; render(); toast('Ordre de travail '+w.numero+' créé');
+      persist(); woIsNew=false; render(); toast('Ordre de travail '+w.numero+' créé');
     } else {
       reservePendingParts();
       const idx = state.workOrders.findIndex(x=>x.id===w.id);
@@ -2018,7 +2035,7 @@ function wireWOEditor(){
         if(w.statut==='Terminé' || w.statut==='Clôturé' || w.statut==='Annulé') eqForStatus.statut='Opérationnel';
         else if(w.statut!=='Créé' || eqForStatus.statut!=='En panne') eqForStatus.statut='En maintenance';
       }
-      persist(); currentView='wo'; woDraft=null; render(); toast('Ordre de travail mis à jour');
+      persist(); render(); toast('Ordre de travail mis à jour');
     }
   };
   const saveBtn = document.getElementById('wo-save'); if(saveBtn) saveBtn.addEventListener('click', saveHandler);
@@ -4735,9 +4752,12 @@ function attachHandlers(){
     const n = state.notifications.find(x=>x.id===b.dataset.convertNotif);
     if(!n) return;
     state.woCounter = (state.woCounter||0)+1;
+    const inFleet = state.fleet.some(e=>e.id===n.equipementId);
+    const inPlant = state.plantEquipment.some(e=>e.id===n.equipementId);
     const wo = {
       ...blankWO(),
-      id:uid(), numero:'OT-'+String(state.woCounter).padStart(4,'0'), equipementId:n.equipementId, type:'Correctif',
+      id:uid(), numero:'OT-'+String(state.woCounter).padStart(4,'0'), equipementId:n.equipementId,
+      categorieEquipement: inFleet ? 'Flotte' : inPlant ? 'Usine' : '', type:'Panne / Correctif',
       typeTravail: n.type==='Panne'?'Intervention':'Inspection', poste:state.postes[0], titre:n.description.slice(0,60),
       description:n.description, priorite:n.priorite, statut:'Créé',
       dateCreation:new Date().toISOString().slice(0,10), dateDebut:new Date().toISOString().slice(0,10), dateFin:''
@@ -5273,7 +5293,15 @@ async function init(){
       locations: locs, plantEquipment: seedPlantEquipment(locs), notifications: [], measuringPoints: [],
       costCenters: seedCostCenters(), productionLogs: [], woCounter: 0, equipTypes: [...DEFAULT_EQUIP_TYPES], personnel: [], theme: { ...DEFAULT_THEME },
       purchaseRequests: [], purchaseOrders: [], daCounter: 0, bcCounter: 0, reservations: [], resaCounter: 0, postes: [...DEFAULT_POSTES], avisCounter: 0, stockMovements: [], auditLog: [],
-      typesTravail: ["Inspection","Remplacement pièces","Intervention","Révision","Autre"], woTypes: ["Panne / Correctif","Préventif","Inspection","Amélioration"], woPriorites: ["Basse","Normale","Haute","Urgente"] };
+      typesTravail: ["Inspection","Remplacement pièces","Intervention","Révision","Autre"], woTypes: ["Panne / Correctif","Préventif","Inspection","Amélioration"], woPriorites: ["Basse","Normale","Haute","Urgente"],
+      categoriesArticle: ["Mécanique","Électrique","HSE","Consommable","Autre"],
+      unitesArticle: ["Pièce (PCE)","Unité (UN)","Kilogramme (KG)","Gramme (G)","Tonne (T)","Litre (L)","Millilitre (ML)","Mètre (M)","Mètre carré (M2)","Mètre cube (M3)","Boîte (BT)","Carton (CAR)","Sachet (SAC)","Bidon (BID)","Rouleau (RLO)","Paire (PR)","Jeu / Kit (JEU)","Lot (LOT)","Bouteille (BOU)","Sac (SC)","Barre (BAR)","Autre"],
+      niveauxCriticite: ["A","B","C"], typesMouvement: ["Achat","Retour","Réparation"], locationTypes: ["Site","Atelier","Ligne","Machine"],
+      affectations: ["Flotte","Usine","Les deux"], fonctions: ["Technicien","Planificateur","Superviseur","Responsable","Administrateur"], niveauxApprobation: ["Technique","Financière","Stratégique"],
+      leaveRequests: [], typesConge: ["Congé annuel","Congé maladie","Congé sans solde","Congé maternité / paternité","Autre"],
+      trainings: [], typesFormation: ["Formation technique","Habilitation sécurité","Certification","Recyclage","Autre"],
+      candidatures: [], statutsRecrutement: ["Reçue","Présélection","Entretien","Test technique","Offre","Embauché","Refusée"],
+      maternityPlans: [] };
   } else {
     // compatibilité ascendante : ajoute le module usine si absent d'un compte existant
     if(!data.locations || data.locations.length===0){
@@ -5364,6 +5392,7 @@ async function init(){
     });
   }
   state = data;
+  normalizeState();
   applyTheme(state.theme);
   render();
   persist();
