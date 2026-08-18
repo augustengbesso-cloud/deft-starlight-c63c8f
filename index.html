@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>2NA-MAINT-PROD — Maintenance & Carburant</title>
-<meta name="theme-color" content="#0F2A44" />
+<meta name="theme-color" content="#2E6DA6" />
 <link rel="manifest" href="manifest.json" />
 <link rel="icon" href="icon.svg" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="icon.svg" />
@@ -14,7 +14,7 @@
 :root{
   --bg:#EAF4FC; --panel:#FFFFFF; --panelR:#E3F0FB; --border:#C9DEEF; --borderL:#A9C7E0;
   --text:#16324F; --muted:#5B7A93; --accent:#F2A63C; --steel:#3B82C4; --success:#2E9E5B; --danger:#D9483A;
-  --sidebar-bg:#0F2A44; --sidebar-bg2:#173A5E; --sidebar-text:#EAF4FC; --sidebar-muted:#8FB3D1;
+  --sidebar-bg:#2E6DA6; --sidebar-bg2:#1E5488; --sidebar-text:#FFFFFF; --sidebar-muted:#CBE1F4;
 }
 *{box-sizing:border-box;}
 html,body{height:100%;}
@@ -27,6 +27,7 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:'Inter',sans-se
 .brand{padding:20px 16px;border-bottom:1px solid rgba(255,255,255,.1);}
 .brand-row{display:flex;align-items:center;gap:8px;}
 .dot{width:10px;height:10px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent);}
+.brand-logo{width:28px;height:28px;border-radius:8px;flex-shrink:0;box-shadow:0 2px 6px rgba(0,0,0,.25);}
 .brand-title{font-family:'Oswald',sans-serif;letter-spacing:.05em;font-weight:600;font-size:14px;text-transform:uppercase;color:var(--text);}
 .brand-sub{font-size:11px;color:var(--muted);margin-top:4px;}
 #sidebar .brand-title{color:var(--sidebar-text);}
@@ -110,14 +111,21 @@ td{padding:9px 12px;border-bottom:1px solid var(--border);}
 .toast{position:fixed;bottom:20px;right:20px;background:var(--panelR);border:1px solid var(--accent);color:var(--text);padding:10px 16px;border-radius:6px;font-size:13px;display:flex;align-items:center;gap:8px;z-index:200;}
 .badge{font-size:10px;padding:2px 6px;border-radius:4px;text-transform:uppercase;background:var(--panelR);color:var(--muted);border:1px solid transparent;}
 .badge-danger{background:var(--danger);color:#fff;}
-#topbar{display:flex;align-items:center;gap:8px;padding:8px 16px;border-bottom:1px solid var(--border);background:var(--sidebar-bg);position:sticky;top:0;z-index:10;}
-#offline-banner{position:sticky;top:0;z-index:11;padding:7px 16px;font-size:12.5px;font-weight:500;text-align:center;color:#fff;}
+#topbar{display:flex;align-items:center;gap:8px;padding:8px 16px;border-bottom:1px solid var(--border);background:var(--sidebar-bg);}
+#sticky-header{position:sticky;top:0;z-index:10;}
+#page-title-bar{background:var(--bg);border-bottom:1px solid var(--border);padding:16px 32px 14px;box-shadow:0 2px 6px rgba(0,0,0,.05);}
+#page-title-bar h1{margin:0 0 2px;}
+#page-title-bar .subtitle{margin:0;}
+#page-title-bar .headrow{margin-bottom:0;}
+#offline-banner{position:relative;z-index:11;padding:7px 16px;font-size:12.5px;font-weight:500;text-align:center;color:#fff;}
 #sync-text{display:none;}
-#refresh-btn{padding:5px 10px;font-size:12px;flex-shrink:0;}
-#logout-btn-top{padding:5px 10px;font-size:12px;flex-shrink:0;}
+#refresh-btn{padding:5px 10px;font-size:12px;flex-shrink:0;color:var(--sidebar-text);border-color:rgba(255,255,255,.3);}
+#refresh-btn:hover{background:rgba(255,255,255,.12);}
+#logout-btn-top{padding:5px 10px;font-size:12px;flex-shrink:0;color:var(--sidebar-text);border-color:rgba(255,255,255,.3);}
+#logout-btn-top:hover{background:rgba(255,255,255,.12);}
+#user-info-top{font-size:12px;color:var(--sidebar-muted);}
+#user-info-top b{color:var(--sidebar-text);font-weight:500;}
 #topbar-actions{margin-left:auto;display:flex;gap:6px;align-items:center;}
-#user-info-top{font-size:12px;color:var(--muted);}
-#user-info-top b{color:var(--text);font-weight:500;}
 @media(max-width:700px){
   #sidebar{width:64px;}
   .brand-sub, .navbtn span.label, .sidebar-foot, .nav-section{display:none;}
@@ -140,7 +148,7 @@ td{padding:9px 12px;border-bottom:1px solid var(--border);}
 <div id="app" style="display:none;">
   <aside id="sidebar">
     <div class="brand">
-      <div class="brand-row"><span class="dot"></span><span class="brand-title">2NA-MAINT-PROD</span></div>
+      <div class="brand-row"><img src="icon.svg" alt="Logo" class="brand-logo"/><span class="brand-title">2NA-MAINT-PROD</span></div>
       <div class="brand-sub">Maintenance & Carburant</div>
       <div id="env-badge" style="margin-top:8px;"></div>
     </div>
@@ -150,15 +158,18 @@ td{padding:9px 12px;border-bottom:1px solid var(--border);}
     </div>
   </aside>
   <main id="main">
-    <div id="offline-banner" style="display:none;"></div>
-    <div id="topbar">
-      <span id="user-info-top"></span>
-      <span class="led" id="sync-dot" style="background:var(--muted)"></span>
-      <span id="sync-text">Connexion…</span>
-      <div id="topbar-actions">
-        <button class="btn btn-ghost" id="refresh-btn">Actualiser</button>
-        <button class="btn btn-ghost" id="logout-btn-top">Déconnexion</button>
+    <div id="sticky-header">
+      <div id="offline-banner" style="display:none;"></div>
+      <div id="topbar">
+        <span id="user-info-top"></span>
+        <span class="led" id="sync-dot" style="background:var(--muted)"></span>
+        <span id="sync-text">Connexion…</span>
+        <div id="topbar-actions">
+          <button class="btn btn-ghost" id="refresh-btn">Actualiser</button>
+          <button class="btn btn-ghost" id="logout-btn-top">Déconnexion</button>
+        </div>
       </div>
+      <div id="page-title-bar" style="display:none;"></div>
     </div>
     <div class="wrap" id="content"></div>
   </main>
@@ -223,7 +234,7 @@ function renderAuthScreen(){
   el.innerHTML = `
   <div class="auth-card">
     <div class="brand-row" style="justify-content:center;margin-bottom:8px;">
-      <span class="dot"></span><span class="brand-title" style="font-size:16px;">2NA-MAINT-PROD</span>
+      <img src="icon.svg" alt="Logo" class="brand-logo" style="width:36px;height:36px;"/><span class="brand-title" style="font-size:16px;">2NA-MAINT-PROD</span>
     </div>
     <div id="env-badge-auth" style="display:flex;justify-content:center;margin-bottom:16px;"></div>
     <h3 class="oswald" style="text-align:center;text-transform:uppercase;font-size:14px;color:var(--muted);margin:0 0 20px;">Connexion</h3>
@@ -481,7 +492,7 @@ const uid = () => Math.random().toString(36).slice(2,10);
 const DEFAULT_THEME = {
   bg:'#EAF4FC', panel:'#FFFFFF', panelR:'#E3F0FB', text:'#16324F', muted:'#5B7A93',
   accent:'#F2A63C', steel:'#3B82C4', success:'#2E9E5B', danger:'#D9483A',
-  border:'#C9DEEF', borderL:'#A9C7E0', sidebarBg:'#0F2A44', sidebarBg2:'#173A5E'
+  border:'#C9DEEF', borderL:'#A9C7E0', sidebarBg:'#2E6DA6', sidebarBg2:'#1E5488'
 };
 const THEME_LABELS = {
   bg:'Fond général', panel:'Panneaux', panelR:'Panneaux (survol)', text:'Texte principal', muted:'Texte secondaire',
@@ -790,6 +801,26 @@ function oeeOf(p){
 }
 
 /* ============ RENDER ROOT ============ */
+function promoteTitle(){
+  const content = document.getElementById('content');
+  const bar = document.getElementById('page-title-bar');
+  if(!content || !bar) return;
+  const first = content.firstElementChild;
+  bar.innerHTML = '';
+  if(first && first.classList && first.classList.contains('headrow')){
+    bar.appendChild(first);
+    bar.style.display = 'block';
+    return;
+  }
+  if(first && first.tagName === 'H1'){
+    bar.appendChild(first);
+    const next = content.firstElementChild;
+    if(next && next.classList && next.classList.contains('subtitle')) bar.appendChild(next);
+    bar.style.display = 'block';
+    return;
+  }
+  bar.style.display = 'none';
+}
 function render(){
   if(!canSee(currentView)) currentView = 'dashboard';
   renderNav();
@@ -821,6 +852,7 @@ function render(){
   else if(currentView==='resa') c.innerHTML = viewResa();
   else if(currentView==='da') c.innerHTML = viewDA();
   else if(currentView==='bc') c.innerHTML = viewBC();
+  promoteTitle();
   attachHandlers();
   if(currentView==='dashboard') drawDashboardCharts();
   if(currentView==='reports'){ const rd = computeReportData(); const top = rd.paretoEquip.slice(0,8); drawParetoChart(document.getElementById('chart-pareto'), top.map(x=>x.label), top.map(x=>x.cout)); }
