@@ -810,6 +810,13 @@ function promoteTitle(){
   if(!content || !bar) return;
   const first = content.firstElementChild;
   bar.innerHTML = '';
+  bar.style.padding = '';
+  if(first && first.classList && first.classList.contains('wo-toolbar')){
+    bar.appendChild(first);
+    bar.style.padding = '10px 24px';
+    bar.style.display = 'block';
+    return;
+  }
   if(first && first.classList && first.classList.contains('headrow')){
     bar.appendChild(first);
     bar.style.display = 'block';
@@ -1524,21 +1531,21 @@ function viewWOEdit(){
 
   return `
   <div class="wo-toolbar wrapwrap">
-    <button class="btn btn-ghost" id="wo-back">${ICONS.close} Retour à la liste</button>
+    <button class="btn btn-ghost" style="border-color:var(--borderL);" id="wo-back">${ICONS.close} Retour à la liste</button>
     ${!woIsNew && canSuperviseEdit && s==='Créé' ? `<button class="btn btn-ghost" style="color:var(--steel);border-color:var(--steel);" id="wo-confirm">${ICONS.check} Confirmer</button>` : ''}
     ${!woIsNew && canSuperviseEdit && s==='Confirmé' ? `<button class="btn btn-ghost" style="color:var(--accent);border-color:var(--accent);" id="wo-launch">${ICONS.activity} Lancer</button>` : ''}
     ${!woIsNew && isTechEdit && w.technicien===currentUser.nomComplet && s==='Confirmé' ? `<button class="btn btn-ghost" style="color:var(--accent);border-color:var(--accent);" id="wo-launch">${ICONS.activity} Exécuter</button>` : ''}
     ${canExecute && (s==='En cours'||s==='Confirmé partiel') ? `<button class="btn btn-ghost" style="color:var(--steel);border-color:var(--steel);" id="wo-finish">${ICONS.check} Marquer terminé${s==='Confirmé partiel'?' (suite)':''}</button>` : ''}
-    ${!woIsNew && canSuperviseEdit && (s==='Confirmé partiel'||s==='Terminé') ? `<button class="btn btn-ghost" style="color:var(--muted);" id="wo-deconfirm">${ICONS.close} Déconfirmer</button>` : ''}
+    ${!woIsNew && canSuperviseEdit && (s==='Confirmé partiel'||s==='Terminé') ? `<button class="btn btn-ghost" style="color:var(--muted);border-color:var(--borderL);" id="wo-deconfirm">${ICONS.close} Déconfirmer</button>` : ''}
     ${!woIsNew && canSuperviseEdit && s==='Terminé' ? `<button class="btn btn-ghost" style="color:var(--success);border-color:var(--success);" id="wo-close-toolbar">${ICONS.check} Clôturer technique</button>` : ''}
-    ${!woIsNew && canSuperviseEdit && ['Créé','Confirmé','En cours','Confirmé partiel'].includes(s) ? `<button class="btn btn-ghost" style="color:var(--muted);" id="wo-suspend">${ICONS.close} Suspendre</button>` : ''}
+    ${!woIsNew && canSuperviseEdit && ['Créé','Confirmé','En cours','Confirmé partiel'].includes(s) ? `<button class="btn btn-ghost" style="color:var(--muted);border-color:var(--borderL);" id="wo-suspend">${ICONS.close} Suspendre</button>` : ''}
     ${!woIsNew && canSuperviseEdit && s==='Suspendu' ? `<button class="btn btn-ghost" style="color:var(--accent);border-color:var(--accent);" id="wo-reopen">${ICONS.activity} Réouvrir</button>` : ''}
     ${!woIsNew && canSuperviseEdit && s==='Clôturé' ? `<button class="btn btn-ghost" style="color:var(--accent);border-color:var(--accent);" id="wo-reopen">${ICONS.activity} Déclôturer</button>` : ''}
     ${!woIsNew && canSuperviseEdit && !finalStates.includes(s) ? `<button class="btn btn-ghost" style="color:var(--danger);border-color:var(--danger);" id="wo-cancel">${ICONS.trash} Annuler</button>` : ''}
-    ${!woIsNew && canSuperviseEdit && !finalStates.includes(s) ? `<button class="btn btn-ghost" id="wo-transfer">${ICONS.users} Transférer</button>` : ''}
+    ${!woIsNew && canSuperviseEdit && !finalStates.includes(s) ? `<button class="btn btn-ghost" style="color:var(--steel);border-color:var(--steel);" id="wo-transfer">${ICONS.users} Transférer</button>` : ''}
     ${!woIsNew && isAdminEdit && s==='Clôturé' && w.clotureFinanciere && !w.archive ? `<button class="btn btn-ghost" style="color:var(--success);border-color:var(--success);" id="wo-archive">${ICONS.receipt} Archiver</button>` : ''}
-    ${!woIsNew ? `<button class="btn btn-ghost" id="wo-workflow">${ICONS.layers} Workflow</button>` : ''}
-    ${!woIsNew ? `<button class="btn btn-ghost" id="wo-print-pdf">${ICONS.report} Imprimer PDF</button>` : ''}
+    ${!woIsNew ? `<button class="btn btn-ghost" style="color:var(--muted);border-color:var(--borderL);" id="wo-workflow">${ICONS.layers} Workflow</button>` : ''}
+    ${!woIsNew ? `<button class="btn btn-ghost" style="color:var(--muted);border-color:var(--borderL);" id="wo-print-pdf">${ICONS.report} Imprimer PDF</button>` : ''}
     <div class="row" style="margin-left:auto;">
       ${woIsNew
         ? `<button class="btn btn-ghost" id="wo-cancel-new">${ICONS.close} Annuler</button>
