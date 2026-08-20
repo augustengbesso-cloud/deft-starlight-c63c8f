@@ -327,9 +327,9 @@ function canSee(navId){
   const mod = moduleOf[navId];
   if(mod && currentUser.modules && currentUser.modules[mod]==='Aucun') return false;
   const restricted = {
-    planificateur: ['users','audit'],
-    technicien: ['fleet','pm','fuel','parts','floc','plant','production','measures','costs','personnel','reports','settings','users','audit','da','bc','resa'],
-    rh: ['fleet','wo','wo-edit','pm','fuel','parts','floc','plant','production','notif','measures','costs','reports','settings','users','audit','da','bc','resa'],
+    planificateur: ['users','user-create','user-edit','audit'],
+    technicien: ['fleet','pm','fuel','parts','floc','plant','production','measures','costs','personnel','reports','settings','users','user-create','user-edit','audit','da','bc','resa'],
+    rh: ['fleet','wo','wo-edit','pm','fuel','parts','floc','plant','production','notif','measures','costs','reports','settings','users','user-create','user-edit','audit','da','bc','resa'],
   };
   const blocked = restricted[currentUser.role] || [];
   return !blocked.includes(navId);
@@ -858,6 +858,8 @@ function render(){
   else if(currentView==='reports') c.innerHTML = viewReports();
   else if(currentView==='settings') c.innerHTML = viewSettings();
   else if(currentView==='users') c.innerHTML = viewUsers();
+  else if(currentView==='user-create') c.innerHTML = viewUserCreate();
+  else if(currentView==='user-edit') c.innerHTML = viewUserEdit();
   else if(currentView==='audit') c.innerHTML = viewAudit();
   else if(currentView==='resa') c.innerHTML = viewResa();
   else if(currentView==='da') c.innerHTML = viewDA();
@@ -3171,7 +3173,7 @@ function viewUsers(){
   <table><thead><tr><th>Identifiant</th><th>Nom</th><th>Fonction</th><th>Niv.</th><th>Statut</th><th>Rôle</th><th>Affectation</th><th>Supérieur</th><th>Dernière connexion</th><th></th></tr></thead>
   <tbody>
   ${allUsers.length===0?`<tr><td colspan="10" style="padding:20px;text-align:center;color:var(--muted);">Chargement des comptes…</td></tr>`:
-  allUsers.map(u=>`<tr>
+  allUsers.map(u=>`<tr class="legend-clickable" data-edit-user-row="${u.user_id}">
     <td class="mono" style="color:var(--muted);">${esc(u.identifiant)||'—'}</td>
     <td>${esc(u.nom_complet||'—')}</td>
     <td style="color:var(--muted);">${esc(u.fonction)||'—'}</td>
@@ -3184,35 +3186,68 @@ function viewUsers(){
     <td><button class="icon-btn" data-edit-user="${u.user_id}">${ICONS.edit}</button></td>
   </tr>`).join('')}
   </tbody></table></div>
-  <p style="font-size:11px;color:var(--muted);">Un compte créé ici arrive en rôle Technicien par défaut — clique le crayon pour définir sa fonction, son niveau, son rôle réel, sa hiérarchie et ses accès.</p>`;
+  <p style="font-size:11px;color:var(--muted);">Clique sur une ligne (ou le crayon) pour ouvrir la fiche complète du compte.</p>`;
 }
-function userCreateForm(){
+function userAccessFieldsHtml(u, modules){
+  const others = allUsers.filter(x=>x.user_id!==(u?u.user_id:null));
+  modules = modules || (u?u.modules:{}) || {};
   return `
+  <div style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-family:'Oswald',sans-serif;margin:22px 0 8px;">Rôle & hiérarchie</div>
   <div class="formgrid">
-    <label class="field span2"><span>Identifiant</span><input data-f="identifiant" placeholder="Ex: USR005" style="text-transform:uppercase;"/></label>
-    <label class="field span2"><span>Nom complet</span><input data-f="nomComplet" placeholder="Kouassi Jean"/></label>
-    <label class="field span2"><span>Mot de passe temporaire</span><input data-f="motDePasse" type="text" placeholder="À communiquer à la personne, min. 6 caractères"/></label>
+    <label class="field"><span>Fonction / poste</span><select data-f="fonction">${state.fonctions.map(f=>`<option ${(u&&u.fonction)===f?'selected':''}>${f}</option>`).join('')}</select></label>
+    <label class="field"><span>Niveau hiérarchique (1-5)</span><select data-f="niveau_hierarchique">${NIVEAUX_HIER.map(n=>`<option value="${n}" ${Number(u&&u.niveau_hierarchique)===n?'selected':''}>${n}</option>`).join('')}</select></label>
+    <label class="field"><span>Statut du compte</span><select data-f="statut_compte">${STATUTS_COMPTE.map(s=>`<option ${(u&&u.statut_compte||'Actif')===s?'selected':''}>${s}</option>`).join('')}</select></label>
+    <label class="field"><span>Rôle applicatif</span><select data-f="role" ${u&&u.user_id===currentUser.id?'disabled title="Tu ne peux pas changer ton propre rôle"':''}>${Object.keys(ROLE_LABELS).map(r=>`<option value="${r}" ${(u&&u.role||'technicien')===r?'selected':''}>${ROLE_LABELS[r]}</option>`).join('')}</select></label>
+    <label class="field"><span>Affectation (équipements visibles)</span><select data-f="affectation">${state.affectations.map(a=>`<option ${(u&&u.affectation||'Les deux')===a?'selected':''}>${a}</option>`).join('')}</select></label>
+    <label class="field"><span>Supérieur hiérarchique direct</span><select data-f="superieur_id"><option value="">— Aucun —</option>${others.map(o=>`<option value="${o.user_id}" ${u&&u.superieur_id===o.user_id?'selected':''}>${esc(o.nom_complet)} (${esc(o.identifiant)||o.email})</option>`).join('')}</select></label>
+    <label class="field span2"><span>Niveau d'approbation</span><select data-f="niveau_approbation">${state.niveauxApprobation.map(n=>`<option ${(u&&u.niveau_approbation)===n?'selected':''}>${n}</option>`).join('')}</select></label>
   </div>
-  <p style="font-size:11px;color:var(--muted);margin-top:10px;">⚠️ La création va temporairement te connecter en tant que ce nouveau compte. Tu seras redirigé vers l'écran de connexion — reconnecte-toi avec ton identifiant admin, puis va dans "Utilisateurs" pour attribuer le rôle final.</p>`;
-}
-function userEditForm(u){
-  const others = allUsers.filter(x=>x.user_id!==u.user_id);
-  const modules = u.modules || {};
-  return `
-  <div class="formgrid">
-    <label class="field"><span>Identifiant</span><input value="${esc(u.identifiant)}" disabled style="opacity:.6"/></label>
-    <label class="field"><span>Nom complet</span><input data-f="nom_complet" value="${esc(u.nom_complet)}"/></label>
-    <label class="field"><span>Fonction / poste</span><select data-f="fonction">${state.fonctions.map(f=>`<option ${u.fonction===f?'selected':''}>${f}</option>`).join('')}</select></label>
-    <label class="field"><span>Niveau hiérarchique (1-5)</span><select data-f="niveau_hierarchique">${NIVEAUX_HIER.map(n=>`<option value="${n}" ${Number(u.niveau_hierarchique)===n?'selected':''}>${n}</option>`).join('')}</select></label>
-    <label class="field"><span>Statut</span><select data-f="statut_compte">${STATUTS_COMPTE.map(s=>`<option ${u.statut_compte===s?'selected':''}>${s}</option>`).join('')}</select></label>
-    <label class="field"><span>Rôle applicatif</span><select data-f="role" ${u.user_id===currentUser.id?'disabled title="Tu ne peux pas changer ton propre rôle"':''}>${Object.keys(ROLE_LABELS).map(r=>`<option value="${r}" ${u.role===r?'selected':''}>${ROLE_LABELS[r]}</option>`).join('')}</select></label>
-    <label class="field"><span>Affectation (équipements visibles)</span><select data-f="affectation">${state.affectations.map(a=>`<option ${(u.affectation||'Les deux')===a?'selected':''}>${a}</option>`).join('')}</select></label>
-    <label class="field span2"><span>Supérieur hiérarchique direct</span><select data-f="superieur_id"><option value="">— Aucun —</option>${others.map(o=>`<option value="${o.user_id}" ${u.superieur_id===o.user_id?'selected':''}>${esc(o.nom_complet)} (${esc(o.identifiant)||o.email})</option>`).join('')}</select></label>
-    <label class="field span2"><span>Niveau d'approbation</span><select data-f="niveau_approbation">${state.niveauxApprobation.map(n=>`<option ${u.niveau_approbation===n?'selected':''}>${n}</option>`).join('')}</select></label>
-  </div>
-  <div style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-family:'Oswald',sans-serif;margin:16px 0 8px;">Accès par module</div>
+  <div style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-family:'Oswald',sans-serif;margin:22px 0 8px;">Accès par module</div>
   <div class="formgrid">
     ${MODULES_ACCES.map(m=>`<label class="field"><span>${m.label}</span><select data-uf-mod="${m.id}">${NIVEAUX_ACCES.map(n=>`<option ${(modules[m.id]||'Écriture')===n?'selected':''}>${n}</option>`).join('')}</select></label>`).join('')}
+  </div>`;
+}
+function viewUserCreate(){
+  return `
+  <div class="headrow">
+    <div><h1>Nouvel utilisateur</h1><p class="subtitle" style="margin:0;">Fiche complète — identifiants, rôle, hiérarchie et accès, tout en une fois</p></div>
+    <div class="row">
+      <button class="btn btn-ghost" style="border-color:var(--borderL);" id="user-create-back">${ICONS.close} Annuler</button>
+      <button class="btn btn-accent" id="user-create-submit">${ICONS.check} Créer le compte</button>
+    </div>
+  </div>
+  <div class="plate p16" style="margin-bottom:16px;border-color:var(--accent);">
+    <p style="font-size:12px;color:var(--text);margin:0;">⚠️ Pour des raisons techniques liées à la sécurité des comptes, la création te déconnectera brièvement — tu devras te reconnecter avec ton propre identifiant juste après. C'est normal, ça n'arrive qu'une fois par création.</p>
+  </div>
+  <div class="plate p16">
+    <div style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-family:'Oswald',sans-serif;margin:0 0 8px;">Identifiants de connexion</div>
+    <div class="formgrid">
+      <label class="field"><span>Identifiant</span><input data-f="identifiant" placeholder="Ex: USR005" style="text-transform:uppercase;"/></label>
+      <label class="field"><span>Nom complet</span><input data-f="nomComplet" placeholder="Kouassi Jean"/></label>
+      <label class="field span2"><span>Mot de passe temporaire</span><input data-f="motDePasse" type="text" placeholder="À communiquer à la personne, min. 6 caractères"/></label>
+    </div>
+    ${userAccessFieldsHtml(null, {})}
+  </div>`;
+}
+let userEditDraftId = null;
+function viewUserEdit(){
+  const u = allUsers.find(x=>x.user_id===userEditDraftId);
+  if(!u) return `<div class="plate p16"><div class="empty">${ICONS.users}<span>Compte introuvable — retourne à la liste.</span></div></div>`;
+  return `
+  <div class="headrow">
+    <div><h1>${esc(u.nom_complet||u.identifiant||'Utilisateur')}</h1><p class="subtitle" style="margin:0;">Fiche complète du compte — identifiant ${esc(u.identifiant)||'—'}</p></div>
+    <div class="row">
+      <button class="btn btn-ghost" style="border-color:var(--borderL);" id="user-edit-back">${ICONS.close} Retour à la liste</button>
+      <button class="btn btn-accent" id="user-edit-submit">${ICONS.check} Enregistrer</button>
+    </div>
+  </div>
+  <div class="plate p16">
+    <div style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-family:'Oswald',sans-serif;margin:0 0 8px;">Identité</div>
+    <div class="formgrid">
+      <label class="field"><span>Identifiant</span><input value="${esc(u.identifiant)}" disabled style="opacity:.6"/></label>
+      <label class="field"><span>Nom complet</span><input data-f="nom_complet" value="${esc(u.nom_complet)}"/></label>
+    </div>
+    ${userAccessFieldsHtml(u)}
   </div>`;
 }
 
@@ -4956,49 +4991,74 @@ function attachHandlers(){
 
   // Utilisateurs (admin)
   const userCreateBtn = document.getElementById('user-create-btn');
-  if(userCreateBtn) userCreateBtn.addEventListener('click', ()=>{
-    openModal('Créer un utilisateur', userCreateForm(), async (data)=>{
-      const identifiant = (data.identifiant||'').trim().toUpperCase();
-      const nomComplet = (data.nomComplet||'').trim();
-      const pass = data.motDePasse||'';
-      if(!identifiant || !nomComplet || pass.length<6){ alert('Identifiant, nom complet et mot de passe (6 caractères min.) requis'); return; }
-      const email = identifiantToEmail(identifiant);
-      const adminIdentifiant = currentUser.identifiant;
-      try{
-        const { data: signData, error } = await sb.auth.signUp({ email, password: pass });
-        if(error) throw error;
-        if(signData.user){
-          await sb.from('user_roles').insert({ user_id: signData.user.id, email, nom_complet: nomComplet, role:'technicien',
-            identifiant, fonction:'Technicien', niveau_hierarchique:1, statut_compte:'Actif', niveau_approbation:'Technique', modules:{} });
-        }
-        await sb.auth.signOut();
-        currentUser = null;
-        closeModal();
-        document.getElementById('app').style.display = 'none';
-        authTab = 'login'; authError = 'Compte '+identifiant+' créé. Reconnecte-toi avec ton identifiant admin ('+(adminIdentifiant||'')+') pour continuer.';
-        renderAuthScreen();
-      }catch(err){ alert('Erreur : '+((err&&err.message)?traduireErreurAuth(err.message):String(err))); }
-    });
+  if(userCreateBtn) userCreateBtn.addEventListener('click', ()=>{ currentView='user-create'; render(); });
+  const userCreateBack = document.getElementById('user-create-back');
+  if(userCreateBack) userCreateBack.addEventListener('click', ()=>{ currentView='users'; render(); });
+  const userCreateSubmit = document.getElementById('user-create-submit');
+  if(userCreateSubmit) userCreateSubmit.addEventListener('click', async ()=>{
+    const val = (id, fb)=>{ const el=document.getElementById(id)||document.querySelector(`[data-f="${id}"]`); return el?el.value:fb; };
+    const identifiant = (document.querySelector('[data-f="identifiant"]')?.value||'').trim().toUpperCase();
+    const nomComplet = (document.querySelector('[data-f="nomComplet"]')?.value||'').trim();
+    const pass = document.querySelector('[data-f="motDePasse"]')?.value||'';
+    if(!identifiant || !nomComplet || pass.length<6){ alert('Identifiant, nom complet et mot de passe (6 caractères min.) requis'); return; }
+    const fonction = document.querySelector('[data-f="fonction"]')?.value||'Technicien';
+    const niveau_hierarchique = Number(document.querySelector('[data-f="niveau_hierarchique"]')?.value)||1;
+    const statut_compte = document.querySelector('[data-f="statut_compte"]')?.value||'Actif';
+    const role = document.querySelector('[data-f="role"]')?.value||'technicien';
+    const affectation = document.querySelector('[data-f="affectation"]')?.value||'Les deux';
+    const superieur_id = document.querySelector('[data-f="superieur_id"]')?.value||null;
+    const niveau_approbation = document.querySelector('[data-f="niveau_approbation"]')?.value||'Technique';
+    const modules = {};
+    MODULES_ACCES.forEach(m=>{ const el = document.querySelector(`[data-uf-mod="${m.id}"]`); if(el) modules[m.id]=el.value; });
+    const email = identifiantToEmail(identifiant);
+    const adminIdentifiant = currentUser.identifiant;
+    try{
+      const { data: signData, error } = await sb.auth.signUp({ email, password: pass });
+      if(error) throw error;
+      if(signData.user){
+        await sb.from('user_roles').insert({ user_id: signData.user.id, email, nom_complet: nomComplet, role,
+          identifiant, fonction, niveau_hierarchique, statut_compte, affectation, superieur_id: superieur_id||null, niveau_approbation, modules });
+      }
+      await sb.auth.signOut();
+      currentUser = null;
+      document.getElementById('app').style.display = 'none';
+      authTab = 'login'; authError = 'Compte '+identifiant+' créé avec son rôle complet. Reconnecte-toi avec ton identifiant admin ('+(adminIdentifiant||'')+') pour continuer.';
+      renderAuthScreen();
+    }catch(err){ alert('Erreur : '+((err&&err.message)?traduireErreurAuth(err.message):String(err))); }
   });
 
-  document.querySelectorAll('[data-edit-user]').forEach(b=>b.addEventListener('click',()=>{
-    const u = allUsers.find(x=>x.user_id===b.dataset.editUser);
+  const userEditBack = document.getElementById('user-edit-back');
+  if(userEditBack) userEditBack.addEventListener('click', ()=>{ currentView='users'; userEditDraftId=null; render(); });
+  const userEditSubmit = document.getElementById('user-edit-submit');
+  if(userEditSubmit) userEditSubmit.addEventListener('click', async ()=>{
+    const u = allUsers.find(x=>x.user_id===userEditDraftId);
     if(!u) return;
-    openModal('Modifier le profil — '+(u.identifiant||u.nom_complet), userEditForm(u), async (data)=>{
-      const modules = {};
-      MODULES_ACCES.forEach(m=>{ const el = document.querySelector(`#modal-form [data-uf-mod="${m.id}"]`); if(el) modules[m.id]=el.value; });
-      const updates = {
-        nom_complet: data.nom_complet, fonction: data.fonction, niveau_hierarchique: Number(data.niveau_hierarchique),
-        statut_compte: data.statut_compte, role: data.role, affectation: data.affectation, superieur_id: data.superieur_id||null,
-        niveau_approbation: data.niveau_approbation, modules
-      };
-      try{
-        const { error } = await sb.from('user_roles').update(updates).eq('user_id', u.user_id);
-        if(error) throw error;
-        Object.assign(u, updates);
-        closeModal(); render(); toast('Profil mis à jour');
-      }catch(err){ alert('Erreur : '+((err&&err.message)||String(err))); }
-    });
+    const modules = {};
+    MODULES_ACCES.forEach(m=>{ const el = document.querySelector(`[data-uf-mod="${m.id}"]`); if(el) modules[m.id]=el.value; });
+    const updates = {
+      nom_complet: document.querySelector('[data-f="nom_complet"]')?.value||u.nom_complet,
+      fonction: document.querySelector('[data-f="fonction"]')?.value||u.fonction,
+      niveau_hierarchique: Number(document.querySelector('[data-f="niveau_hierarchique"]')?.value)||1,
+      statut_compte: document.querySelector('[data-f="statut_compte"]')?.value||u.statut_compte,
+      role: document.querySelector('[data-f="role"]')?.value||u.role,
+      affectation: document.querySelector('[data-f="affectation"]')?.value||u.affectation,
+      superieur_id: document.querySelector('[data-f="superieur_id"]')?.value||null,
+      niveau_approbation: document.querySelector('[data-f="niveau_approbation"]')?.value||u.niveau_approbation,
+      modules
+    };
+    try{
+      const { error } = await sb.from('user_roles').update(updates).eq('user_id', u.user_id);
+      if(error) throw error;
+      Object.assign(u, updates);
+      currentView='users'; userEditDraftId=null; render(); toast('Profil mis à jour');
+    }catch(err){ alert('Erreur : '+((err&&err.message)||String(err))); }
+  });
+  document.querySelectorAll('[data-edit-user]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
+    userEditDraftId = b.dataset.editUser; currentView='user-edit'; render();
+  }));
+  document.querySelectorAll('[data-edit-user-row]').forEach(tr=>tr.addEventListener('click',()=>{
+    userEditDraftId = tr.dataset.editUserRow; currentView='user-edit'; render();
   }));
 
   // Postes responsables
