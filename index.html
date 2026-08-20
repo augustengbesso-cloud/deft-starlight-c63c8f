@@ -328,8 +328,8 @@ function canSee(navId){
   if(mod && currentUser.modules && currentUser.modules[mod]==='Aucun') return false;
   const restricted = {
     planificateur: ['users','user-create','user-edit','audit'],
-    technicien: ['fleet','fleet-edit','pm','pm-edit','fuel','fuel-edit','parts','floc','plant','production','measures','measures-edit','costs','personnel','reports','settings','users','user-create','user-edit','audit','da','bc','resa'],
-    rh: ['fleet','fleet-edit','wo','wo-edit','pm','pm-edit','fuel','fuel-edit','parts','floc','plant','production','notif','notif-edit','measures','measures-edit','costs','reports','settings','users','user-create','user-edit','audit','da','bc','resa'],
+    technicien: ['fleet','fleet-edit','pm','pm-edit','fuel','fuel-edit','parts','part-edit','mvt-new','floc','floc-edit','plant','plant-edit','production','prod-edit','measures','measures-edit','costs','cc-edit','personnel','personnel-edit','reports','settings','users','user-create','user-edit','audit','da','da-edit','bc','bc-edit','bc-receive','resa','resa-new'],
+    rh: ['fleet','fleet-edit','wo','wo-edit','pm','pm-edit','fuel','fuel-edit','parts','part-edit','mvt-new','floc','floc-edit','plant','plant-edit','production','prod-edit','notif','notif-edit','measures','measures-edit','costs','cc-edit','reports','settings','users','user-create','user-edit','audit','da','da-edit','bc','bc-edit','bc-receive','resa','resa-new'],
   };
   const blocked = restricted[currentUser.role] || [];
   return !blocked.includes(navId);
@@ -846,20 +846,31 @@ function render(){
   else if(currentView==='fuel') c.innerHTML = viewFuel();
   else if(currentView==='fuel-edit') c.innerHTML = viewFuelEdit();
   else if(currentView==='parts') c.innerHTML = viewParts();
+  else if(currentView==='part-edit') c.innerHTML = viewPartEdit();
+  else if(currentView==='mvt-new') c.innerHTML = viewMvtNew();
   else if(currentView==='floc') c.innerHTML = viewFLoc();
+  else if(currentView==='floc-edit') c.innerHTML = viewFlocEdit();
   else if(currentView==='plant') c.innerHTML = viewPlant();
+  else if(currentView==='plant-edit') c.innerHTML = viewPlantEdit();
   else if(currentView==='production') c.innerHTML = viewProduction();
+  else if(currentView==='prod-edit') c.innerHTML = viewProdEdit();
   else if(currentView==='notif') c.innerHTML = viewNotif();
   else if(currentView==='notif-edit') c.innerHTML = viewNotifEdit();
   else if(currentView==='measures') c.innerHTML = viewMeasures();
   else if(currentView==='measures-edit') c.innerHTML = viewMeasureEdit();
   else if(currentView==='costs') c.innerHTML = viewCosts();
+  else if(currentView==='cc-edit') c.innerHTML = viewCcEdit();
   else if(currentView==='personnel') c.innerHTML = viewPersonnel();
+  else if(currentView==='personnel-edit') c.innerHTML = viewPersonnelEdit();
   else if(currentView==='conges') c.innerHTML = viewConges();
+  else if(currentView==='conge-edit') c.innerHTML = viewCongeEdit();
   else if(currentView==='formations') c.innerHTML = viewFormations();
+  else if(currentView==='formation-edit') c.innerHTML = viewFormationEdit();
   else if(currentView==='effectifs') c.innerHTML = viewEffectifs();
   else if(currentView==='recrutement') c.innerHTML = viewRecrutement();
+  else if(currentView==='candidature-edit') c.innerHTML = viewCandidatureEdit();
   else if(currentView==='maternite') c.innerHTML = viewMaternite();
+  else if(currentView==='maternity-edit') c.innerHTML = viewMaternityEdit();
   else if(currentView==='reports') c.innerHTML = viewReports();
   else if(currentView==='settings') c.innerHTML = viewSettings();
   else if(currentView==='users') c.innerHTML = viewUsers();
@@ -867,8 +878,12 @@ function render(){
   else if(currentView==='user-edit') c.innerHTML = viewUserEdit();
   else if(currentView==='audit') c.innerHTML = viewAudit();
   else if(currentView==='resa') c.innerHTML = viewResa();
+  else if(currentView==='resa-new') c.innerHTML = viewResaNew();
   else if(currentView==='da') c.innerHTML = viewDA();
+  else if(currentView==='da-edit') c.innerHTML = viewDaEdit();
   else if(currentView==='bc') c.innerHTML = viewBC();
+  else if(currentView==='bc-edit') c.innerHTML = viewBcEdit();
+  else if(currentView==='bc-receive') c.innerHTML = viewBcReceive();
   promoteTitle();
   attachHandlers();
   if(currentView==='dashboard') drawDashboardCharts();
@@ -2246,7 +2261,7 @@ function viewParts(){
       <button class="btn btn-ghost" id="parts-export-btn">${ICONS.receipt} Exporter Excel</button>
       <button class="btn btn-ghost" id="parts-import-btn">${ICONS.plus} Importer Excel</button>
       <input type="file" id="parts-import-file" accept=".xlsx,.xls,.csv" style="display:none;"/>
-      <button class="btn btn-accent" data-open-modal="part-new">${ICONS.plus} Nouvelle pièce</button>
+      <button class="btn btn-accent" id="part-new-btn">${ICONS.plus} Nouvelle pièce</button>
     </div>
   </div>`;
   const q = partsSearch.trim().toLowerCase();
@@ -2311,7 +2326,7 @@ function viewPartsCatalogue(list){
   return `<div class="plate" style="overflow:hidden;">
   <table><thead><tr><th>Code article</th><th>Désignation</th><th>Catégorie</th><th>Unité</th><th>Fournisseur principal</th><th>Code SAP/MM</th><th></th></tr></thead>
   <tbody>
-  ${sorted.map(p=>`<tr>
+  ${sorted.map(p=>`<tr class="legend-clickable" data-edit-part-row="${p.id}">
     <td class="mono" style="color:var(--muted)">${esc(p.ref)||'—'}</td>
     <td>${esc(p.nom)}</td>
     <td><span class="badge">${esc(p.categorie)||'—'}</span></td>
@@ -2372,7 +2387,7 @@ function viewPartsMouvements(){
   return `
   <div class="between" style="margin-bottom:12px;">
     <span style="font-size:12px;color:var(--muted);">Historique complet des entrées et sorties</span>
-    <button class="btn btn-accent" data-open-modal="mvt-new" style="font-size:12px;">${ICONS.plus} Nouvelle entrée</button>
+    <button class="btn btn-accent" id="mvt-new-btn" style="font-size:12px;">${ICONS.plus} Nouvelle entrée</button>
   </div>
   ${all.length===0?`<div class="plate p16"><div class="empty">${ICONS.receipt}<span>Aucun mouvement enregistré.</span></div></div>`:
   `<div class="plate" style="overflow:hidden;">
@@ -2507,6 +2522,16 @@ function partForm(p){
   </div>`;
 }
 
+let partDraft = null;
+let partIsNew = false;
+function viewPartEdit(){
+  return fullFormPageHtml(partIsNew?'Nouvelle pièce':'Modifier la pièce — '+(partDraft.nom||''), 'Fiche complète article — catalogue, stock, seuils, coûts, fournisseurs et criticité', partForm(partDraft));
+}
+let mvtDraft = null;
+function viewMvtNew(){
+  return fullFormPageHtml('Nouvelle entrée en stock', 'Réception, retour ou réparation — met à jour le stock immédiatement', mvtForm({}));
+}
+
 /* ============ EMPLACEMENTS FONCTIONNELS ============ */
 function buildLocTree(){
   const byParent = {};
@@ -2533,11 +2558,11 @@ function viewFLoc(){
   return `
   <div class="headrow">
     <div><h1>Emplacements fonctionnels</h1><p class="subtitle" style="margin:0;">Hiérarchie Site › Atelier › Ligne › Machine — utilise ▲▼ pour réordonner manuellement</p></div>
-    <button class="btn btn-accent" data-open-modal="floc-new">${ICONS.plus} Nouvel emplacement</button>
+    <button class="btn btn-accent" id="floc-new-btn">${ICONS.plus} Nouvel emplacement</button>
   </div>
   ${tree.length===0?`<div class="plate p16"><div class="empty">${ICONS.layers}<span>Aucun emplacement défini.</span></div></div>`:
   `<div style="display:flex;flex-direction:column;gap:6px;">
-  ${tree.map(({loc:l,depth,isFirst,isLast})=>`<div class="plate p14 between wrapwrap" style="gap:12px;padding-left:${14+depth*20}px;">
+  ${tree.map(({loc:l,depth,isFirst,isLast})=>`<div class="plate p14 between wrapwrap legend-clickable" data-edit-floc-row="${l.id}" style="gap:12px;padding-left:${14+depth*20}px;">
     <div class="row"><span class="badge">${l.type}</span><span style="font-size:13px;">${esc(l.nom)}</span></div>
     <div class="row" style="gap:2px;">
       <span class="mono" style="font-size:11px;color:var(--muted);margin-right:6px;">${esc(l.code)}</span>
@@ -2560,6 +2585,12 @@ function flocForm(l){
   </div>`;
 }
 
+let flocDraft = null;
+let flocIsNew = false;
+function viewFlocEdit(){
+  return fullFormPageHtml(flocIsNew?'Nouvel emplacement':'Modifier l\'emplacement', 'Position dans la hiérarchie Site › Atelier › Ligne › Machine', flocForm(flocDraft));
+}
+
 /* ============ ÉQUIPEMENTS USINE ============ */
 function viewPlant(){
   const lm = locMap();
@@ -2568,13 +2599,13 @@ function viewPlant(){
     <div><h1>Équipements usine</h1><p class="subtitle" style="margin:0;">${state.plantEquipment.length} machines enregistrées</p></div>
     <div class="row">
       <button class="btn btn-ghost" data-open-types="1">${ICONS.layers} Familles</button>
-      <button class="btn btn-accent" data-open-modal="plant-new">${ICONS.plus} Nouvelle machine</button>
+      <button class="btn btn-accent" id="plant-new-btn">${ICONS.plus} Nouvelle machine</button>
     </div>
   </div>
   ${state.plantEquipment.length===0?`<div class="plate p16"><div class="empty">${ICONS.factory}<span>Aucune machine enregistrée.</span></div></div>`:
   `<div class="grid grid-fleet">
   ${state.plantEquipment.map(e=>`
-  <div class="plate p16">
+  <div class="plate p16 legend-clickable" data-edit-plant-row="${e.id}">
     <div class="between" style="align-items:flex-start;">
       <div>
         <div class="row"><span class="led" style="background:${statutColor(e.statut)}"></span><span class="mono" style="font-size:15px;">${e.code}</span></div>
@@ -2608,6 +2639,12 @@ function plantForm(e){
   </div>`;
 }
 
+let plantDraft = null;
+let plantIsNew = false;
+function viewPlantEdit(){
+  return fullFormPageHtml(plantIsNew?'Nouvelle machine':'Modifier la machine — '+(plantDraft.code||''), 'Fiche complète — identification, statut, emplacement et centre de coût', plantForm(plantDraft));
+}
+
 /* ============ PRODUCTION / OEE ============ */
 function viewProduction(){
   const em = equipMap();
@@ -2615,14 +2652,14 @@ function viewProduction(){
   return `
   <div class="headrow">
     <div><h1>Production / OEE</h1><p class="subtitle" style="margin:0;">Suivi de rendement par machine</p></div>
-    <button class="btn btn-accent" data-open-modal="prod-new">${ICONS.plus} Nouveau relevé</button>
+    <button class="btn btn-accent" id="prod-new-btn">${ICONS.plus} Nouveau relevé</button>
   </div>
   ${sorted.length===0?`<div class="plate p16"><div class="empty">${ICONS.activity}<span>Aucun relevé de production.</span></div></div>`:
   `<div class="plate" style="overflow:hidden;">
   <table><thead><tr><th>Date</th><th>Machine</th><th class="right">Produit</th><th class="right">Prévu</th><th class="right">Rebut</th><th class="right">Arrêt (min)</th><th class="right">OEE</th><th></th></tr></thead>
   <tbody>
   ${sorted.map(p=>{ const oee = oeeOf(p);
-  return `<tr>
+  return `<tr class="legend-clickable" data-edit-prod-row="${p.id}">
     <td>${p.date||''}</td><td class="mono">${em[p.equipementId]?.code||'—'}</td>
     <td class="right mono">${fmt(p.quantiteProduite)}</td><td class="right mono" style="color:var(--muted)">${fmt(p.quantitePrevue)}</td>
     <td class="right mono" style="color:var(--muted)">${fmt(p.piecesRebut)}</td><td class="right mono" style="color:var(--muted)">${fmt(p.tempsArretMin)}</td>
@@ -2630,6 +2667,11 @@ function viewProduction(){
     <td><div class="row" style="justify-content:flex-end;"><button class="icon-btn" data-edit-prod="${p.id}">${ICONS.edit}</button><button class="icon-btn" data-del-prod="${p.id}">${ICONS.trash}</button></div></td>
   </tr>`;}).join('')}
   </tbody></table></div>`}`;
+}
+let prodDraft = null;
+let prodIsNew = false;
+function viewProdEdit(){
+  return fullFormPageHtml(prodIsNew?'Nouveau relevé de production':'Modifier le relevé', 'Quantités produites, rebuts et temps d\'arrêt — pour le calcul OEE', prodForm(prodDraft));
 }
 function prodForm(p){
   const opts = state.plantEquipment.map(e=>`<option value="${e.id}" ${p.equipementId===e.id?'selected':''}>${e.code} — ${e.nom}</option>`).join('');
@@ -2773,14 +2815,14 @@ function viewCosts(){
   return `
   <div class="headrow">
     <div><h1>Centres de coûts</h1><p class="subtitle" style="margin:0;">Budget maintenance vs dépenses réelles (OT + Achats)</p></div>
-    <button class="btn btn-accent" data-open-modal="cc-new">${ICONS.plus} Nouveau centre de coût</button>
+    <button class="btn btn-accent" id="cc-new-btn">${ICONS.plus} Nouveau centre de coût</button>
   </div>
   ${state.costCenters.length===0?`<div class="plate p16"><div class="empty">${ICONS.wallet}<span>Aucun centre de coût défini.</span></div></div>`:
   `<div class="grid grid-fleet">
   ${state.costCenters.map(c=>{
     const spent = spentByCC[c.id]||0; const budget = Number(c.budgetAnnuel||0);
     const pct = budget>0 ? Math.min(100, Math.round(spent/budget*100)) : null;
-    return `<div class="plate p16">
+    return `<div class="plate p16 legend-clickable" data-edit-cc-row="${c.id}">
       <div class="between" style="align-items:flex-start;">
         <div><span class="mono" style="font-size:14px;">${esc(c.code)}</span><div style="font-size:12px;color:var(--muted);">${esc(c.nom)}</div></div>
         <div class="row"><button class="icon-btn" data-edit-cc="${c.id}">${ICONS.edit}</button><button class="icon-btn" data-del-cc="${c.id}">${ICONS.trash}</button></div>
@@ -2799,6 +2841,11 @@ function ccForm(c){
     <label class="field span2"><span>Nom</span><input data-f="nom" value="${esc(c.nom)}"/></label>
   </div>`;
 }
+let ccDraft = null;
+let ccIsNew = false;
+function viewCcEdit(){
+  return fullFormPageHtml(ccIsNew?'Nouveau centre de coût':'Modifier le centre de coût', 'Code, nom et budget annuel', ccForm(ccDraft));
+}
 
 /* ============ PERSONNEL (RH) ============ */
 function viewPersonnel(){
@@ -2811,13 +2858,13 @@ function viewPersonnel(){
     <div class="row">
       <button class="btn btn-ghost" id="personnel-import-btn">${ICONS.plus} Importer Excel</button>
       <input type="file" id="personnel-import-file" accept=".xlsx,.xls,.csv" style="display:none;"/>
-      <button class="btn btn-accent" data-open-modal="personnel-new">${ICONS.plus} Nouvelle personne</button>
+      <button class="btn btn-accent" id="personnel-new-btn">${ICONS.plus} Nouvelle personne</button>
     </div>
   </div>
   ${sorted.length===0?`<div class="plate p16"><div class="empty">${ICONS.users}<span>Aucun personnel enregistré.</span></div></div>`:
   `<div class="grid grid-fleet">
   ${sorted.map(p=>`
-  <div class="plate p16">
+  <div class="plate p16 legend-clickable" data-edit-personnel-row="${p.id}">
     <div class="between" style="align-items:flex-start;">
       <div>
         <div class="row"><span class="led" style="background:${p.statut==='Actif'?'var(--success)':p.statut==='Congé'?'var(--accent)':'var(--muted)'}"></span><span style="font-size:14px;font-weight:500;">${esc(p.nom)}</span></div>
@@ -2846,6 +2893,11 @@ function personnelForm(p){
     <label class="field span2"><span>Date d'embauche</span><input type="date" data-f="dateEmbauche" value="${p.dateEmbauche||''}"/></label>
   </div>`;
 }
+let personnelDraft = null;
+let personnelIsNew = false;
+function viewPersonnelEdit(){
+  return fullFormPageHtml(personnelIsNew?'Nouvelle personne':'Modifier la personne — '+(personnelDraft.nom||''), 'Fiche complète — poste, affectation, statut et solde de congés', personnelForm(personnelDraft));
+}
 
 /* ============ CONGÉS ============ */
 let congesFilterStatut = 'Tous';
@@ -2871,6 +2923,11 @@ function congeForm(c){
   </div>
   <p style="font-size:11px;color:var(--muted);margin:8px 0 0;">Le nombre de jours est calculé automatiquement (jours calendaires inclusifs) et le solde n'est décompté qu'à la validation.</p>`;
 }
+let congeDraft = null;
+let congeIsNew = false;
+function viewCongeEdit(){
+  return fullFormPageHtml(congeIsNew?'Nouvelle demande de congé':'Modifier la demande de congé', 'Personnel, type, dates et motif', congeForm(congeDraft));
+}
 function viewConges(){
   const pm = Object.fromEntries(state.personnel.map(p=>[p.id,p]));
   const canManageRH = currentUser && (currentUser.role==='admin' || currentUser.role==='rh');
@@ -2883,7 +2940,7 @@ function viewConges(){
   return `
   <div class="headrow">
     <div><h1>Congés</h1><p class="subtitle" style="margin:0;">Demandes, validation et suivi des soldes</p></div>
-    <button class="btn btn-accent" data-open-modal="conge-new">${ICONS.plus} Nouvelle demande</button>
+    <button class="btn btn-accent" id="conge-new-btn">${ICONS.plus} Nouvelle demande</button>
   </div>
   ${enCongeAujourdhui.length>0?`<div class="plate p14" style="margin-bottom:16px;border-color:var(--accent);">
     <div class="row" style="margin-bottom:6px;">${ICONS.calendar}<strong style="font-size:13px;">En congé aujourd'hui (${enCongeAujourdhui.length})</strong></div>
@@ -2904,7 +2961,7 @@ function viewConges(){
   ${list.length===0?`<div class="plate p16"><div class="empty">${ICONS.calendar}<span>Aucune demande de congé.</span></div></div>`:
   `<div style="display:flex;flex-direction:column;gap:8px;">
   ${list.map(c=>{ const p = pm[c.personnelId]; const jours = c.nbJours!=null?c.nbJours:leaveDays(c.dateDebut,c.dateFin);
-    return `<div class="plate p14">
+    return `<div class="plate p14 legend-clickable" data-edit-conge-row="${c.id}">
     <div class="between wrapwrap" style="gap:12px;">
       <div class="row">
         <span class="led" style="background:${congeStatutColor(c.statut)}"></span>
@@ -2950,6 +3007,11 @@ function formationForm(f){
   </div>
   <p style="font-size:11px;color:var(--muted);margin:8px 0 0;">Renseigne la date d'expiration pour les habilitations et certifications à renouveler périodiquement (ATEX, électrique, etc.) — une alerte apparaît sur le tableau de bord 60 jours avant échéance.</p>`;
 }
+let formationDraft = null;
+let formationIsNew = false;
+function viewFormationEdit(){
+  return fullFormPageHtml(formationIsNew?'Nouvelle formation':'Modifier la formation', 'Formation, habilitation ou certification — organisme, dates et coût', formationForm(formationDraft));
+}
 function viewFormations(){
   const pm = Object.fromEntries(state.personnel.map(p=>[p.id,p]));
   let list = [...state.trainings];
@@ -2963,7 +3025,7 @@ function viewFormations(){
   return `
   <div class="headrow">
     <div><h1>Formations & habilitations</h1><p class="subtitle" style="margin:0;">Suivi des formations, certifications et habilitations sécurité</p></div>
-    <button class="btn btn-accent" data-open-modal="formation-new">${ICONS.plus} Nouvelle formation</button>
+    <button class="btn btn-accent" id="formation-new-btn">${ICONS.plus} Nouvelle formation</button>
   </div>
   ${expirees.length>0?`<div class="plate p14" style="margin-bottom:12px;border-color:var(--danger);">
     <div class="row" style="margin-bottom:6px;">${ICONS.alert}<strong style="font-size:13px;color:var(--danger);">Habilitations expirées (${expirees.length})</strong></div>
@@ -2989,7 +3051,7 @@ function viewFormations(){
   `<div style="display:flex;flex-direction:column;gap:8px;">
   ${list.map(f=>{ const p = pm[f.personnelId];
     const expBadge = f.dateExpiration ? (f.dateExpiration<today?`<span class="badge badge-danger">Expirée</span>`: f.dateExpiration<=in60?`<span class="badge" style="color:var(--accent);border-color:var(--accent);">Expire le ${f.dateExpiration}</span>`:`<span class="badge" style="color:var(--muted);">Valide jusqu'au ${f.dateExpiration}</span>`) : '';
-    return `<div class="plate p14">
+    return `<div class="plate p14 legend-clickable" data-edit-formation-row="${f.id}">
     <div class="between wrapwrap" style="gap:12px;">
       <div class="row">
         <span class="led" style="background:${formationStatutColor(f.statut)}"></span>
@@ -3080,6 +3142,11 @@ function candidatureForm(cd){
     <label class="field span2"><span>Notes / évaluation</span><textarea data-f="notes" rows="3">${esc(cd.notes||'')}</textarea></label>
   </div>`;
 }
+let candidatureDraft = null;
+let candidatureIsNew = false;
+function viewCandidatureEdit(){
+  return fullFormPageHtml(candidatureIsNew?'Nouvelle candidature':'Modifier la candidature — '+(candidatureDraft.nom||''), 'Coordonnées, poste recherché et suivi du pipeline', candidatureForm(candidatureDraft));
+}
 function viewRecrutement(){
   let list = [...state.candidatures];
   if(recrutFilterStatut!=='Tous') list = list.filter(c=>c.statut===recrutFilterStatut);
@@ -3089,7 +3156,7 @@ function viewRecrutement(){
   return `
   <div class="headrow">
     <div><h1>Recrutement</h1><p class="subtitle" style="margin:0;">Suivi des candidatures, de la réception à l'embauche</p></div>
-    <button class="btn btn-accent" data-open-modal="candidature-new">${ICONS.plus} Nouvelle candidature</button>
+    <button class="btn btn-accent" id="candidature-new-btn">${ICONS.plus} Nouvelle candidature</button>
   </div>
   <div class="plate p14" style="margin-bottom:16px;">
     <div class="row wrapwrap" style="gap:8px;">
@@ -3099,7 +3166,7 @@ function viewRecrutement(){
   </div>
   ${list.length===0?`<div class="plate p16"><div class="empty">${ICONS.search}<span>Aucune candidature.</span></div></div>`:
   `<div style="display:flex;flex-direction:column;gap:8px;">
-  ${list.map(cd=>`<div class="plate p14">
+  ${list.map(cd=>`<div class="plate p14 legend-clickable" data-edit-candidature-row="${cd.id}">
     <div class="between wrapwrap" style="gap:12px;">
       <div class="row">
         <span class="led" style="background:${recrutStatutColor(cd.statut)}"></span>
@@ -3137,19 +3204,24 @@ function maternityForm(mp){
   </div>
   <p style="font-size:11px;color:var(--muted);margin:8px 0 0;">La durée par défaut (98 jours) est indicative — vérifie la durée légale applicable selon le code du travail et votre convention collective avant de valider.</p>`;
 }
+let maternityDraft = null;
+let maternityIsNew = false;
+function viewMaternityEdit(){
+  return fullFormPageHtml(maternityIsNew?'Nouveau plan de congé maternité':'Modifier le plan de congé maternité', 'Dates, durée, remplacement et suivi', maternityForm(maternityDraft));
+}
 function viewMaternite(){
   const pm = Object.fromEntries(state.personnel.map(p=>[p.id,p]));
   const list = [...state.maternityPlans].sort((a,b)=>(b.dateDebut||'').localeCompare(a.dateDebut||''));
   return `
   <div class="headrow">
     <div><h1>Congé maternité</h1><p class="subtitle" style="margin:0;">Planification, remplacement et suivi des retours</p></div>
-    <button class="btn btn-accent" data-open-modal="maternity-new">${ICONS.plus} Nouveau plan</button>
+    <button class="btn btn-accent" id="maternity-new-btn">${ICONS.plus} Nouveau plan</button>
   </div>
   ${list.length===0?`<div class="plate p16"><div class="empty">${ICONS.bell}<span>Aucun plan de congé maternité enregistré.</span></div></div>`:
   `<div style="display:flex;flex-direction:column;gap:8px;">
   ${list.map(mp=>{ const p = pm[mp.personnelId]; const rp = mp.remplacantId?pm[mp.remplacantId]:null;
     const statutColor = mp.statut==='Terminé'?'var(--success)':mp.statut==='En cours'?'var(--accent)':'var(--steel)';
-    return `<div class="plate p14">
+    return `<div class="plate p14 legend-clickable" data-edit-maternity-row="${mp.id}">
     <div class="between wrapwrap" style="gap:12px;">
       <div class="row">
         <span class="led" style="background:${statutColor}"></span>
@@ -3259,7 +3331,9 @@ function fullFormPageHtml(title, subtitle, bodyHtml, backLabel, submitLabel){
 }
 function collectDataF(){
   const data = {};
-  document.querySelectorAll('#content [data-f]').forEach(el=>{ data[el.dataset.f] = el.value; });
+  document.querySelectorAll('#content [data-f]').forEach(el=>{
+    data[el.dataset.f] = el.type==='checkbox' ? (el.checked?'on':'') : el.value;
+  });
   return data;
 }
 let userEditDraftId = null;
@@ -3438,7 +3512,7 @@ function viewResa(){
   return `
   <div class="headrow">
     <div><h1>Réservations</h1><p class="subtitle" style="margin:0;">Consommables réservés (OT ou directes) — en attente de sortie magasin</p></div>
-    <button class="btn btn-accent" data-open-modal="resa-new">${ICONS.plus} Nouvelle réservation</button>
+    <button class="btn btn-accent" id="resa-new-btn">${ICONS.plus} Nouvelle réservation</button>
   </div>
   ${sorted.length===0?`<div class="plate p16"><div class="empty">${ICONS.layers}<span>Aucune réservation.</span></div></div>`:
   `<div class="plate" style="overflow:hidden;">
@@ -3486,6 +3560,10 @@ function resaForm(r){
     <label class="field span2"><span>Date</span><input type="date" data-f="dateCreation" value="${r.dateCreation||''}"/></label>
   </div>`;
 }
+let resaDraft = null;
+function viewResaNew(){
+  return fullFormPageHtml('Nouvelle réservation', 'Réservation directe d\'un article — sortie à valider ensuite par le magasinier', resaForm(resaDraft));
+}
 
 function viewDA(){
   const em = equipMap();
@@ -3494,12 +3572,12 @@ function viewDA(){
   return `
   <div class="headrow">
     <div><h1>Demandes d'achat</h1><p class="subtitle" style="margin:0;">Sous-traitance et achats hors stock — circuit DA → BC → Réception</p></div>
-    <button class="btn btn-accent" data-open-modal="da-new">${ICONS.plus} Nouvelle DA</button>
+    <button class="btn btn-accent" id="da-new-btn">${ICONS.plus} Nouvelle DA</button>
   </div>
   ${sorted.length===0?`<div class="plate p16"><div class="empty">${ICONS.cart}<span>Aucune demande d'achat.</span></div></div>`:
   `<div style="display:flex;flex-direction:column;gap:8px;">
   ${sorted.map(d=>`
-  <div class="plate p14 between wrapwrap" style="gap:12px;">
+  <div class="plate p14 between wrapwrap legend-clickable" data-edit-da-row="${d.id}" style="gap:12px;">
     <div class="row" style="min-width:0;">
       <span class="led" style="background:${d.statut==='Clôturée'?'var(--success)':d.statut==='Convertie en BC'?'var(--accent)':'var(--muted)'}"></span>
       <div>
@@ -3542,6 +3620,11 @@ function daForm(d){
     <label class="field"><span>Date</span><input type="date" data-f="dateCreation" value="${d.dateCreation||''}"/></label>
   </div>`;
 }
+let daDraft = null;
+let daIsNew = false;
+function viewDaEdit(){
+  return fullFormPageHtml(daIsNew?'Nouvelle demande d\'achat':'Modifier la demande d\'achat — '+(daDraft.numero||''), 'Sous-traitance et achats hors stock', daForm(daDraft));
+}
 
 /* ============ BONS DE COMMANDE ============ */
 function viewBC(){
@@ -3554,7 +3637,7 @@ function viewBC(){
   ${sorted.length===0?`<div class="plate p16"><div class="empty">${ICONS.receipt}<span>Aucun bon de commande. Convertis une demande d'achat pour en créer un.</span></div></div>`:
   `<div style="display:flex;flex-direction:column;gap:8px;">
   ${sorted.map(b=>{ const da = dam[b.purchaseRequestId];
-  return `<div class="plate p14 between wrapwrap" style="gap:12px;">
+  return `<div class="plate p14 between wrapwrap legend-clickable" data-edit-bc-row="${b.id}" style="gap:12px;">
     <div class="row" style="min-width:0;">
       <span class="led" style="background:${b.statut==='Réceptionné'?'var(--success)':b.statut==='Réceptionné partiellement'?'var(--accent)':'var(--muted)'}"></span>
       <div>
@@ -3584,6 +3667,15 @@ function bcForm(b){
     <label class="field"><span>Livraison prévue</span><input type="date" data-f="dateLivraisonPrevue" value="${b.dateLivraisonPrevue||''}"/></label>
     <label class="field span2"><span>Statut</span><select data-f="statut">${BC_STATUTS.map(s=>`<option ${b.statut===s?'selected':''}>${s}</option>`).join('')}</select></label>
   </div>`;
+}
+let bcDraft = null;
+let bcIsNew = false;
+function viewBcEdit(){
+  return fullFormPageHtml(bcIsNew?'Créer le bon de commande':'Modifier le bon de commande — '+(bcDraft.numero||''), 'Fournisseur, montant et dates de commande', bcForm(bcDraft));
+}
+let receptionDraft = null;
+function viewBcReceive(){
+  return fullFormPageHtml('Réception système — '+(receptionDraft.numero||''), 'Taux d\'exécution, date et réceptionnaire', receptionForm(receptionDraft));
 }
 function receptionForm(b){
   return `
@@ -4686,81 +4778,115 @@ function attachHandlers(){
   document.querySelectorAll('[data-parts-tab]').forEach(b=>b.addEventListener('click',()=>{ partsSubTab=b.dataset.partsTab; render(); }));
   const ps = document.getElementById('parts-search');
   if(ps) ps.addEventListener('input', e=>{ partsSearch=e.target.value; render(); const el=document.getElementById('parts-search'); if(el){ el.focus(); el.selectionStart = el.value.length; } });
-  const pn = document.querySelector('[data-open-modal="part-new"]');
+  const pn = document.querySelector('#part-new-btn');
   if(pn) pn.addEventListener('click', ()=>{
-    const p = {id:null, ref:'', nom:'', categorie:state.categoriesArticle[0], fournisseurPrincipal:'', codeSAP:'', unite:'Pièce (PCE)',
+    partDraft = {id:null, ref:'', nom:'', categorie:state.categoriesArticle[0], fournisseurPrincipal:'', codeSAP:'', unite:'Pièce (PCE)',
       quantite:0, localisation:'', statutStock:'Libre', dateDernierMouvement:'',
       seuil:2, seuilMax:0, pointReappro:0, coutUnitaire:0, centreCoutId:'',
       fournisseursAlternatifs:'', delaiLivraison:0, conditions:'',
       critique:false, niveauCriticite:'C', mtbf:0, mttr:0, politiqueStockTampon:''};
-    openModal('Nouvelle pièce', partForm(p), (data)=>{
-      if(!data.nom){ alert('Nom requis'); return; }
-      state.parts.push({...data, id:uid(), quantite:Number(data.quantite), seuil:Number(data.seuil), seuilMax:Number(data.seuilMax),
-        pointReappro:Number(data.pointReappro), coutUnitaire:Number(data.coutUnitaire), delaiLivraison:Number(data.delaiLivraison),
-        mtbf:Number(data.mtbf), mttr:Number(data.mttr), critique: data.critique==='on', centreCoutId:data.centreCoutId||null});
-      persist(); closeModal(); render(); toast('Pièce ajoutée au stock');
-    });
+    partIsNew = true; currentView='part-edit'; render();
   });
-  document.querySelectorAll('[data-edit-part]').forEach(b=>b.addEventListener('click',()=>{
-    const p = state.parts.find(x=>x.id===b.dataset.editPart);
-    openModal('Modifier la pièce', partForm(p), (data)=>{
-      Object.assign(p, data, {quantite:Number(data.quantite), seuil:Number(data.seuil), seuilMax:Number(data.seuilMax),
-        pointReappro:Number(data.pointReappro), coutUnitaire:Number(data.coutUnitaire), delaiLivraison:Number(data.delaiLivraison),
-        mtbf:Number(data.mtbf), mttr:Number(data.mttr), critique: data.critique==='on', centreCoutId:data.centreCoutId||null});
-      persist(); closeModal(); render(); toast('Pièce mise à jour');
-    });
+  document.querySelectorAll('[data-edit-part]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
+    partDraft = JSON.parse(JSON.stringify(state.parts.find(x=>x.id===b.dataset.editPart)));
+    partIsNew = false; currentView='part-edit'; render();
   }));
-  document.querySelectorAll('[data-del-part]').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('[data-edit-part-row]').forEach(row=>row.addEventListener('click',()=>{
+    partDraft = JSON.parse(JSON.stringify(state.parts.find(x=>x.id===row.dataset.editPartRow)));
+    partIsNew = false; currentView='part-edit'; render();
+  }));
+  if(currentView==='part-edit'){
+    const ffpBack = document.getElementById('ffp-back');
+    if(ffpBack) ffpBack.addEventListener('click', ()=>{ currentView='parts'; partDraft=null; render(); });
+    const ffpSubmit = document.getElementById('ffp-submit');
+    if(ffpSubmit) ffpSubmit.addEventListener('click', ()=>{
+      const data = collectDataF();
+      if(!data.nom){ alert('Nom requis'); return; }
+      const patch = {...data, quantite:Number(data.quantite), seuil:Number(data.seuil), seuilMax:Number(data.seuilMax),
+        pointReappro:Number(data.pointReappro), coutUnitaire:Number(data.coutUnitaire), delaiLivraison:Number(data.delaiLivraison),
+        mtbf:Number(data.mtbf), mttr:Number(data.mttr), critique: data.critique==='on', centreCoutId:data.centreCoutId||null};
+      if(partIsNew){ state.parts.push({...patch, id:uid()}); persist(); toast('Pièce ajoutée au stock'); }
+      else { const p = state.parts.find(x=>x.id===partDraft.id); Object.assign(p, patch); persist(); toast('Pièce mise à jour'); }
+      currentView='parts'; partDraft=null; render();
+    });
+  }
+  document.querySelectorAll('[data-del-part]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
     confirmModal('Supprimer cette pièce ?', ()=>{
       state.parts = state.parts.filter(x=>x.id!==b.dataset.delPart);
       persist(); render(); toast('Pièce supprimée');
     }, {danger:true, okLabel:'Supprimer'});
   }));
-  const mvtn = document.querySelector('[data-open-modal="mvt-new"]');
-  if(mvtn) mvtn.addEventListener('click', ()=>{
-    openModal('Nouvelle entrée en stock', mvtForm({}), (data)=>{
+  const mvtn = document.querySelector('#mvt-new-btn');
+  if(mvtn) mvtn.addEventListener('click', ()=>{ currentView='mvt-new'; render(); });
+  if(currentView==='mvt-new'){
+    const ffpBack = document.getElementById('ffp-back');
+    if(ffpBack) ffpBack.addEventListener('click', ()=>{ currentView='parts'; partsSubTab='mouvements'; render(); });
+    const ffpSubmit = document.getElementById('ffp-submit');
+    if(ffpSubmit) ffpSubmit.addEventListener('click', ()=>{
+      const data = collectDataF();
       if(!data.partId){ alert('Sélectionne un article'); return; }
       const qty = Number(data.quantite)||1;
       state.stockMovements = state.stockMovements || [];
       state.stockMovements.push({id:uid(), partId:data.partId, type:data.type, quantite:qty, commentaire:data.commentaire, date:data.date});
       const pt = state.parts.find(p=>p.id===data.partId);
       if(pt){ pt.quantite = Number(pt.quantite)+qty; pt.dateDernierMouvement = data.date; }
-      persist(); closeModal(); render(); toast('Entrée enregistrée, stock mis à jour');
+      persist(); toast('Entrée enregistrée, stock mis à jour');
+      currentView='parts'; partsSubTab='mouvements'; render();
     });
-  });
+  }
 
   // Emplacements fonctionnels
-  const flocn = document.querySelector('[data-open-modal="floc-new"]');
+  const flocn = document.querySelector('#floc-new-btn');
   if(flocn) flocn.addEventListener('click', ()=>{
-    const l = {id:null, code:'', nom:'', type:state.locationTypes[0], parentId:''};
-    openModal('Nouvel emplacement', flocForm(l), (data)=>{
+    flocDraft = {id:null, code:'', nom:'', type:state.locationTypes[0], parentId:''};
+    flocIsNew = true; currentView='floc-edit'; render();
+  });
+  document.querySelectorAll('[data-edit-floc]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
+    flocDraft = JSON.parse(JSON.stringify(state.locations.find(x=>x.id===b.dataset.editFloc)));
+    flocIsNew = false; currentView='floc-edit'; render();
+  }));
+  document.querySelectorAll('[data-edit-floc-row]').forEach(row=>row.addEventListener('click',()=>{
+    flocDraft = JSON.parse(JSON.stringify(state.locations.find(x=>x.id===row.dataset.editFlocRow)));
+    flocIsNew = false; currentView='floc-edit'; render();
+  }));
+  if(currentView==='floc-edit'){
+    const ffpBack = document.getElementById('ffp-back');
+    if(ffpBack) ffpBack.addEventListener('click', ()=>{ currentView='floc'; flocDraft=null; render(); });
+    const ffpSubmit = document.getElementById('ffp-submit');
+    if(ffpSubmit) ffpSubmit.addEventListener('click', ()=>{
+      const data = collectDataF();
       if(!data.code||!data.nom){ alert('Code et nom requis'); return; }
       const parentId = data.parentId||null;
-      const siblingCount = state.locations.filter(x=>(x.parentId||null)===parentId).length;
-      state.locations.push({...data, id:uid(), parentId, ordre:siblingCount});
-      persist(); closeModal(); render(); toast('Emplacement ajouté');
+      if(flocIsNew){
+        const siblingCount = state.locations.filter(x=>(x.parentId||null)===parentId).length;
+        state.locations.push({...data, id:uid(), parentId, ordre:siblingCount});
+        persist(); toast('Emplacement ajouté');
+      } else {
+        const l = state.locations.find(x=>x.id===flocDraft.id); Object.assign(l, data, {parentId});
+        persist(); toast('Emplacement mis à jour');
+      }
+      currentView='floc'; flocDraft=null; render();
     });
-  });
-  document.querySelectorAll('[data-edit-floc]').forEach(b=>b.addEventListener('click',()=>{
-    const l = state.locations.find(x=>x.id===b.dataset.editFloc);
-    openModal('Modifier l\'emplacement', flocForm(l), (data)=>{
-      Object.assign(l, data, {parentId: data.parentId||null});
-      persist(); closeModal(); render(); toast('Emplacement mis à jour');
-    });
-  }));
-  document.querySelectorAll('[data-floc-up]').forEach(b=>b.addEventListener('click',()=>{
+  }
+  document.querySelectorAll('[data-floc-up]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
     const l = state.locations.find(x=>x.id===b.dataset.flocUp); if(!l) return;
     const siblings = state.locations.filter(x=>(x.parentId||null)===(l.parentId||null)).sort((a,b)=>(a.ordre||0)-(b.ordre||0));
     const idx = siblings.findIndex(x=>x.id===l.id);
     if(idx>0){ const prev=siblings[idx-1]; const tmp=l.ordre; l.ordre=prev.ordre; prev.ordre=tmp; persist(); render(); }
   }));
-  document.querySelectorAll('[data-floc-down]').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('[data-floc-down]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
     const l = state.locations.find(x=>x.id===b.dataset.flocDown); if(!l) return;
     const siblings = state.locations.filter(x=>(x.parentId||null)===(l.parentId||null)).sort((a,b)=>(a.ordre||0)-(b.ordre||0));
     const idx = siblings.findIndex(x=>x.id===l.id);
     if(idx<siblings.length-1){ const next=siblings[idx+1]; const tmp=l.ordre; l.ordre=next.ordre; next.ordre=tmp; persist(); render(); }
   }));
-  document.querySelectorAll('[data-del-floc]').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('[data-del-floc]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
     confirmModal('Supprimer cet emplacement ? (les enfants deviendront racines)', ()=>{
       const id = b.dataset.delFloc;
       state.locations.forEach(l=>{ if(l.parentId===id) l.parentId=null; });
@@ -4770,23 +4896,35 @@ function attachHandlers(){
   }));
 
   // Équipements usine
-  const plantn = document.querySelector('[data-open-modal="plant-new"]');
+  const plantn = document.querySelector('#plant-new-btn');
   if(plantn) plantn.addEventListener('click', ()=>{
-    const e = {id:null, code:'', nom:'', type:state.equipTypes[0], statut:'Opérationnel', emplacementId:'', centreCoutId:'', dateMiseEnService:''};
-    openModal('Nouvelle machine', plantForm(e), (data)=>{
-      if(!data.code||!data.nom){ alert('Code et nom requis'); return; }
-      state.plantEquipment.push({...data, id:uid(), emplacementId:data.emplacementId||null, centreCoutId:data.centreCoutId||null});
-      persist(); closeModal(); render(); toast('Machine ajoutée');
-    });
+    plantDraft = {id:null, code:'', nom:'', type:state.equipTypes[0], statut:'Opérationnel', emplacementId:'', centreCoutId:'', dateMiseEnService:''};
+    plantIsNew = true; currentView='plant-edit'; render();
   });
-  document.querySelectorAll('[data-edit-plant]').forEach(b=>b.addEventListener('click',()=>{
-    const e = state.plantEquipment.find(x=>x.id===b.dataset.editPlant);
-    openModal('Modifier la machine', plantForm(e), (data)=>{
-      Object.assign(e, data, {emplacementId:data.emplacementId||null, centreCoutId:data.centreCoutId||null});
-      persist(); closeModal(); render(); toast('Machine mise à jour');
-    });
+  document.querySelectorAll('[data-edit-plant]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
+    plantDraft = JSON.parse(JSON.stringify(state.plantEquipment.find(x=>x.id===b.dataset.editPlant)));
+    plantIsNew = false; currentView='plant-edit'; render();
   }));
-  document.querySelectorAll('[data-del-plant]').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('[data-edit-plant-row]').forEach(row=>row.addEventListener('click',()=>{
+    plantDraft = JSON.parse(JSON.stringify(state.plantEquipment.find(x=>x.id===row.dataset.editPlantRow)));
+    plantIsNew = false; currentView='plant-edit'; render();
+  }));
+  if(currentView==='plant-edit'){
+    const ffpBack = document.getElementById('ffp-back');
+    if(ffpBack) ffpBack.addEventListener('click', ()=>{ currentView='plant'; plantDraft=null; render(); });
+    const ffpSubmit = document.getElementById('ffp-submit');
+    if(ffpSubmit) ffpSubmit.addEventListener('click', ()=>{
+      const data = collectDataF();
+      if(!data.code||!data.nom){ alert('Code et nom requis'); return; }
+      const patch = {...data, emplacementId:data.emplacementId||null, centreCoutId:data.centreCoutId||null};
+      if(plantIsNew){ state.plantEquipment.push({...patch, id:uid()}); persist(); toast('Machine ajoutée'); }
+      else { const e = state.plantEquipment.find(x=>x.id===plantDraft.id); Object.assign(e, patch); persist(); toast('Machine mise à jour'); }
+      currentView='plant'; plantDraft=null; render();
+    });
+  }
+  document.querySelectorAll('[data-del-plant]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
     confirmModal('Supprimer cette machine ?', ()=>{
       state.plantEquipment = state.plantEquipment.filter(x=>x.id!==b.dataset.delPlant);
       persist(); render(); toast('Machine supprimée');
@@ -4794,23 +4932,35 @@ function attachHandlers(){
   }));
 
   // Production / OEE
-  const prodn = document.querySelector('[data-open-modal="prod-new"]');
+  const prodn = document.querySelector('#prod-new-btn');
   if(prodn) prodn.addEventListener('click', ()=>{
-    const p = {id:null, equipementId: state.plantEquipment[0]?.id||'', date:new Date().toISOString().slice(0,10), operateur:'', quantiteProduite:0, quantitePrevue:0, piecesRebut:0, tempsFonctionnementMin:0, tempsArretMin:0};
-    openModal('Nouveau relevé de production', prodForm(p), (data)=>{
-      if(!data.equipementId){ alert('Sélectionne une machine'); return; }
-      state.productionLogs.push({...data, id:uid(), quantiteProduite:Number(data.quantiteProduite), quantitePrevue:Number(data.quantitePrevue), piecesRebut:Number(data.piecesRebut), tempsFonctionnementMin:Number(data.tempsFonctionnementMin), tempsArretMin:Number(data.tempsArretMin)});
-      persist(); closeModal(); render(); toast('Relevé enregistré');
-    });
+    prodDraft = {id:null, equipementId: state.plantEquipment[0]?.id||'', date:new Date().toISOString().slice(0,10), operateur:'', quantiteProduite:0, quantitePrevue:0, piecesRebut:0, tempsFonctionnementMin:0, tempsArretMin:0};
+    prodIsNew = true; currentView='prod-edit'; render();
   });
-  document.querySelectorAll('[data-edit-prod]').forEach(b=>b.addEventListener('click',()=>{
-    const p = state.productionLogs.find(x=>x.id===b.dataset.editProd);
-    openModal('Modifier le relevé', prodForm(p), (data)=>{
-      Object.assign(p, data, {quantiteProduite:Number(data.quantiteProduite), quantitePrevue:Number(data.quantitePrevue), piecesRebut:Number(data.piecesRebut), tempsFonctionnementMin:Number(data.tempsFonctionnementMin), tempsArretMin:Number(data.tempsArretMin)});
-      persist(); closeModal(); render(); toast('Relevé mis à jour');
-    });
+  document.querySelectorAll('[data-edit-prod]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
+    prodDraft = JSON.parse(JSON.stringify(state.productionLogs.find(x=>x.id===b.dataset.editProd)));
+    prodIsNew = false; currentView='prod-edit'; render();
   }));
-  document.querySelectorAll('[data-del-prod]').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('[data-edit-prod-row]').forEach(row=>row.addEventListener('click',()=>{
+    prodDraft = JSON.parse(JSON.stringify(state.productionLogs.find(x=>x.id===row.dataset.editProdRow)));
+    prodIsNew = false; currentView='prod-edit'; render();
+  }));
+  if(currentView==='prod-edit'){
+    const ffpBack = document.getElementById('ffp-back');
+    if(ffpBack) ffpBack.addEventListener('click', ()=>{ currentView='production'; prodDraft=null; render(); });
+    const ffpSubmit = document.getElementById('ffp-submit');
+    if(ffpSubmit) ffpSubmit.addEventListener('click', ()=>{
+      const data = collectDataF();
+      if(!data.equipementId){ alert('Sélectionne une machine'); return; }
+      const patch = {...data, quantiteProduite:Number(data.quantiteProduite), quantitePrevue:Number(data.quantitePrevue), piecesRebut:Number(data.piecesRebut), tempsFonctionnementMin:Number(data.tempsFonctionnementMin), tempsArretMin:Number(data.tempsArretMin)};
+      if(prodIsNew){ state.productionLogs.push({...patch, id:uid()}); persist(); toast('Relevé enregistré'); }
+      else { const p = state.productionLogs.find(x=>x.id===prodDraft.id); Object.assign(p, patch); persist(); toast('Relevé mis à jour'); }
+      currentView='production'; prodDraft=null; render();
+    });
+  }
+  document.querySelectorAll('[data-del-prod]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
     confirmModal('Supprimer ce relevé ?', ()=>{
       state.productionLogs = state.productionLogs.filter(x=>x.id!==b.dataset.delProd);
       persist(); render(); toast('Relevé supprimé');
@@ -4928,23 +5078,35 @@ function attachHandlers(){
   }));
 
   // Centres de coûts
-  const ccn = document.querySelector('[data-open-modal="cc-new"]');
+  const ccn = document.querySelector('#cc-new-btn');
   if(ccn) ccn.addEventListener('click', ()=>{
-    const c = {id:null, code:'', nom:'', budgetAnnuel:0};
-    openModal('Nouveau centre de coût', ccForm(c), (data)=>{
-      if(!data.code||!data.nom){ alert('Code et nom requis'); return; }
-      state.costCenters.push({...data, id:uid(), budgetAnnuel:Number(data.budgetAnnuel)});
-      persist(); closeModal(); render(); toast('Centre de coût ajouté');
-    });
+    ccDraft = {id:null, code:'', nom:'', budgetAnnuel:0};
+    ccIsNew = true; currentView='cc-edit'; render();
   });
-  document.querySelectorAll('[data-edit-cc]').forEach(b=>b.addEventListener('click',()=>{
-    const c = state.costCenters.find(x=>x.id===b.dataset.editCc);
-    openModal('Modifier le centre de coût', ccForm(c), (data)=>{
-      Object.assign(c, data, {budgetAnnuel:Number(data.budgetAnnuel)});
-      persist(); closeModal(); render(); toast('Centre de coût mis à jour');
-    });
+  document.querySelectorAll('[data-edit-cc]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
+    ccDraft = JSON.parse(JSON.stringify(state.costCenters.find(x=>x.id===b.dataset.editCc)));
+    ccIsNew = false; currentView='cc-edit'; render();
   }));
-  document.querySelectorAll('[data-del-cc]').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('[data-edit-cc-row]').forEach(row=>row.addEventListener('click',()=>{
+    ccDraft = JSON.parse(JSON.stringify(state.costCenters.find(x=>x.id===row.dataset.editCcRow)));
+    ccIsNew = false; currentView='cc-edit'; render();
+  }));
+  if(currentView==='cc-edit'){
+    const ffpBack = document.getElementById('ffp-back');
+    if(ffpBack) ffpBack.addEventListener('click', ()=>{ currentView='costs'; ccDraft=null; render(); });
+    const ffpSubmit = document.getElementById('ffp-submit');
+    if(ffpSubmit) ffpSubmit.addEventListener('click', ()=>{
+      const data = collectDataF();
+      if(!data.code||!data.nom){ alert('Code et nom requis'); return; }
+      const patch = {...data, budgetAnnuel:Number(data.budgetAnnuel)};
+      if(ccIsNew){ state.costCenters.push({...patch, id:uid()}); persist(); toast('Centre de coût ajouté'); }
+      else { const c = state.costCenters.find(x=>x.id===ccDraft.id); Object.assign(c, patch); persist(); toast('Centre de coût mis à jour'); }
+      currentView='costs'; ccDraft=null; render();
+    });
+  }
+  document.querySelectorAll('[data-del-cc]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
     confirmModal('Supprimer ce centre de coût ?', ()=>{
       state.costCenters = state.costCenters.filter(x=>x.id!==b.dataset.delCc);
       persist(); render(); toast('Centre de coût supprimé');
@@ -4952,18 +5114,26 @@ function attachHandlers(){
   }));
 
   // Réservations
-  const resan = document.querySelector('[data-open-modal="resa-new"]');
+  const resan = document.querySelector('#resa-new-btn');
   if(resan) resan.addEventListener('click', ()=>{
-    const r = {id:null, numero:null, type:RESA_TYPES[0], costCenterId:'', equipementId:'', partId: state.parts[0]?.id||'', quantite:1, receptionnaire:'', dateCreation:new Date().toISOString().slice(0,10)};
-    openModal('Nouvelle réservation', resaForm(r), (data)=>{
+    resaDraft = {id:null, numero:null, type:RESA_TYPES[0], costCenterId:'', equipementId:'', partId: state.parts[0]?.id||'', quantite:1, receptionnaire:'', dateCreation:new Date().toISOString().slice(0,10)};
+    currentView='resa-new'; render();
+  });
+  if(currentView==='resa-new'){
+    const ffpBack = document.getElementById('ffp-back');
+    if(ffpBack) ffpBack.addEventListener('click', ()=>{ currentView='resa'; resaDraft=null; render(); });
+    const ffpSubmit = document.getElementById('ffp-submit');
+    if(ffpSubmit) ffpSubmit.addEventListener('click', ()=>{
+      const data = collectDataF();
       if(!data.partId){ alert('Sélectionne un article'); return; }
       state.resaCounter = (state.resaCounter||0)+1;
       const qty = Number(data.quantite)||1;
       state.reservations.push({...data, id:uid(), numero:'RES-'+String(state.resaCounter).padStart(4,'0'),
         costCenterId:data.costCenterId||null, equipementId:data.equipementId||null, workOrderId:null, quantite:qty, statut:'En attente'});
-      persist(); closeModal(); render(); toast('Réservation créée — en attente de sortie magasin');
+      persist(); toast('Réservation créée — en attente de sortie magasin');
+      currentView='resa'; resaDraft=null; render();
     });
-  });
+  }
   document.querySelectorAll('[data-open-validate-resa]').forEach(b=>b.addEventListener('click',()=>{
     resaValidatingId = b.dataset.openValidateResa; render();
   }));
@@ -5006,79 +5176,117 @@ function attachHandlers(){
     const w = state.workOrders.find(x=>x.id===b.dataset.createDaFromWo);
     if(!w) return;
     const eq = equipMap()[w.equipementId];
-    const d = {id:null, numero:null, type:'Via Ordre de Travail', description:w.titre, equipementId:w.equipementId, workOrderId:w.id,
+    daDraft = {id:null, numero:null, type:'Via Ordre de Travail', description:w.titre, equipementId:w.equipementId, workOrderId:w.id,
       costCenterId: eq?eq.centreCoutId:'', montantEstime:0, fournisseur:'', demandeur: currentUser?currentUser.nomComplet:'', dateCreation:new Date().toISOString().slice(0,10), statut:'Ouverte'};
-    openModal('Demande d\'achat liée à '+w.numero, daForm(d), (data)=>{
-      if(!data.description){ alert('Description requise'); return; }
-      state.daCounter = (state.daCounter||0)+1;
-      state.purchaseRequests.push({...data, id:uid(), numero:'DA-'+String(state.daCounter).padStart(4,'0'),
-        equipementId:data.equipementId||null, workOrderId:w.id, costCenterId:data.costCenterId||null, montantEstime:Number(data.montantEstime)});
-      persist(); closeModal(); render(); toast('Demande d\'achat '+('DA-'+String(state.daCounter).padStart(4,'0'))+' créée et liée à '+w.numero);
-    });
+    daIsNew = true; currentView='da-edit'; render();
   }));
 
   // Demandes d'achat
-  const dan = document.querySelector('[data-open-modal="da-new"]');
+  const dan = document.querySelector('#da-new-btn');
   if(dan) dan.addEventListener('click', ()=>{
-    const d = {id:null, numero:null, type:DA_TYPES[0], description:'', equipementId:'', workOrderId:'', costCenterId:'', montantEstime:0, fournisseur:'', demandeur: currentUser?currentUser.nomComplet:'', dateCreation:new Date().toISOString().slice(0,10), statut:'Ouverte'};
-    openModal('Nouvelle demande d\'achat', daForm(d), (data)=>{
-      if(!data.description){ alert('Description requise'); return; }
-      state.daCounter = (state.daCounter||0)+1;
-      state.purchaseRequests.push({...data, id:uid(), numero:'DA-'+String(state.daCounter).padStart(4,'0'),
-        equipementId:data.equipementId||null, workOrderId:data.workOrderId||null, costCenterId:data.costCenterId||null,
-        montantEstime:Number(data.montantEstime)});
-      persist(); closeModal(); render(); toast('Demande d\'achat créée');
-    });
+    daDraft = {id:null, numero:null, type:DA_TYPES[0], description:'', equipementId:'', workOrderId:'', costCenterId:'', montantEstime:0, fournisseur:'', demandeur: currentUser?currentUser.nomComplet:'', dateCreation:new Date().toISOString().slice(0,10), statut:'Ouverte'};
+    daIsNew = true; currentView='da-edit'; render();
   });
-  document.querySelectorAll('[data-edit-da]').forEach(b=>b.addEventListener('click',()=>{
-    const d = state.purchaseRequests.find(x=>x.id===b.dataset.editDa);
-    openModal('Modifier la demande d\'achat', daForm(d), (data)=>{
-      Object.assign(d, data, {equipementId:data.equipementId||null, workOrderId:data.workOrderId||null, costCenterId:data.costCenterId||null, montantEstime:Number(data.montantEstime)});
-      persist(); closeModal(); render(); toast('Demande d\'achat mise à jour');
-    });
+  document.querySelectorAll('[data-edit-da]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
+    daDraft = JSON.parse(JSON.stringify(state.purchaseRequests.find(x=>x.id===b.dataset.editDa)));
+    daIsNew = false; currentView='da-edit'; render();
   }));
-  document.querySelectorAll('[data-del-da]').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('[data-edit-da-row]').forEach(row=>row.addEventListener('click',()=>{
+    daDraft = JSON.parse(JSON.stringify(state.purchaseRequests.find(x=>x.id===row.dataset.editDaRow)));
+    daIsNew = false; currentView='da-edit'; render();
+  }));
+  if(currentView==='da-edit'){
+    const ffpBack = document.getElementById('ffp-back');
+    if(ffpBack) ffpBack.addEventListener('click', ()=>{ currentView='da'; daDraft=null; render(); });
+    const ffpSubmit = document.getElementById('ffp-submit');
+    if(ffpSubmit) ffpSubmit.addEventListener('click', ()=>{
+      const data = collectDataF();
+      if(!data.description){ alert('Description requise'); return; }
+      const patch = {...data, equipementId:data.equipementId||null, workOrderId:data.workOrderId||daDraft.workOrderId||null, costCenterId:data.costCenterId||null, montantEstime:Number(data.montantEstime)};
+      if(daIsNew){
+        state.daCounter = (state.daCounter||0)+1;
+        const numero = 'DA-'+String(state.daCounter).padStart(4,'0');
+        state.purchaseRequests.push({...patch, id:uid(), numero});
+        persist(); toast(patch.workOrderId?'Demande d\'achat '+numero+' créée et liée':'Demande d\'achat créée');
+      } else {
+        const d = state.purchaseRequests.find(x=>x.id===daDraft.id); Object.assign(d, patch);
+        persist(); toast('Demande d\'achat mise à jour');
+      }
+      currentView='da'; daDraft=null; render();
+    });
+  }
+  document.querySelectorAll('[data-del-da]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
     confirmModal('Supprimer cette demande d\'achat ?', ()=>{
       state.purchaseRequests = state.purchaseRequests.filter(x=>x.id!==b.dataset.delDa);
       persist(); render(); toast('Demande d\'achat supprimée');
     }, {danger:true, okLabel:'Supprimer'});
   }));
-  document.querySelectorAll('[data-convert-da]').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('[data-convert-da]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
     const d = state.purchaseRequests.find(x=>x.id===b.dataset.convertDa);
     if(!d) return;
-    const bc = {id:null, purchaseRequestId:d.id, fournisseur:d.fournisseur||'', montant:d.montantEstime||0, dateCommande:new Date().toISOString().slice(0,10), dateLivraisonPrevue:'', statut:'Émis'};
-    openModal('Créer le bon de commande', bcForm(bc), (data)=>{
-      state.bcCounter = (state.bcCounter||0)+1;
-      state.purchaseOrders.push({...data, id:uid(), numero:'BC-'+String(state.bcCounter).padStart(4,'0'), purchaseRequestId:d.id, montant:Number(data.montant), tauxReception:0, dateReception:'', receptionnaire:''});
-      d.statut = 'Convertie en BC';
-      persist(); closeModal(); render(); toast('Bon de commande créé');
-    });
+    bcDraft = {id:null, purchaseRequestId:d.id, fournisseur:d.fournisseur||'', montant:d.montantEstime||0, dateCommande:new Date().toISOString().slice(0,10), dateLivraisonPrevue:'', statut:'Émis'};
+    bcIsNew = true; currentView='bc-edit'; render();
   }));
 
   // Bons de commande
-  document.querySelectorAll('[data-edit-bc]').forEach(b=>b.addEventListener('click',()=>{
-    const bc = state.purchaseOrders.find(x=>x.id===b.dataset.editBc);
-    openModal('Modifier le bon de commande', bcForm(bc), (data)=>{
-      Object.assign(bc, data, {montant:Number(data.montant)});
-      persist(); closeModal(); render(); toast('Bon de commande mis à jour');
-    });
+  document.querySelectorAll('[data-edit-bc]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
+    bcDraft = JSON.parse(JSON.stringify(state.purchaseOrders.find(x=>x.id===b.dataset.editBc)));
+    bcIsNew = false; currentView='bc-edit'; render();
   }));
-  document.querySelectorAll('[data-del-bc]').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('[data-edit-bc-row]').forEach(row=>row.addEventListener('click',()=>{
+    bcDraft = JSON.parse(JSON.stringify(state.purchaseOrders.find(x=>x.id===row.dataset.editBcRow)));
+    bcIsNew = false; currentView='bc-edit'; render();
+  }));
+  if(currentView==='bc-edit'){
+    const ffpBack = document.getElementById('ffp-back');
+    if(ffpBack) ffpBack.addEventListener('click', ()=>{ currentView='bc'; bcDraft=null; render(); });
+    const ffpSubmit = document.getElementById('ffp-submit');
+    if(ffpSubmit) ffpSubmit.addEventListener('click', ()=>{
+      const data = collectDataF();
+      const patch = {...data, montant:Number(data.montant)};
+      if(bcIsNew){
+        state.bcCounter = (state.bcCounter||0)+1;
+        state.purchaseOrders.push({...patch, id:uid(), numero:'BC-'+String(state.bcCounter).padStart(4,'0'), purchaseRequestId:bcDraft.purchaseRequestId, tauxReception:0, dateReception:'', receptionnaire:''});
+        const d = state.purchaseRequests.find(x=>x.id===bcDraft.purchaseRequestId); if(d) d.statut = 'Convertie en BC';
+        persist(); toast('Bon de commande créé');
+      } else {
+        const bc = state.purchaseOrders.find(x=>x.id===bcDraft.id); Object.assign(bc, patch);
+        persist(); toast('Bon de commande mis à jour');
+      }
+      currentView='bc'; bcDraft=null; render();
+    });
+  }
+  document.querySelectorAll('[data-del-bc]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
     confirmModal('Supprimer ce bon de commande ?', ()=>{
       state.purchaseOrders = state.purchaseOrders.filter(x=>x.id!==b.dataset.delBc);
       persist(); render(); toast('Bon de commande supprimé');
     }, {danger:true, okLabel:'Supprimer'});
   }));
-  document.querySelectorAll('[data-receive-bc]').forEach(b=>b.addEventListener('click',()=>{
-    const bc = state.purchaseOrders.find(x=>x.id===b.dataset.receiveBc);
-    openModal('Réception système', receptionForm(bc), (data)=>{
+  document.querySelectorAll('[data-receive-bc]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
+    receptionDraft = state.purchaseOrders.find(x=>x.id===b.dataset.receiveBc);
+    currentView='bc-receive'; render();
+  }));
+  if(currentView==='bc-receive'){
+    const ffpBack = document.getElementById('ffp-back');
+    if(ffpBack) ffpBack.addEventListener('click', ()=>{ currentView='bc'; receptionDraft=null; render(); });
+    const ffpSubmit = document.getElementById('ffp-submit');
+    if(ffpSubmit) ffpSubmit.addEventListener('click', ()=>{
+      const data = collectDataF();
       const taux = Number(data.tauxReception)||0;
+      const bc = receptionDraft;
       Object.assign(bc, data, {tauxReception:taux, statut: taux>=100?'Réceptionné':'Réceptionné partiellement'});
       const da = state.purchaseRequests.find(x=>x.id===bc.purchaseRequestId);
       if(da && taux>=100) da.statut='Clôturée';
-      persist(); closeModal(); render(); toast('Réception enregistrée');
+      persist(); toast('Réception enregistrée');
+      currentView='bc'; receptionDraft=null; render();
     });
-  }));
+  }
 
   // Utilisateurs (admin)
   const userCreateBtn = document.getElementById('user-create-btn');
@@ -5203,25 +5411,35 @@ function attachHandlers(){
     personnelImportBtn.addEventListener('click', ()=>personnelImportFile.click());
     personnelImportFile.addEventListener('change', (e)=>{ if(e.target.files[0]) readExcelFile(e.target.files[0], importPersonnelRows); });
   }
-  const pern = document.querySelector('[data-open-modal="personnel-new"]');
+  const pern = document.querySelector('#personnel-new-btn');
   if(pern) pern.addEventListener('click', ()=>{
-    const p = {id:null, nom:'', poste:state.postes[0], affectation:state.affectations[0], statut:'Actif', telephone:'', dateEmbauche:'', soldeConges:26};
-    openModal('Nouvelle personne', personnelForm(p), (data)=>{
+    personnelDraft = {id:null, nom:'', poste:state.postes[0], affectation:state.affectations[0], statut:'Actif', telephone:'', dateEmbauche:'', soldeConges:26};
+    personnelIsNew = true; currentView='personnel-edit'; render();
+  });
+  document.querySelectorAll('[data-edit-personnel]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
+    personnelDraft = JSON.parse(JSON.stringify(state.personnel.find(x=>x.id===b.dataset.editPersonnel)));
+    personnelIsNew = false; currentView='personnel-edit'; render();
+  }));
+  document.querySelectorAll('[data-edit-personnel-row]').forEach(row=>row.addEventListener('click',()=>{
+    personnelDraft = JSON.parse(JSON.stringify(state.personnel.find(x=>x.id===row.dataset.editPersonnelRow)));
+    personnelIsNew = false; currentView='personnel-edit'; render();
+  }));
+  if(currentView==='personnel-edit'){
+    const ffpBack = document.getElementById('ffp-back');
+    if(ffpBack) ffpBack.addEventListener('click', ()=>{ currentView='personnel'; personnelDraft=null; render(); });
+    const ffpSubmit = document.getElementById('ffp-submit');
+    if(ffpSubmit) ffpSubmit.addEventListener('click', ()=>{
+      const data = collectDataF();
       if(!data.nom){ alert('Nom requis'); return; }
       data.soldeConges = Number(data.soldeConges)||0;
-      state.personnel.push({...data, id:uid()});
-      persist(); closeModal(); render(); toast('Personne ajoutée');
+      if(personnelIsNew){ state.personnel.push({...data, id:uid()}); persist(); toast('Personne ajoutée'); }
+      else { const p = state.personnel.find(x=>x.id===personnelDraft.id); Object.assign(p, data); persist(); toast('Personne mise à jour'); }
+      currentView='personnel'; personnelDraft=null; render();
     });
-  });
-  document.querySelectorAll('[data-edit-personnel]').forEach(b=>b.addEventListener('click',()=>{
-    const p = state.personnel.find(x=>x.id===b.dataset.editPersonnel);
-    openModal('Modifier la personne', personnelForm(p), (data)=>{
-      data.soldeConges = Number(data.soldeConges)||0;
-      Object.assign(p, data);
-      persist(); closeModal(); render(); toast('Personne mise à jour');
-    });
-  }));
-  document.querySelectorAll('[data-del-personnel]').forEach(b=>b.addEventListener('click',()=>{
+  }
+  document.querySelectorAll('[data-del-personnel]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
     confirmModal('Supprimer cette personne ?', ()=>{
       state.personnel = state.personnel.filter(x=>x.id!==b.dataset.delPersonnel);
       persist(); render(); toast('Personne supprimée');
@@ -5233,34 +5451,49 @@ function attachHandlers(){
   if(cfs) cfs.addEventListener('change', e=>{ congesFilterStatut=e.target.value; render(); });
   const cfp = document.getElementById('conges-filter-personnel');
   if(cfp) cfp.addEventListener('change', e=>{ congesFilterPersonnel=e.target.value; render(); });
-  const congeNewBtn = document.querySelector('[data-open-modal="conge-new"]');
+  const congeNewBtn = document.querySelector('#conge-new-btn');
   if(congeNewBtn) congeNewBtn.addEventListener('click', ()=>{
-    const c = {id:null, personnelId: state.personnel[0]?state.personnel[0].id:'', type: state.typesConge[0], statut:'Demandé', dateDebut:'', dateFin:'', motif:''};
-    openModal('Nouvelle demande de congé', congeForm(c), (data)=>{
+    congeDraft = {id:null, personnelId: state.personnel[0]?state.personnel[0].id:'', type: state.typesConge[0], statut:'Demandé', dateDebut:'', dateFin:'', motif:''};
+    congeIsNew = true; currentView='conge-edit'; render();
+  });
+  document.querySelectorAll('[data-edit-conge]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
+    congeDraft = JSON.parse(JSON.stringify(state.leaveRequests.find(x=>x.id===b.dataset.editConge)));
+    congeIsNew = false; currentView='conge-edit'; render();
+  }));
+  document.querySelectorAll('[data-edit-conge-row]').forEach(row=>row.addEventListener('click',()=>{
+    congeDraft = JSON.parse(JSON.stringify(state.leaveRequests.find(x=>x.id===row.dataset.editCongeRow)));
+    congeIsNew = false; currentView='conge-edit'; render();
+  }));
+  if(currentView==='conge-edit'){
+    const ffpBack = document.getElementById('ffp-back');
+    if(ffpBack) ffpBack.addEventListener('click', ()=>{ currentView='conges'; congeDraft=null; render(); });
+    const ffpSubmit = document.getElementById('ffp-submit');
+    if(ffpSubmit) ffpSubmit.addEventListener('click', ()=>{
+      const data = collectDataF();
       if(!data.personnelId){ alert('Sélectionne une personne'); return; }
       if(!data.dateDebut || !data.dateFin){ alert('Dates de début et de fin requises'); return; }
       if(data.dateFin < data.dateDebut){ alert('La date de fin doit être postérieure à la date de début'); return; }
       const nbJours = leaveDays(data.dateDebut, data.dateFin);
-      state.leaveRequests.push({...data, id:uid(), nbJours, dateCreation:new Date().toISOString().slice(0,10), demandePar: currentUser?currentUser.nomComplet:''});
-      persist(); closeModal(); render(); toast('Demande de congé créée');
+      if(congeIsNew){
+        state.leaveRequests.push({...data, id:uid(), nbJours, dateCreation:new Date().toISOString().slice(0,10), demandePar: currentUser?currentUser.nomComplet:''});
+        persist(); toast('Demande de congé créée');
+      } else {
+        const c = state.leaveRequests.find(x=>x.id===congeDraft.id); Object.assign(c, data, {nbJours});
+        persist(); toast('Demande mise à jour');
+      }
+      currentView='conges'; congeDraft=null; render();
     });
-  });
-  document.querySelectorAll('[data-edit-conge]').forEach(b=>b.addEventListener('click',()=>{
-    const c = state.leaveRequests.find(x=>x.id===b.dataset.editConge);
-    openModal('Modifier la demande de congé', congeForm(c), (data)=>{
-      if(data.dateFin < data.dateDebut){ alert('La date de fin doit être postérieure à la date de début'); return; }
-      data.nbJours = leaveDays(data.dateDebut, data.dateFin);
-      Object.assign(c, data);
-      persist(); closeModal(); render(); toast('Demande mise à jour');
-    });
-  }));
-  document.querySelectorAll('[data-del-conge]').forEach(b=>b.addEventListener('click',()=>{
+  }
+  document.querySelectorAll('[data-del-conge]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
     confirmModal('Supprimer cette demande de congé ?', ()=>{
       state.leaveRequests = state.leaveRequests.filter(x=>x.id!==b.dataset.delConge);
       persist(); render(); toast('Demande supprimée');
     }, {danger:true, okLabel:'Supprimer'});
   }));
-  document.querySelectorAll('[data-valider-conge]').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('[data-valider-conge]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
     const c = state.leaveRequests.find(x=>x.id===b.dataset.validerConge);
     if(!c) return;
     const p = state.personnel.find(x=>x.id===c.personnelId);
@@ -5275,7 +5508,8 @@ function attachHandlers(){
       confirmModal('Le solde de '+p.nom+' ('+fmt(p.soldeConges)+' j.) est inférieur aux '+jours+' j. demandés. Valider quand même ?', proceed, {danger:true, okLabel:'Valider quand même'});
     } else proceed();
   }));
-  document.querySelectorAll('[data-refuser-conge]').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('[data-refuser-conge]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
     const c = state.leaveRequests.find(x=>x.id===b.dataset.refuserConge);
     if(!c) return;
     confirmModal('Refuser cette demande de congé ?', ()=>{
@@ -5290,25 +5524,35 @@ function attachHandlers(){
   if(ffs) ffs.addEventListener('change', e=>{ formationsFilterStatut=e.target.value; render(); });
   const ffp = document.getElementById('formations-filter-personnel');
   if(ffp) ffp.addEventListener('change', e=>{ formationsFilterPersonnel=e.target.value; render(); });
-  const formationNewBtn = document.querySelector('[data-open-modal="formation-new"]');
+  const formationNewBtn = document.querySelector('#formation-new-btn');
   if(formationNewBtn) formationNewBtn.addEventListener('click', ()=>{
-    const f = {id:null, personnelId: state.personnel[0]?state.personnel[0].id:'', type: state.typesFormation[0], organisme:'', statut:'Planifiée', dateDebut:'', dateFin:'', dateExpiration:'', cout:0, notes:''};
-    openModal('Nouvelle formation', formationForm(f), (data)=>{
+    formationDraft = {id:null, personnelId: state.personnel[0]?state.personnel[0].id:'', intitule:'', type: state.typesFormation[0], organisme:'', statut:'Planifiée', dateDebut:'', dateFin:'', dateExpiration:'', cout:0, notes:''};
+    formationIsNew = true; currentView='formation-edit'; render();
+  });
+  document.querySelectorAll('[data-edit-formation]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
+    formationDraft = JSON.parse(JSON.stringify(state.trainings.find(x=>x.id===b.dataset.editFormation)));
+    formationIsNew = false; currentView='formation-edit'; render();
+  }));
+  document.querySelectorAll('[data-edit-formation-row]').forEach(row=>row.addEventListener('click',()=>{
+    formationDraft = JSON.parse(JSON.stringify(state.trainings.find(x=>x.id===row.dataset.editFormationRow)));
+    formationIsNew = false; currentView='formation-edit'; render();
+  }));
+  if(currentView==='formation-edit'){
+    const ffpBack = document.getElementById('ffp-back');
+    if(ffpBack) ffpBack.addEventListener('click', ()=>{ currentView='formations'; formationDraft=null; render(); });
+    const ffpSubmit = document.getElementById('ffp-submit');
+    if(ffpSubmit) ffpSubmit.addEventListener('click', ()=>{
+      const data = collectDataF();
       if(!data.intitule){ alert('Intitulé requis'); return; }
       data.cout = Number(data.cout)||0;
-      state.trainings.push({...data, id:uid()});
-      persist(); closeModal(); render(); toast('Formation ajoutée');
+      if(formationIsNew){ state.trainings.push({...data, id:uid()}); persist(); toast('Formation ajoutée'); }
+      else { const f = state.trainings.find(x=>x.id===formationDraft.id); Object.assign(f, data); persist(); toast('Formation mise à jour'); }
+      currentView='formations'; formationDraft=null; render();
     });
-  });
-  document.querySelectorAll('[data-edit-formation]').forEach(b=>b.addEventListener('click',()=>{
-    const f = state.trainings.find(x=>x.id===b.dataset.editFormation);
-    openModal('Modifier la formation', formationForm(f), (data)=>{
-      data.cout = Number(data.cout)||0;
-      Object.assign(f, data);
-      persist(); closeModal(); render(); toast('Formation mise à jour');
-    });
-  }));
-  document.querySelectorAll('[data-del-formation]').forEach(b=>b.addEventListener('click',()=>{
+  }
+  document.querySelectorAll('[data-del-formation]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
     confirmModal('Supprimer cette formation ?', ()=>{
       state.trainings = state.trainings.filter(x=>x.id!==b.dataset.delFormation);
       persist(); render(); toast('Formation supprimée');
@@ -5321,67 +5565,85 @@ function attachHandlers(){
 
   // Recrutement
   document.querySelectorAll('[data-recrut-filter]').forEach(b=>b.addEventListener('click',()=>{ recrutFilterStatut=b.dataset.recrutFilter; render(); }));
-  const candNewBtn = document.querySelector('[data-open-modal="candidature-new"]');
+  const candNewBtn = document.querySelector('#candidature-new-btn');
   if(candNewBtn) candNewBtn.addEventListener('click', ()=>{
-    const cd = {id:null, nom:'', poste:'', statut: state.statutsRecrutement[0], telephone:'', email:'', source:'', dateCandidature:new Date().toISOString().slice(0,10), notes:''};
-    openModal('Nouvelle candidature', candidatureForm(cd), (data)=>{
-      if(!data.nom){ alert('Nom du candidat requis'); return; }
-      state.candidatures.push({...data, id:uid()});
-      persist(); closeModal(); render(); toast('Candidature enregistrée');
-    });
+    candidatureDraft = {id:null, nom:'', poste:'', statut: state.statutsRecrutement[0], telephone:'', email:'', source:'', dateCandidature:new Date().toISOString().slice(0,10), notes:''};
+    candidatureIsNew = true; currentView='candidature-edit'; render();
   });
-  document.querySelectorAll('[data-edit-candidature]').forEach(b=>b.addEventListener('click',()=>{
-    const cd = state.candidatures.find(x=>x.id===b.dataset.editCandidature);
-    openModal('Modifier la candidature', candidatureForm(cd), (data)=>{
-      Object.assign(cd, data);
-      persist(); closeModal(); render(); toast('Candidature mise à jour');
-    });
+  document.querySelectorAll('[data-edit-candidature]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
+    candidatureDraft = JSON.parse(JSON.stringify(state.candidatures.find(x=>x.id===b.dataset.editCandidature)));
+    candidatureIsNew = false; currentView='candidature-edit'; render();
   }));
-  document.querySelectorAll('[data-del-candidature]').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('[data-edit-candidature-row]').forEach(row=>row.addEventListener('click',()=>{
+    candidatureDraft = JSON.parse(JSON.stringify(state.candidatures.find(x=>x.id===row.dataset.editCandidatureRow)));
+    candidatureIsNew = false; currentView='candidature-edit'; render();
+  }));
+  if(currentView==='candidature-edit'){
+    const ffpBack = document.getElementById('ffp-back');
+    if(ffpBack) ffpBack.addEventListener('click', ()=>{ currentView='recrutement'; candidatureDraft=null; render(); });
+    const ffpSubmit = document.getElementById('ffp-submit');
+    if(ffpSubmit) ffpSubmit.addEventListener('click', ()=>{
+      const data = collectDataF();
+      if(!data.nom){ alert('Nom du candidat requis'); return; }
+      if(candidatureIsNew){ state.candidatures.push({...data, id:uid()}); persist(); toast('Candidature enregistrée'); }
+      else { const cd = state.candidatures.find(x=>x.id===candidatureDraft.id); Object.assign(cd, data); persist(); toast('Candidature mise à jour'); }
+      currentView='recrutement'; candidatureDraft=null; render();
+    });
+  }
+  document.querySelectorAll('[data-del-candidature]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
     confirmModal('Supprimer cette candidature ?', ()=>{
       state.candidatures = state.candidatures.filter(x=>x.id!==b.dataset.delCandidature);
       persist(); render(); toast('Candidature supprimée');
     }, {danger:true, okLabel:'Supprimer'});
   }));
-  document.querySelectorAll('[data-hire-candidature]').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('[data-hire-candidature]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
     const cd = state.candidatures.find(x=>x.id===b.dataset.hireCandidature);
     if(!cd) return;
-    const p = {id:null, nom:cd.nom, poste:state.postes.includes(cd.poste)?cd.poste:state.postes[0], affectation:state.affectations[0], statut:'Actif', telephone:cd.telephone||'', dateEmbauche:new Date().toISOString().slice(0,10), soldeConges:26};
-    openModal('Créer la fiche personnel — '+cd.nom, personnelForm(p), (data)=>{
-      if(!data.nom){ alert('Nom requis'); return; }
-      data.soldeConges = Number(data.soldeConges)||26;
-      state.personnel.push({...data, id:uid()});
-      persist(); closeModal(); render(); toast('Personnel créé à partir de la candidature');
-    });
+    personnelDraft = {id:null, nom:cd.nom, poste:state.postes.includes(cd.poste)?cd.poste:state.postes[0], affectation:state.affectations[0], statut:'Actif', telephone:cd.telephone||'', dateEmbauche:new Date().toISOString().slice(0,10), soldeConges:26};
+    personnelIsNew = true; currentView='personnel-edit'; render();
   }));
 
   // Congé maternité
-  const matNewBtn = document.querySelector('[data-open-modal="maternity-new"]');
+  const matNewBtn = document.querySelector('#maternity-new-btn');
   if(matNewBtn) matNewBtn.addEventListener('click', ()=>{
-    const mp = {id:null, personnelId: state.personnel[0]?state.personnel[0].id:'', dateDebut:'', dureeJours:98, dateAccouchementPrevue:'', dateRetourPrevue:'', remplacantId:'', statut:'Planifié', notes:'', congeLie:false};
-    openModal('Nouveau plan de congé maternité', maternityForm(mp), (data)=>{
+    maternityDraft = {id:null, personnelId: state.personnel[0]?state.personnel[0].id:'', dateDebut:'', dureeJours:98, dateAccouchementPrevue:'', dateRetourPrevue:'', remplacantId:'', statut:'Planifié', notes:'', congeLie:false};
+    maternityIsNew = true; currentView='maternity-edit'; render();
+  });
+  document.querySelectorAll('[data-edit-maternity]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
+    maternityDraft = JSON.parse(JSON.stringify(state.maternityPlans.find(x=>x.id===b.dataset.editMaternity)));
+    maternityIsNew = false; currentView='maternity-edit'; render();
+  }));
+  document.querySelectorAll('[data-edit-maternity-row]').forEach(row=>row.addEventListener('click',()=>{
+    maternityDraft = JSON.parse(JSON.stringify(state.maternityPlans.find(x=>x.id===row.dataset.editMaternityRow)));
+    maternityIsNew = false; currentView='maternity-edit'; render();
+  }));
+  if(currentView==='maternity-edit'){
+    const ffpBack = document.getElementById('ffp-back');
+    if(ffpBack) ffpBack.addEventListener('click', ()=>{ currentView='maternite'; maternityDraft=null; render(); });
+    const ffpSubmit = document.getElementById('ffp-submit');
+    if(ffpSubmit) ffpSubmit.addEventListener('click', ()=>{
+      const data = collectDataF();
       if(!data.personnelId || !data.dateDebut){ alert('Personnel et date de départ requis'); return; }
       data.dureeJours = Number(data.dureeJours)||98;
       if(!data.dateRetourPrevue && data.dateDebut){ data.dateRetourPrevue = new Date(new Date(data.dateDebut).getTime()+data.dureeJours*86400000).toISOString().slice(0,10); }
-      state.maternityPlans.push({...data, id:uid(), congeLie:false});
-      persist(); closeModal(); render(); toast('Plan de congé maternité créé');
+      if(maternityIsNew){ state.maternityPlans.push({...data, id:uid(), congeLie:false}); persist(); toast('Plan de congé maternité créé'); }
+      else { const mp = state.maternityPlans.find(x=>x.id===maternityDraft.id); Object.assign(mp, data); persist(); toast('Plan mis à jour'); }
+      currentView='maternite'; maternityDraft=null; render();
     });
-  });
-  document.querySelectorAll('[data-edit-maternity]').forEach(b=>b.addEventListener('click',()=>{
-    const mp = state.maternityPlans.find(x=>x.id===b.dataset.editMaternity);
-    openModal('Modifier le plan de congé maternité', maternityForm(mp), (data)=>{
-      data.dureeJours = Number(data.dureeJours)||98;
-      Object.assign(mp, data);
-      persist(); closeModal(); render(); toast('Plan mis à jour');
-    });
-  }));
-  document.querySelectorAll('[data-del-maternity]').forEach(b=>b.addEventListener('click',()=>{
+  }
+  document.querySelectorAll('[data-del-maternity]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
     confirmModal('Supprimer ce plan de congé maternité ?', ()=>{
       state.maternityPlans = state.maternityPlans.filter(x=>x.id!==b.dataset.delMaternity);
       persist(); render(); toast('Plan supprimé');
     }, {danger:true, okLabel:'Supprimer'});
   }));
-  document.querySelectorAll('[data-link-conge]').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('[data-link-conge]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
     const mp = state.maternityPlans.find(x=>x.id===b.dataset.linkConge);
     if(!mp) return;
     confirmModal('Créer la demande de congé associée à ce plan (statut Validé) ?', ()=>{
