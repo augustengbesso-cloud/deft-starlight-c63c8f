@@ -328,8 +328,8 @@ function canSee(navId){
   if(mod && currentUser.modules && currentUser.modules[mod]==='Aucun') return false;
   const restricted = {
     planificateur: ['users','user-create','user-edit','audit'],
-    technicien: ['fleet','pm','fuel','parts','floc','plant','production','measures','costs','personnel','reports','settings','users','user-create','user-edit','audit','da','bc','resa'],
-    rh: ['fleet','wo','wo-edit','pm','fuel','parts','floc','plant','production','notif','measures','costs','reports','settings','users','user-create','user-edit','audit','da','bc','resa'],
+    technicien: ['fleet','fleet-edit','pm','pm-edit','fuel','fuel-edit','parts','floc','plant','production','measures','measures-edit','costs','personnel','reports','settings','users','user-create','user-edit','audit','da','bc','resa'],
+    rh: ['fleet','fleet-edit','wo','wo-edit','pm','pm-edit','fuel','fuel-edit','parts','floc','plant','production','notif','notif-edit','measures','measures-edit','costs','reports','settings','users','user-create','user-edit','audit','da','bc','resa'],
   };
   const blocked = restricted[currentUser.role] || [];
   return !blocked.includes(navId);
@@ -838,16 +838,21 @@ function render(){
   const c = document.getElementById('content');
   if(currentView==='dashboard') c.innerHTML = viewDashboard();
   else if(currentView==='fleet') c.innerHTML = viewFleet();
+  else if(currentView==='fleet-edit') c.innerHTML = viewFleetEdit();
   else if(currentView==='wo') c.innerHTML = viewWO();
   else if(currentView==='wo-edit') c.innerHTML = viewWOEdit();
   else if(currentView==='pm') c.innerHTML = viewPM();
+  else if(currentView==='pm-edit') c.innerHTML = viewPMEdit();
   else if(currentView==='fuel') c.innerHTML = viewFuel();
+  else if(currentView==='fuel-edit') c.innerHTML = viewFuelEdit();
   else if(currentView==='parts') c.innerHTML = viewParts();
   else if(currentView==='floc') c.innerHTML = viewFLoc();
   else if(currentView==='plant') c.innerHTML = viewPlant();
   else if(currentView==='production') c.innerHTML = viewProduction();
   else if(currentView==='notif') c.innerHTML = viewNotif();
+  else if(currentView==='notif-edit') c.innerHTML = viewNotifEdit();
   else if(currentView==='measures') c.innerHTML = viewMeasures();
+  else if(currentView==='measures-edit') c.innerHTML = viewMeasureEdit();
   else if(currentView==='costs') c.innerHTML = viewCosts();
   else if(currentView==='personnel') c.innerHTML = viewPersonnel();
   else if(currentView==='conges') c.innerHTML = viewConges();
@@ -1085,13 +1090,13 @@ function viewFleet(){
       <button class="btn btn-ghost" data-open-types="1">${ICONS.layers} Familles</button>
       <button class="btn btn-ghost" id="fleet-import-btn">${ICONS.plus} Importer Excel</button>
       <input type="file" id="fleet-import-file" accept=".xlsx,.xls,.csv" style="display:none;"/>
-      <button class="btn btn-accent" data-open-modal="fleet-new">${ICONS.plus} Nouvel engin</button>
+      <button class="btn btn-accent" id="fleet-new-btn">${ICONS.plus} Nouvel engin</button>
     </div>
   </div>
   ${filtered.length===0?`<div class="plate p16"><div class="empty">${ICONS.truck}<span>Aucun engin trouvé.</span></div></div>`:
   `<div class="grid grid-fleet">
     ${filtered.map(e=>`
-    <div class="plate p16">
+    <div class="plate p16 legend-clickable" data-edit-fleet-row="${e.id}">
       <div class="between" style="align-items:flex-start;">
         <div>
           <div class="row"><span class="led" style="background:${statutColor(e.statut)}"></span><span class="mono" style="font-size:15px;">${e.code}</span></div>
@@ -1126,6 +1131,12 @@ function fleetForm(e){
     <label class="field"><span>Conso. réf. / 100h (L)</span><input type="number" data-f="conso100h" value="${e.conso100h||0}"/></label>
     <label class="field span2"><span>Centre de coût</span><select data-f="centreCoutId"><option value="">—</option>${ccOpts}</select></label>
   </div>`;
+}
+let fleetDraft = null;
+let fleetIsNew = false;
+function viewFleetEdit(){
+  return fullFormPageHtml(fleetIsNew?'Nouvel engin':"Modifier l'engin — "+(fleetDraft.code||''),
+    'Fiche complète — identification, compteurs, entretien et centre de coût', fleetForm(fleetDraft));
 }
 
 /* ============ Gestion des types d'équipement (partagée Flotte + Usine) ============ */
@@ -2082,7 +2093,7 @@ function viewPM(){
   `<div style="display:flex;flex-direction:column;gap:8px;">
   ${sorted.map(p=>{
     const st = pmStatus(p, em);
-    return `<div class="plate p14 between wrapwrap" style="gap:12px;">
+    return `<div class="plate p14 between wrapwrap legend-clickable" data-open-pm-row="${p.id}" style="gap:12px;">
       <div class="row"><span class="led" style="background:${st.urgent?'var(--danger)':'var(--success)'}"></span>
         <div><div style="font-size:13px;font-weight:500;">${esc(p.tache)}</div>
         <div style="font-size:12px;color:var(--muted);">${em[p.equipementId]?.code||'—'} · <span class="badge">${p.type||'Date'}</span>${p.type==='Date'||!p.type?` · tous les ${p.frequenceJours} j`:` · tous les ${p.intervalle} ${p.type==='Heures'?'h':'km'}`}</div></div>
@@ -2103,19 +2114,18 @@ function blankPM(){
   return { id:null, equipementId: state.fleet[0]?.id||state.plantEquipment[0]?.id||'', tache:'', type:'Date',
     frequenceJours:90, derniere:'', prochaine:'', intervalle:250, derniereValeur:0 };
 }
-function openPMModal(id){
+function openPMEditor(id){
   pmIsNew = (id==='new');
   pmDraft = pmIsNew ? blankPM() : JSON.parse(JSON.stringify(state.pmPlans.find(x=>x.id===id)));
-  renderPMModal();
+  currentView = 'pm-edit';
+  render();
 }
-function closePMModal(){ document.getElementById('modal-root').innerHTML=''; pmDraft=null; }
-function renderPMModal(){
+function viewPMEdit(){
   const p = pmDraft;
   const allEquip = [...state.fleet.map(e=>({...e,grp:'Flotte'})), ...state.plantEquipment.map(e=>({...e,grp:'Usine'}))];
   const equipOpts = allEquip.map(e=>`<option value="${e.id}" ${p.equipementId===e.id?'selected':''}>[${e.grp}] ${e.code} — ${e.nom}</option>`).join('');
   const isCounter = p.type==='Heures' || p.type==='Kilométrage';
   const unite = p.type==='Heures' ? 'h' : 'km';
-
   const body = `
   <div class="formgrid">
     <label class="field span2"><span>Équipement</span><select id="pm-f-equip">${equipOpts}</select></label>
@@ -2128,27 +2138,16 @@ function renderPMModal(){
     <label class="field"><span>Intervalle (${unite})</span><input type="number" id="pm-f-intervalle" value="${p.intervalle||(p.type==='Heures'?250:5000)}"/></label>
     <label class="field"><span>Dernier relevé au moment de l'entretien (${unite})</span><input type="number" id="pm-f-derniereValeur" value="${p.derniereValeur||0}"/></label>
     `}
-  </div>
-  <div class="modal-actions">
-    <button class="btn btn-ghost" id="pm-cancel">Annuler</button>
-    <button class="btn btn-accent" id="pm-save">Enregistrer</button>
   </div>`;
-
-  const root = document.getElementById('modal-root');
-  root.innerHTML = `
-  <div class="modal-overlay" id="pm-overlay">
-    <div class="modal">
-      <div class="modal-head"><h3>${pmIsNew?"Nouveau plan préventif":"Modifier le plan"}</h3><button class="icon-btn" id="pm-close">${ICONS.close}</button></div>
-      <div class="modal-body">${body}</div>
-    </div>
-  </div>`;
-
-  document.getElementById('pm-overlay').addEventListener('click', e=>{ if(e.target.id==='pm-overlay') closePMModal(); });
-  document.getElementById('pm-close').addEventListener('click', closePMModal);
-  document.getElementById('pm-cancel').addEventListener('click', closePMModal);
-  document.getElementById('pm-f-type').addEventListener('change', (e)=>{ p.type = e.target.value; renderPMModal(); });
-
-  document.getElementById('pm-save').addEventListener('click', ()=>{
+  return fullFormPageHtml(pmIsNew?'Nouveau plan préventif':'Modifier le plan préventif', 'Planification par date ou par compteur (heures/km)', body);
+}
+function wirePMEdit(){
+  const p = pmDraft;
+  document.getElementById('pm-f-type').addEventListener('change', (e)=>{ p.type = e.target.value; render(); });
+  const ffpBack = document.getElementById('ffp-back');
+  if(ffpBack) ffpBack.addEventListener('click', ()=>{ currentView='pm'; pmDraft=null; render(); });
+  const ffpSubmit = document.getElementById('ffp-submit');
+  if(ffpSubmit) ffpSubmit.addEventListener('click', ()=>{
     p.equipementId = document.getElementById('pm-f-equip').value;
     p.tache = document.getElementById('pm-f-tache').value;
     p.type = document.getElementById('pm-f-type').value;
@@ -2161,8 +2160,9 @@ function renderPMModal(){
       if(p.derniere && p.frequenceJours){ const d=new Date(p.derniere); d.setDate(d.getDate()+Number(p.frequenceJours)); p.prochaine=d.toISOString().slice(0,10); }
     }
     if(!p.tache || !p.equipementId){ alert('Tâche et équipement requis'); return; }
-    if(pmIsNew){ p.id = uid(); state.pmPlans.push(p); persist(); closePMModal(); render(); toast('Plan préventif ajouté'); }
-    else { const idx = state.pmPlans.findIndex(x=>x.id===p.id); if(idx>-1) state.pmPlans[idx]=p; persist(); closePMModal(); render(); toast('Plan préventif mis à jour'); }
+    if(pmIsNew){ p.id = uid(); state.pmPlans.push(p); persist(); toast('Plan préventif ajouté'); }
+    else { const idx = state.pmPlans.findIndex(x=>x.id===p.id); if(idx>-1) state.pmPlans[idx]=p; persist(); toast('Plan préventif mis à jour'); }
+    currentView='pm'; pmDraft=null; render();
   });
 }
 
@@ -2177,7 +2177,7 @@ function viewFuel(){
   return `
   <div class="headrow">
     <div><h1>Carburant</h1><p class="subtitle" style="margin:0;">${fmt(totalL)} L · ${fmt(totalCost)} FCFA cumulés</p></div>
-    <button class="btn btn-accent" data-open-modal="fuel-new">${ICONS.plus} Nouveau plein</button>
+    <button class="btn btn-accent" id="fuel-new-btn">${ICONS.plus} Nouveau plein</button>
   </div>
   <div class="grid grid-status" style="margin-bottom:16px;">
     ${state.fleet.map(e=>{
@@ -2193,7 +2193,7 @@ function viewFuel(){
   `<div class="plate" style="overflow:hidden;">
   <table><thead><tr><th>Date</th><th>Engin</th><th class="right">Quantité</th><th class="right">Coût</th><th>Opérateur</th><th></th></tr></thead>
   <tbody>
-  ${sorted.map(f=>`<tr>
+  ${sorted.map(f=>`<tr class="legend-clickable" data-edit-fuel-row="${f.id}">
     <td>${f.date||''}</td><td class="mono">${em[f.equipementId]?.code||'—'}</td>
     <td class="right mono">${fmt(f.quantite)} L</td><td class="right mono" style="color:var(--muted)">${fmt(f.cout)}</td>
     <td style="color:var(--muted)">${esc(f.operateur)||'—'}</td>
@@ -2212,6 +2212,11 @@ function fuelForm(f){
     <label class="field"><span>Heures compteur</span><input type="number" data-f="heures" value="${f.heures||0}"/></label>
     <label class="field"><span>Opérateur</span><input data-f="operateur" value="${esc(f.operateur)}"/></label>
   </div>`;
+}
+let fuelDraft = null;
+let fuelIsNew = false;
+function viewFuelEdit(){
+  return fullFormPageHtml(fuelIsNew?'Nouveau plein':'Modifier le plein', 'Détail du ravitaillement — engin, quantité, coût et compteur', fuelForm(fuelDraft));
 }
 
 /* ============ PARTS ============ */
@@ -2651,14 +2656,14 @@ function viewNotif(){
   return `
   <div class="headrow">
     <div><h1>Demandes d'intervention</h1><p class="subtitle" style="margin:0;">Détection (technicien) → Validation (superviseur) → Ordre de travail (planificateur)</p></div>
-    <button class="btn btn-accent" data-open-modal="notif-new">${ICONS.plus} Nouvelle demande</button>
+    <button class="btn btn-accent" id="notif-new-btn">${ICONS.plus} Nouvelle demande</button>
   </div>
   ${sorted.length===0?`<div class="plate p16"><div class="empty">${ICONS.bell}<span>Aucune demande.</span></div></div>`:
   `<div style="display:flex;flex-direction:column;gap:8px;">
   ${sorted.map(n=>{
     const linkedWO = n.workOrderId ? state.workOrders.find(w=>w.id===n.workOrderId) : null;
     return `
-  <div class="plate p14 between wrapwrap" style="gap:12px;">
+  <div class="plate p14 between wrapwrap legend-clickable" data-edit-notif-row="${n.id}" style="gap:12px;">
     <div class="row" style="min-width:0;">
       <span class="led" style="background:${n.statut==='Clôturée'||n.statut==='Convertie en OT'?'var(--success)':n.statut==='Validée'?'var(--steel)':n.priorite==='Urgente'?'var(--danger)':'var(--accent)'}"></span>
       <div>
@@ -2699,6 +2704,12 @@ function notifForm(n){
   </div>
   ${affectation && affectation!=='Les deux' ? `<p style="font-size:11px;color:var(--muted);margin-top:10px;">Liste filtrée sur "${affectation}" d'après ton profil utilisateur (réglable dans "Utilisateurs" par un admin).</p>` : ''}`;
 }
+let notifDraft = null;
+let notifIsNew = false;
+function viewNotifEdit(){
+  return fullFormPageHtml(notifIsNew?'Nouvelle demande d\'intervention':'Modifier la demande — '+(notifDraft.numero||''),
+    'Signalement de panne, anomalie ou amélioration', notifForm(notifDraft));
+}
 
 /* ============ COMPTEURS / MESURES ============ */
 function viewMeasures(){
@@ -2706,7 +2717,7 @@ function viewMeasures(){
   return `
   <div class="headrow">
     <div><h1>Compteurs / points de mesure</h1><p class="subtitle" style="margin:0;">Relevés et seuils d'alerte</p></div>
-    <button class="btn btn-accent" data-open-modal="measure-new">${ICONS.plus} Nouveau point de mesure</button>
+    <button class="btn btn-accent" id="measure-new-btn">${ICONS.plus} Nouveau point de mesure</button>
   </div>
   ${state.measuringPoints.length===0?`<div class="plate p16"><div class="empty">${ICONS.ruler}<span>Aucun point de mesure défini.</span></div></div>`:
   `<div class="plate" style="overflow:hidden;">
@@ -2714,7 +2725,7 @@ function viewMeasures(){
   <tbody>
   ${state.measuringPoints.map(m=>{
     const val = Number(m.dernierReleve); const outOfRange = (m.seuilMin!=='' && val<Number(m.seuilMin)) || (m.seuilMax!=='' && val>Number(m.seuilMax));
-    return `<tr>
+    return `<tr class="legend-clickable" data-edit-measure-row="${m.id}">
     <td class="mono">${em[m.equipementId]?.code||'—'}</td><td>${esc(m.nom)} <span style="color:var(--muted);font-size:11px;">(${m.unite||''})</span></td>
     <td class="right mono" style="color:${outOfRange?'var(--danger)':'var(--text)'}">${m.dernierReleve!==''?m.dernierReleve:'—'}</td>
     <td class="right mono" style="color:var(--muted)">${m.seuilMin!==''?m.seuilMin:'—'}</td>
@@ -2738,6 +2749,11 @@ function measureForm(m){
     <label class="field"><span>Seuil min</span><input type="number" data-f="seuilMin" value="${m.seuilMin}"/></label>
     <label class="field"><span>Seuil max</span><input type="number" data-f="seuilMax" value="${m.seuilMax}"/></label>
   </div>`;
+}
+let measureDraft = null;
+let measureIsNew = false;
+function viewMeasureEdit(){
+  return fullFormPageHtml(measureIsNew?'Nouveau point de mesure':'Modifier le point de mesure', 'Relevé, unité et seuils d\'alerte', measureForm(measureDraft));
 }
 
 /* ============ CENTRES DE COÛTS ============ */
@@ -3228,6 +3244,23 @@ function viewUserCreate(){
     </div>
     ${userAccessFieldsHtml(null, {})}
   </div>`;
+}
+/* ============ GABARIT GÉNÉRIQUE PAGE COMPLÈTE (remplace les popups) ============ */
+function fullFormPageHtml(title, subtitle, bodyHtml, backLabel, submitLabel){
+  return `
+  <div class="headrow">
+    <div><h1>${title}</h1><p class="subtitle" style="margin:0;">${subtitle||''}</p></div>
+    <div class="row">
+      <button class="btn btn-ghost" style="border-color:var(--borderL);" id="ffp-back">${ICONS.close} ${backLabel||'Retour à la liste'}</button>
+      <button class="btn btn-accent" id="ffp-submit">${ICONS.check} ${submitLabel||'Enregistrer'}</button>
+    </div>
+  </div>
+  <div class="plate p16">${bodyHtml}</div>`;
+}
+function collectDataF(){
+  const data = {};
+  document.querySelectorAll('#content [data-f]').forEach(el=>{ data[el.dataset.f] = el.value; });
+  return data;
 }
 let userEditDraftId = null;
 function viewUserEdit(){
@@ -4499,22 +4532,33 @@ function attachHandlers(){
     fleetImportBtn.addEventListener('click', ()=>fleetImportFile.click());
     fleetImportFile.addEventListener('change', (e)=>{ if(e.target.files[0]) readExcelFile(e.target.files[0], importFleetRows); });
   }
-  const bo = document.querySelector('[data-open-modal="fleet-new"]');
+  const bo = document.querySelector('#fleet-new-btn');
   if(bo) bo.addEventListener('click', ()=>{
-    const e = {id:null, code:"", nom:"", type:state.equipTypes[0], statut:"Opérationnel", heures:0, dernierEntretien:"", prochainEntretien:"", conso100h:15, centreCoutId:""};
-    openModal('Nouvel engin', fleetForm(e), (data)=>{
-      if(!data.code||!data.nom){ alert('Code et nom requis'); return; }
-      state.fleet.push({...data, id:uid(), heures:Number(data.heures), km:Number(data.km), conso100h:Number(data.conso100h), centreCoutId:data.centreCoutId||null});
-      persist(); closeModal(); render(); toast('Engin ajouté à la flotte');
-    });
+    fleetDraft = {id:null, code:"", nom:"", type:state.equipTypes[0], statut:"Opérationnel", heures:0, dernierEntretien:"", prochainEntretien:"", conso100h:15, centreCoutId:""};
+    fleetIsNew = true; currentView='fleet-edit'; render();
   });
-  document.querySelectorAll('[data-edit-fleet]').forEach(b=>b.addEventListener('click',()=>{
-    const e = state.fleet.find(x=>x.id===b.dataset.editFleet);
-    openModal("Modifier l'engin", fleetForm(e), (data)=>{
-      Object.assign(e, data, {heures:Number(data.heures), km:Number(data.km), conso100h:Number(data.conso100h), centreCoutId:data.centreCoutId||null});
-      persist(); closeModal(); render(); toast('Engin mis à jour');
-    });
+  document.querySelectorAll('[data-edit-fleet]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
+    fleetDraft = JSON.parse(JSON.stringify(state.fleet.find(x=>x.id===b.dataset.editFleet)));
+    fleetIsNew = false; currentView='fleet-edit'; render();
   }));
+  document.querySelectorAll('[data-edit-fleet-row]').forEach(row=>row.addEventListener('click',()=>{
+    fleetDraft = JSON.parse(JSON.stringify(state.fleet.find(x=>x.id===row.dataset.editFleetRow)));
+    fleetIsNew = false; currentView='fleet-edit'; render();
+  }));
+  if(currentView==='fleet-edit'){
+    const ffpBack = document.getElementById('ffp-back');
+    if(ffpBack) ffpBack.addEventListener('click', ()=>{ currentView='fleet'; fleetDraft=null; render(); });
+    const ffpSubmit = document.getElementById('ffp-submit');
+    if(ffpSubmit) ffpSubmit.addEventListener('click', ()=>{
+      const data = collectDataF();
+      if(!data.code||!data.nom){ alert('Code et nom requis'); return; }
+      const patch = {...data, heures:Number(data.heures), km:Number(data.km), conso100h:Number(data.conso100h), centreCoutId:data.centreCoutId||null};
+      if(fleetIsNew){ state.fleet.push({...patch, id:uid()}); persist(); toast('Engin ajouté à la flotte'); }
+      else { const e = state.fleet.find(x=>x.id===fleetDraft.id); Object.assign(e, patch); persist(); toast('Engin mis à jour'); }
+      currentView='fleet'; fleetDraft=null; render();
+    });
+  }
   document.querySelectorAll('[data-del-fleet]').forEach(b=>b.addEventListener('click',()=>{
     confirmModal('Supprimer cet engin ?', ()=>{
       state.fleet = state.fleet.filter(x=>x.id!==b.dataset.delFleet);
@@ -4575,13 +4619,19 @@ function attachHandlers(){
     });
   }));
   if(currentView==='wo-edit') wireWOEditor();
+  if(currentView==='pm-edit') wirePMEdit();
 
   // PM
   document.querySelectorAll('[data-open-types]').forEach(b=>b.addEventListener('click', openTypesModal));
-  document.querySelectorAll('[data-open-pm]').forEach(b=>b.addEventListener('click',()=>{
-    openPMModal(b.dataset.openPm);
+  document.querySelectorAll('[data-open-pm]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
+    openPMEditor(b.dataset.openPm);
   }));
-  document.querySelectorAll('[data-del-pm]').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('[data-open-pm-row]').forEach(row=>row.addEventListener('click',()=>{
+    openPMEditor(row.dataset.openPmRow);
+  }));
+  document.querySelectorAll('[data-del-pm]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
     confirmModal('Supprimer ce plan ?', ()=>{
       state.pmPlans = state.pmPlans.filter(x=>x.id!==b.dataset.delPm);
       persist(); render(); toast('Plan supprimé');
@@ -4589,23 +4639,35 @@ function attachHandlers(){
   }));
 
   // Fuel
-  const fn = document.querySelector('[data-open-modal="fuel-new"]');
+  const fn = document.querySelector('#fuel-new-btn');
   if(fn) fn.addEventListener('click', ()=>{
-    const f = {id:null, equipementId: state.fleet[0]?.id||'', date:new Date().toISOString().slice(0,10), quantite:0, cout:0, heures:0, operateur:''};
-    openModal('Nouveau plein', fuelForm(f), (data)=>{
-      if(!data.equipementId||!data.quantite){ alert('Engin et quantité requis'); return; }
-      state.fuelLogs.push({...data, id:uid(), quantite:Number(data.quantite), cout:Number(data.cout), heures:Number(data.heures)});
-      persist(); closeModal(); render(); toast('Plein enregistré');
-    });
+    fuelDraft = {id:null, equipementId: state.fleet[0]?.id||'', date:new Date().toISOString().slice(0,10), quantite:0, cout:0, heures:0, operateur:''};
+    fuelIsNew = true; currentView='fuel-edit'; render();
   });
-  document.querySelectorAll('[data-edit-fuel]').forEach(b=>b.addEventListener('click',()=>{
-    const f = state.fuelLogs.find(x=>x.id===b.dataset.editFuel);
-    openModal('Modifier le plein', fuelForm(f), (data)=>{
-      Object.assign(f, data, {quantite:Number(data.quantite), cout:Number(data.cout), heures:Number(data.heures)});
-      persist(); closeModal(); render(); toast('Plein mis à jour');
-    });
+  document.querySelectorAll('[data-edit-fuel]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
+    fuelDraft = JSON.parse(JSON.stringify(state.fuelLogs.find(x=>x.id===b.dataset.editFuel)));
+    fuelIsNew = false; currentView='fuel-edit'; render();
   }));
-  document.querySelectorAll('[data-del-fuel]').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('[data-edit-fuel-row]').forEach(row=>row.addEventListener('click',()=>{
+    fuelDraft = JSON.parse(JSON.stringify(state.fuelLogs.find(x=>x.id===row.dataset.editFuelRow)));
+    fuelIsNew = false; currentView='fuel-edit'; render();
+  }));
+  if(currentView==='fuel-edit'){
+    const ffpBack = document.getElementById('ffp-back');
+    if(ffpBack) ffpBack.addEventListener('click', ()=>{ currentView='fuel'; fuelDraft=null; render(); });
+    const ffpSubmit = document.getElementById('ffp-submit');
+    if(ffpSubmit) ffpSubmit.addEventListener('click', ()=>{
+      const data = collectDataF();
+      if(!data.equipementId||!data.quantite){ alert('Engin et quantité requis'); return; }
+      const patch = {...data, quantite:Number(data.quantite), cout:Number(data.cout), heures:Number(data.heures)};
+      if(fuelIsNew){ state.fuelLogs.push({...patch, id:uid()}); persist(); toast('Plein enregistré'); }
+      else { const f = state.fuelLogs.find(x=>x.id===fuelDraft.id); Object.assign(f, patch); persist(); toast('Plein mis à jour'); }
+      currentView='fuel'; fuelDraft=null; render();
+    });
+  }
+  document.querySelectorAll('[data-del-fuel]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
     confirmModal('Supprimer ce plein ?', ()=>{
       state.fuelLogs = state.fuelLogs.filter(x=>x.id!==b.dataset.delFuel);
       persist(); render(); toast('Plein supprimé');
@@ -4756,41 +4818,59 @@ function attachHandlers(){
   }));
 
   // Notifications
-  const notifn = document.querySelector('[data-open-modal="notif-new"]');
+  const notifn = document.querySelector('#notif-new-btn');
   if(notifn) notifn.addEventListener('click', ()=>{
     const affectation = currentUser ? (currentUser.affectation||'Les deux') : 'Les deux';
     let allEquip;
     if(affectation==='Flotte') allEquip = state.fleet;
     else if(affectation==='Usine') allEquip = state.plantEquipment;
     else allEquip = [...state.fleet, ...state.plantEquipment];
-    const n = {id:null, equipementId: allEquip[0]?.id||'', type:'Panne', priorite:'Normale', description:'', declarant:'', statut:'Nouvelle', dateCreation:new Date().toISOString().slice(0,10), workOrderId:null};
-    openModal("Nouvelle demande d'intervention", notifForm(n), (data)=>{
-      if(!data.description||!data.equipementId){ alert('Description et équipement requis'); return; }
-      state.avisCounter = (state.avisCounter||0)+1;
-      state.notifications.push({...data, id:uid(), numero:'AV-'+String(state.avisCounter).padStart(4,'0'), workOrderId:null});
-      persist(); closeModal(); render(); toast('Demande créée');
-    });
+    notifDraft = {id:null, equipementId: allEquip[0]?.id||'', type:'Panne', priorite:'Normale', description:'', declarant:'', statut:'Nouvelle', dateCreation:new Date().toISOString().slice(0,10), workOrderId:null};
+    notifIsNew = true; currentView='notif-edit'; render();
   });
-  document.querySelectorAll('[data-edit-notif]').forEach(b=>b.addEventListener('click',()=>{
-    const n = state.notifications.find(x=>x.id===b.dataset.editNotif);
-    openModal('Modifier la demande', notifForm(n), (data)=>{
-      Object.assign(n, data);
-      persist(); closeModal(); render(); toast('Demande mise à jour');
-    });
+  document.querySelectorAll('[data-edit-notif]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
+    notifDraft = JSON.parse(JSON.stringify(state.notifications.find(x=>x.id===b.dataset.editNotif)));
+    notifIsNew = false; currentView='notif-edit'; render();
   }));
-  document.querySelectorAll('[data-del-notif]').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('[data-edit-notif-row]').forEach(row=>row.addEventListener('click',()=>{
+    notifDraft = JSON.parse(JSON.stringify(state.notifications.find(x=>x.id===row.dataset.editNotifRow)));
+    notifIsNew = false; currentView='notif-edit'; render();
+  }));
+  if(currentView==='notif-edit'){
+    const ffpBack = document.getElementById('ffp-back');
+    if(ffpBack) ffpBack.addEventListener('click', ()=>{ currentView='notif'; notifDraft=null; render(); });
+    const ffpSubmit = document.getElementById('ffp-submit');
+    if(ffpSubmit) ffpSubmit.addEventListener('click', ()=>{
+      const data = collectDataF();
+      if(!data.description||!data.equipementId){ alert('Description et équipement requis'); return; }
+      if(notifIsNew){
+        state.avisCounter = (state.avisCounter||0)+1;
+        state.notifications.push({...data, id:uid(), numero:'AV-'+String(state.avisCounter).padStart(4,'0'), workOrderId:null});
+        persist(); toast('Demande créée');
+      } else {
+        const n = state.notifications.find(x=>x.id===notifDraft.id); Object.assign(n, data);
+        persist(); toast('Demande mise à jour');
+      }
+      currentView='notif'; notifDraft=null; render();
+    });
+  }
+  document.querySelectorAll('[data-del-notif]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
     confirmModal('Supprimer cette demande ?', ()=>{
       state.notifications = state.notifications.filter(x=>x.id!==b.dataset.delNotif);
       persist(); render(); toast('Demande supprimée');
     }, {danger:true, okLabel:'Supprimer'});
   }));
-  document.querySelectorAll('[data-validate-notif]').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('[data-validate-notif]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
     const n = state.notifications.find(x=>x.id===b.dataset.validateNotif);
     if(!n) return;
     n.statut = 'Validée';
     logAudit('Demande '+n.numero+' validée'); persist(); render(); toast(n.numero+' validée — prête pour la création d\'un ordre de travail');
   }));
-  document.querySelectorAll('[data-convert-notif]').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('[data-convert-notif]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
     const n = state.notifications.find(x=>x.id===b.dataset.convertNotif);
     if(!n) return;
     state.woCounter = (state.woCounter||0)+1;
@@ -4812,24 +4892,35 @@ function attachHandlers(){
   }));
 
   // Compteurs / mesures
-  const measn = document.querySelector('[data-open-modal="measure-new"]');
+  const measn = document.querySelector('#measure-new-btn');
   if(measn) measn.addEventListener('click', ()=>{
     const allEquip = [...state.fleet, ...state.plantEquipment];
-    const m = {id:null, equipementId: allEquip[0]?.id||'', typePoint:POINT_TYPES[0], nom:'', unite:'', dernierReleve:'', dateReleve:'', seuilMin:'', seuilMax:''};
-    openModal('Nouveau point de mesure', measureForm(m), (data)=>{
-      if(!data.nom||!data.equipementId){ alert('Nom et équipement requis'); return; }
-      state.measuringPoints.push({...data, id:uid()});
-      persist(); closeModal(); render(); toast('Point de mesure ajouté');
-    });
+    measureDraft = {id:null, equipementId: allEquip[0]?.id||'', typePoint:POINT_TYPES[0], nom:'', unite:'', dernierReleve:'', dateReleve:'', seuilMin:'', seuilMax:''};
+    measureIsNew = true; currentView='measures-edit'; render();
   });
-  document.querySelectorAll('[data-edit-measure]').forEach(b=>b.addEventListener('click',()=>{
-    const m = state.measuringPoints.find(x=>x.id===b.dataset.editMeasure);
-    openModal('Modifier le point de mesure', measureForm(m), (data)=>{
-      Object.assign(m, data);
-      persist(); closeModal(); render(); toast('Point de mesure mis à jour');
-    });
+  document.querySelectorAll('[data-edit-measure]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
+    measureDraft = JSON.parse(JSON.stringify(state.measuringPoints.find(x=>x.id===b.dataset.editMeasure)));
+    measureIsNew = false; currentView='measures-edit'; render();
   }));
-  document.querySelectorAll('[data-del-measure]').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('[data-edit-measure-row]').forEach(row=>row.addEventListener('click',()=>{
+    measureDraft = JSON.parse(JSON.stringify(state.measuringPoints.find(x=>x.id===row.dataset.editMeasureRow)));
+    measureIsNew = false; currentView='measures-edit'; render();
+  }));
+  if(currentView==='measures-edit'){
+    const ffpBack = document.getElementById('ffp-back');
+    if(ffpBack) ffpBack.addEventListener('click', ()=>{ currentView='measures'; measureDraft=null; render(); });
+    const ffpSubmit = document.getElementById('ffp-submit');
+    if(ffpSubmit) ffpSubmit.addEventListener('click', ()=>{
+      const data = collectDataF();
+      if(!data.nom||!data.equipementId){ alert('Nom et équipement requis'); return; }
+      if(measureIsNew){ state.measuringPoints.push({...data, id:uid()}); persist(); toast('Point de mesure ajouté'); }
+      else { const m = state.measuringPoints.find(x=>x.id===measureDraft.id); Object.assign(m, data); persist(); toast('Point de mesure mis à jour'); }
+      currentView='measures'; measureDraft=null; render();
+    });
+  }
+  document.querySelectorAll('[data-del-measure]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
     confirmModal('Supprimer ce point de mesure ?', ()=>{
       state.measuringPoints = state.measuringPoints.filter(x=>x.id!==b.dataset.delMeasure);
       persist(); render(); toast('Point de mesure supprimé');
