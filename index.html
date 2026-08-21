@@ -1212,6 +1212,7 @@ function viewFleet(){
     <div class="row">
       <input id="fleet-search" placeholder="Rechercher…" style="width:180px;" value="${esc(fleetSearch)}"/>
       <button class="btn btn-ghost" data-open-types="1">${ICONS.layers} Familles</button>
+      <button class="btn btn-ghost" id="fleet-export-btn">${ICONS.receipt} Exporter Excel</button>
       <button class="btn btn-ghost" id="fleet-import-btn">${ICONS.plus} Importer Excel</button>
       <input type="file" id="fleet-import-file" accept=".xlsx,.xls,.csv" style="display:none;"/>
       <button class="btn btn-accent" id="fleet-new-btn">${ICONS.plus} Nouvel engin</button>
@@ -1296,6 +1297,33 @@ function findCol(row, names){
   }
   return '';
 }
+function exportFleetToExcel(){
+  if(state.fleet.length===0){ alert("Aucun engin à exporter."); return; }
+  const ccMap = Object.fromEntries(state.costCenters.map(c=>[c.id,c.code]));
+  const rows = state.fleet.map(e=>({
+    'Code': e.code||'',
+    'Nom ou désignation': e.nom||'',
+    'Famille': e.type||'',
+    'Marque': e.marque||'',
+    'Modèle': e.modele||'',
+    'Numéro de série': e.numeroSerie||'',
+    'Niveau criticité': e.niveauCriticite||'C',
+    'Statut': e.statut||'Opérationnel',
+    'Date mise en service': e.dateMiseEnService||'',
+    'Heures compteur': e.heures||0,
+    'Kilométrage': e.km||0,
+    'Dernier entretien': e.dernierEntretien||'',
+    'Prochain entretien': e.prochainEntretien||'',
+    'Conso réf 100h': e.conso100h||0,
+    'Centre de coût': e.centreCoutId ? (ccMap[e.centreCoutId]||'') : ''
+  }));
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Flotte');
+  const dateStr = new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb, '2NA-MAINT-PROD_flotte_'+dateStr+'.xlsx');
+  toast('Export généré — '+state.fleet.length+' engin(s)');
+}
 function importFleetRows(rows){
   let count=0;
   rows.forEach(r=>{
@@ -1305,12 +1333,29 @@ function importFleetRows(rows){
     const type = String(findCol(r,["Famille","Famille d'équipement",'Type'])||state.equipTypes[0]);
     if(!state.equipTypes.includes(type)) state.equipTypes.push(type);
     const statut = String(findCol(r,['Statut'])||'Opérationnel');
+    const marque = String(findCol(r,['Marque'])||'');
+    const modele = String(findCol(r,['Modèle','Modele'])||'');
+    const numeroSerie = String(findCol(r,['Numéro de série','Numero de serie','N° série','N série'])||'');
+    const niveauCriticite = String(findCol(r,['Niveau criticité','Niveau','Criticité'])||'');
+    const dateMiseEnService = String(findCol(r,['Date mise en service','Mise en service'])||'');
     const heures = Number(findCol(r,['Heures','Heures compteur']))||0;
     const km = Number(findCol(r,['Kilométrage','KM','Km']))||0;
+    const dernierEntretien = String(findCol(r,['Dernier entretien'])||'');
+    const prochainEntretien = String(findCol(r,['Prochain entretien'])||'');
+    const conso100h = Number(findCol(r,['Conso réf 100h','Conso 100h','Consommation']));
     const ccCode = String(findCol(r,['Centre de coût','Centre de cout'])||'').trim();
     const cc = state.costCenters.find(c=>c.code.toLowerCase()===ccCode.toLowerCase());
     const existing = state.fleet.find(e=>e.code.toLowerCase()===code.toLowerCase());
-    const obj = { code, nom, type, statut: STATUTS.includes(statut)?statut:'Opérationnel', heures, km, dernierEntretien:'', prochainEntretien:'', conso100h: existing?existing.conso100h:15, centreCoutId: cc?cc.id:(existing?existing.centreCoutId:null) };
+    const obj = { code, nom, type, statut: STATUTS.includes(statut)?statut:'Opérationnel', heures, km,
+      marque: marque || (existing?existing.marque:''),
+      modele: modele || (existing?existing.modele:''),
+      numeroSerie: numeroSerie || (existing?existing.numeroSerie:''),
+      niveauCriticite: state.niveauxCriticite.includes(niveauCriticite)?niveauCriticite:(existing?existing.niveauCriticite:'C'),
+      dateMiseEnService: dateMiseEnService || (existing?existing.dateMiseEnService:''),
+      dernierEntretien: dernierEntretien || (existing?existing.dernierEntretien:''),
+      prochainEntretien: prochainEntretien || (existing?existing.prochainEntretien:''),
+      conso100h: conso100h || (existing?existing.conso100h:15),
+      centreCoutId: cc?cc.id:(existing?existing.centreCoutId:null) };
     if(existing) Object.assign(existing, obj); else state.fleet.push({...obj, id:uid()});
     count++;
   });
@@ -4818,6 +4863,8 @@ function attachHandlers(){
   // Fleet
   const fs = document.getElementById('fleet-search');
   if(fs) fs.addEventListener('input', e=>{ fleetSearch=e.target.value; render(); document.getElementById('fleet-search').focus(); document.getElementById('fleet-search').selectionStart = document.getElementById('fleet-search').value.length; });
+  const fleetExportBtn = document.getElementById('fleet-export-btn');
+  if(fleetExportBtn) fleetExportBtn.addEventListener('click', exportFleetToExcel);
   const fleetImportBtn = document.getElementById('fleet-import-btn');
   const fleetImportFile = document.getElementById('fleet-import-file');
   if(fleetImportBtn && fleetImportFile){
