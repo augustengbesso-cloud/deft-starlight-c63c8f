@@ -397,7 +397,7 @@ function canSee(navId){
   if(mod && currentUser.modules && currentUser.modules[mod]==='Aucun') return false;
   const restricted = {
     planificateur: ['users','user-create','user-edit','audit'],
-    technicien: ['fleet','fleet-edit','pm','pm-edit','gammes','gamme-edit','fuel','fuel-edit','parts','part-edit','mvt-new','floc','floc-edit','plant','plant-edit','production','prod-edit','measures','measures-edit','costs','cc-edit','personnel','personnel-edit','reports','settings','users','user-create','user-edit','audit','da','da-edit','bc','bc-edit','bc-receive','resa','resa-new'],
+    technicien: ['dashboard','fleet','fleet-edit','pm','pm-edit','gammes','gamme-edit','fuel','fuel-edit','parts','part-edit','mvt-new','floc','floc-edit','plant','plant-edit','production','prod-edit','measures','measures-edit','costs','cc-edit','personnel','personnel-edit','conges','conge-edit','formations','formation-edit','effectifs','recrutement','candidature-edit','maternite','maternity-edit','reports','settings','users','user-create','user-edit','audit','da','da-edit','bc','bc-edit','bc-receive','resa','resa-new'],
     rh: ['fleet','fleet-edit','wo','wo-edit','pm','pm-edit','gammes','gamme-edit','fuel','fuel-edit','parts','part-edit','mvt-new','floc','floc-edit','plant','plant-edit','production','prod-edit','notif','notif-edit','measures','measures-edit','costs','cc-edit','reports','settings','users','user-create','user-edit','audit','da','da-edit','bc','bc-edit','bc-receive','resa','resa-new'],
   };
   const blocked = restricted[currentUser.role] || [];
@@ -939,7 +939,13 @@ function promoteTitle(){
   bar.style.display = 'none';
 }
 function render(){
-  if(!canSee(currentView)) currentView = 'dashboard';
+  if(!canSee(currentView)){
+    if(canSee('dashboard')) currentView = 'dashboard';
+    else {
+      const firstAllowed = NAV.flatMap(s=>s.items).find(i=>canSee(i.id));
+      currentView = firstAllowed ? firstAllowed.id : 'dashboard';
+    }
+  }
   renderNav();
   renderBottomNav();
   renderEnvBadges();
