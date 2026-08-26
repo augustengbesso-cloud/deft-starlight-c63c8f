@@ -265,7 +265,8 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
 /* ============ AUTHENTIFICATION & RÔLES ============ */
 const ROLE_LABELS = {
   admin: 'Administrateur', planificateur: 'Planificateur maintenance',
-  technicien: 'Technicien terrain', rh: 'Responsable RH'
+  technicien: 'Technicien terrain', rh: 'Responsable RH',
+  pompiste: 'Pompiste (station)', magasinier: 'Chef magasinier'
 };
 const FONCTIONS = ["Technicien","Planificateur","Superviseur","Responsable","Administrateur"];
 const NIVEAUX_HIER = [1,2,3,4,5];
@@ -391,14 +392,16 @@ function canSee(navId){
   if(!currentUser) return false;
   if(currentUser.statutCompte==='Inactif') return false;
   if(currentUser.role==='admin') return true;
-  const moduleOf = { wo:'maintenance', pm:'maintenance', gammes:'maintenance', notif:'maintenance', floc:'maintenance', plant:'maintenance', production:'maintenance', measures:'maintenance', fleet:'maintenance', fuel:'maintenance',
+  const moduleOf = { wo:'maintenance', pm:'maintenance', gammes:'maintenance', notif:'maintenance', floc:'maintenance', plant:'maintenance', production:'maintenance', measures:'maintenance', fleet:'maintenance', fuel:'maintenance', 'fuel-validation':'maintenance', cuves:'maintenance', pompes:'maintenance', ravitaillement:'maintenance',
     parts:'stock', resa:'stock', da:'achats', bc:'achats', personnel:'rh', conges:'rh', formations:'rh', effectifs:'rh', recrutement:'rh', maternite:'rh', dashboard:'reporting', costs:'reporting', reports:'reporting' };
   const mod = moduleOf[navId];
   if(mod && currentUser.modules && currentUser.modules[mod]==='Aucun') return false;
   const restricted = {
     planificateur: ['users','user-create','user-edit','audit'],
-    technicien: ['dashboard','fleet','fleet-edit','pm','pm-edit','gammes','gamme-edit','fuel','fuel-edit','parts','part-edit','mvt-new','floc','floc-edit','plant','plant-edit','production','prod-edit','measures','measures-edit','costs','cc-edit','personnel','personnel-edit','conges','conge-edit','formations','formation-edit','effectifs','recrutement','candidature-edit','maternite','maternity-edit','reports','settings','users','user-create','user-edit','audit','da','da-edit','bc','bc-edit','bc-receive','resa','resa-new'],
-    rh: ['fleet','fleet-edit','wo','wo-edit','pm','pm-edit','gammes','gamme-edit','fuel','fuel-edit','parts','part-edit','mvt-new','floc','floc-edit','plant','plant-edit','production','prod-edit','notif','notif-edit','measures','measures-edit','costs','cc-edit','reports','settings','users','user-create','user-edit','audit','da','da-edit','bc','bc-edit','bc-receive','resa','resa-new'],
+    technicien: ['dashboard','fleet','fleet-edit','pm','pm-edit','gammes','gamme-edit','fuel','fuel-edit','fuel-validation','cuves','cuve-edit','pompes','pompe-edit','ravitaillement','ravitaillement-new','parts','part-edit','mvt-new','floc','floc-edit','plant','plant-edit','production','prod-edit','measures','measures-edit','costs','cc-edit','personnel','personnel-edit','conges','conge-edit','formations','formation-edit','effectifs','recrutement','candidature-edit','maternite','maternity-edit','reports','settings','users','user-create','user-edit','audit','da','da-edit','bc','bc-edit','bc-receive','resa','resa-new'],
+    rh: ['fleet','fleet-edit','wo','wo-edit','pm','pm-edit','gammes','gamme-edit','fuel','fuel-edit','fuel-validation','cuves','cuve-edit','pompes','pompe-edit','ravitaillement','ravitaillement-new','parts','part-edit','mvt-new','floc','floc-edit','plant','plant-edit','production','prod-edit','notif','notif-edit','measures','measures-edit','costs','cc-edit','reports','settings','users','user-create','user-edit','audit','da','da-edit','bc','bc-edit','bc-receive','resa','resa-new'],
+    pompiste: ['dashboard','fleet','fleet-edit','pm','pm-edit','gammes','gamme-edit','measures','measures-edit','floc','floc-edit','plant','plant-edit','production','prod-edit','parts','part-edit','mvt-new','costs','cc-edit','resa','resa-new','da','da-edit','bc','bc-edit','bc-receive','personnel','personnel-edit','conges','conge-edit','formations','formation-edit','effectifs','recrutement','candidature-edit','maternite','maternity-edit','reports','settings','users','user-create','user-edit','audit','wo','wo-edit','notif','notif-edit','fuel-validation','cuves','cuve-edit','pompes','pompe-edit','ravitaillement','ravitaillement-new'],
+    magasinier: ['fleet','fleet-edit','pm','pm-edit','gammes','gamme-edit','measures','measures-edit','floc','floc-edit','plant','plant-edit','production','prod-edit','costs','cc-edit','da','da-edit','bc','bc-edit','bc-receive','personnel','personnel-edit','conges','conge-edit','formations','formation-edit','effectifs','recrutement','candidature-edit','maternite','maternity-edit','reports','settings','users','user-create','user-edit','audit','wo','wo-edit','notif','notif-edit'],
   };
   const blocked = restricted[currentUser.role] || [];
   return !blocked.includes(navId);
@@ -465,6 +468,11 @@ function normalizeState(){
   if(!Array.isArray(state.typesStrategieMaintenance) || state.typesStrategieMaintenance.length===0) state.typesStrategieMaintenance = ["Préventif systématique","Conditionnel","Prédictif","Correctif"];
   if(!Array.isArray(state.objectifsMaintenance) || state.objectifsMaintenance.length===0) state.objectifsMaintenance = ["Disponibilité","Sécurité","Réduction des coûts","Environnement"];
   if(!Array.isArray(state.gammesOperatoires)) state.gammesOperatoires = [];
+  if(!Array.isArray(state.cuves)) state.cuves = [];
+  if(!Array.isArray(state.pompes)) state.pompes = [];
+  if(!Array.isArray(state.ravitaillements)) state.ravitaillements = [];
+  if(!Array.isArray(state.typesCarburant) || state.typesCarburant.length===0) state.typesCarburant = ["Diesel","Essence","Pétrole"];
+  state.fuelLogs.forEach(f=>{ if(!f.statut) f.statut = 'Validé'; }); // pleins déjà existants avant ce module : considérés déjà validés
   state.personnel.forEach(p=>{ if(p.soldeConges===undefined || p.soldeConges===null || p.soldeConges==='') p.soldeConges = 26; });
 }
 async function loadRemote(){
@@ -725,7 +733,9 @@ let state = { fleet: [], workOrders: [], fuelLogs: [], parts: [], pmPlans: [], l
   normesHSE: ["Aucune","ATEX","Électrique (NFC 18-510)","Levage","Travail en hauteur","Espace confiné","Chimique","Autre"],
   typesStrategieMaintenance: ["Préventif systématique","Conditionnel","Prédictif","Correctif"],
   objectifsMaintenance: ["Disponibilité","Sécurité","Réduction des coûts","Environnement"],
-  gammesOperatoires: [] };
+  gammesOperatoires: [],
+  cuves: [], pompes: [], ravitaillements: [],
+  typesCarburant: ["Diesel","Essence","Pétrole"] };
 let currentView = 'dashboard';
 
 /* ============ HELPERS ============ */
@@ -790,8 +800,14 @@ const NAV = [
     {id:'fleet', label:'Flotte', icon:'truck'},
     {id:'pm', label:'Préventif', icon:'calendar'},
     {id:'gammes', label:'Gammes opératoires', icon:'layers'},
-    {id:'fuel', label:'Carburant', icon:'fuel'},
     {id:'measures', label:'Compteurs / mesures', icon:'ruler'},
+  ]},
+  { section:'Carburant', items:[
+    {id:'fuel', label:'Saisie pompiste', icon:'fuel'},
+    {id:'fuel-validation', label:'Validation', icon:'check'},
+    {id:'cuves', label:'Cuves', icon:'package'},
+    {id:'pompes', label:'Pompes', icon:'convert'},
+    {id:'ravitaillement', label:'Ravitaillement', icon:'receipt'},
   ]},
   { section:'Usine (Production)', items:[
     {id:'floc', label:'Emplacements', icon:'layers'},
@@ -961,6 +977,13 @@ function render(){
   else if(currentView==='pm-edit') c.innerHTML = viewPMEdit();
   else if(currentView==='fuel') c.innerHTML = viewFuel();
   else if(currentView==='fuel-edit') c.innerHTML = viewFuelEdit();
+  else if(currentView==='fuel-validation') c.innerHTML = viewFuelValidation();
+  else if(currentView==='cuves') c.innerHTML = viewCuves();
+  else if(currentView==='cuve-edit') c.innerHTML = viewCuveEdit();
+  else if(currentView==='pompes') c.innerHTML = viewPompes();
+  else if(currentView==='pompe-edit') c.innerHTML = viewPompeEdit();
+  else if(currentView==='ravitaillement') c.innerHTML = viewRavitaillement();
+  else if(currentView==='ravitaillement-new') c.innerHTML = viewRavitaillementNew();
   else if(currentView==='parts') c.innerHTML = viewParts();
   else if(currentView==='part-edit') c.innerHTML = viewPartEdit();
   else if(currentView==='mvt-new') c.innerHTML = viewMvtNew();
@@ -2423,56 +2446,225 @@ function wirePMEdit(){
 }
 
 /* ============ FUEL ============ */
-function viewFuel(){
-  const em = equipMap();
-  const sorted = [...state.fuelLogs].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
-  const totalL = state.fuelLogs.reduce((a,f)=>a+Number(f.quantite||0),0);
-  const totalCost = state.fuelLogs.reduce((a,f)=>a+Number(f.cout||0),0);
-  const byEquip = {};
-  state.fuelLogs.forEach(f=>{ (byEquip[f.equipementId]=byEquip[f.equipementId]||[]).push(f); });
+/* ============ CUVES ============ */
+function cuveForm(c){
+  return `
+  <div class="formgrid">
+    <label class="field"><span>Nom / code</span><input data-f="nom" value="${esc(c.nom)}" placeholder="CUVE-01"/></label>
+    <label class="field"><span>Type de carburant</span><select data-f="typeCarburant">${state.typesCarburant.map(t=>`<option ${c.typeCarburant===t?'selected':''}>${t}</option>`).join('')}</select></label>
+    <label class="field"><span>Capacité (L)</span><input type="number" data-f="capacite" value="${c.capacite||0}"/></label>
+    <label class="field"><span>Niveau actuel (L)</span><input type="number" data-f="niveauActuel" value="${c.niveauActuel||0}"/></label>
+    <label class="field"><span>Statut</span><select data-f="statut">${STATUTS.map(s=>`<option ${c.statut===s?'selected':''}>${s}</option>`).join('')}</select></label>
+    <label class="field"><span>Emplacement</span><input data-f="emplacement" value="${esc(c.emplacement||'')}" placeholder="Station principale"/></label>
+  </div>
+  <p style="font-size:11px;color:var(--muted);margin-top:10px;">Le niveau actuel se met normalement à jour tout seul (ravitaillements en plus, pleins validés en moins) — ne le corrige manuellement qu'en cas d'écart constaté physiquement.</p>`;
+}
+let cuveDraft = null;
+let cuveIsNew = false;
+function viewCuveEdit(){
+  return fullFormPageHtml(cuveIsNew?'Nouvelle cuve':'Modifier la cuve — '+(cuveDraft.nom||''), 'Réservoir de stockage carburant', cuveForm(cuveDraft));
+}
+function viewCuves(){
+  const list = [...state.cuves].sort((a,b)=>(a.nom||'').localeCompare(b.nom||''));
   return `
   <div class="headrow">
-    <div><h1>Carburant</h1><p class="subtitle" style="margin:0;">${fmt(totalL)} L · ${fmt(totalCost)} FCFA cumulés</p></div>
+    <div><h1>Cuves</h1><p class="subtitle" style="margin:0;">Réservoirs de stockage — niveaux et capacités</p></div>
+    <button class="btn btn-accent" id="cuve-new-btn">${ICONS.plus} Nouvelle cuve</button>
+  </div>
+  ${list.length===0?`<div class="plate p16"><div class="empty">${ICONS.package}<span>Aucune cuve enregistrée.</span></div></div>`:
+  `<div class="grid grid-fleet">
+  ${list.map(c=>{ const pct = c.capacite>0 ? Math.min(100,Math.round((c.niveauActuel||0)/c.capacite*100)) : 0;
+    const low = pct<20;
+    return `<div class="plate p16 legend-clickable" data-edit-cuve-row="${c.id}">
+    <div class="between" style="margin-bottom:8px;">
+      <span style="font-size:14px;font-weight:600;">${esc(c.nom)}</span>
+      <div class="row"><button class="icon-btn" data-edit-cuve="${c.id}">${ICONS.edit}</button><button class="icon-btn" data-del-cuve="${c.id}">${ICONS.trash}</button></div>
+    </div>
+    <div class="badge" style="margin-bottom:8px;">${esc(c.typeCarburant)}</div>
+    <div style="background:var(--panelR);border-radius:6px;height:10px;overflow:hidden;margin-bottom:6px;">
+      <div style="height:100%;width:${pct}%;background:${low?'var(--danger)':'var(--success)'};"></div>
+    </div>
+    <div class="between" style="font-size:12px;color:var(--muted);">
+      <span>${fmt(c.niveauActuel||0)} / ${fmt(c.capacite||0)} L</span><span style="color:${low?'var(--danger)':'var(--muted)'};">${pct}%</span>
+    </div>
+    ${c.emplacement?`<div style="font-size:11px;color:var(--muted);margin-top:6px;">${esc(c.emplacement)}</div>`:''}
+  </div>`;}).join('')}
+  </div>`}`;
+}
+
+/* ============ POMPES ============ */
+function pompeForm(p){
+  const cuveOpts = state.cuves.map(c=>`<option value="${c.id}" ${p.cuveId===c.id?'selected':''}>${esc(c.nom)} (${esc(c.typeCarburant)})</option>`).join('');
+  return `
+  <div class="formgrid">
+    <label class="field"><span>Nom / numéro</span><input data-f="nom" value="${esc(p.nom)}" placeholder="POMPE-01"/></label>
+    <label class="field"><span>Cuve alimentant cette pompe</span><select data-f="cuveId">${cuveOpts||'<option value="">Aucune cuve — crée-en une d\'abord</option>'}</select></label>
+    <label class="field span2"><span>Statut</span><select data-f="statut">${STATUTS.map(s=>`<option ${p.statut===s?'selected':''}>${s}</option>`).join('')}</select></label>
+  </div>`;
+}
+let pompeDraft = null;
+let pompeIsNew = false;
+function viewPompeEdit(){
+  return fullFormPageHtml(pompeIsNew?'Nouvelle pompe':'Modifier la pompe — '+(pompeDraft.nom||''), 'Point de distribution relié à une cuve', pompeForm(pompeDraft));
+}
+function viewPompes(){
+  const cm = Object.fromEntries(state.cuves.map(c=>[c.id,c]));
+  const list = [...state.pompes].sort((a,b)=>(a.nom||'').localeCompare(b.nom||''));
+  return `
+  <div class="headrow">
+    <div><h1>Pompes</h1><p class="subtitle" style="margin:0;">Points de distribution, chacun relié à une cuve</p></div>
+    <button class="btn btn-accent" id="pompe-new-btn">${ICONS.plus} Nouvelle pompe</button>
+  </div>
+  ${list.length===0?`<div class="plate p16"><div class="empty">${ICONS.convert}<span>Aucune pompe enregistrée.</span></div></div>`:
+  `<div style="display:flex;flex-direction:column;gap:8px;">
+  ${list.map(p=>{ const c = cm[p.cuveId];
+    return `<div class="plate p14 between wrapwrap legend-clickable" data-edit-pompe-row="${p.id}" style="gap:12px;">
+    <div class="row">
+      <span class="led" style="background:${p.statut==='Opérationnel'?'var(--success)':'var(--muted)'}"></span>
+      <div>
+        <div class="row" style="flex-wrap:wrap;"><span style="font-size:13px;font-weight:500;">${esc(p.nom)}</span><span class="badge">${p.statut}</span></div>
+        <div style="font-size:12px;color:var(--muted);">Alimentée par ${c?esc(c.nom):'—'}${c?' ('+esc(c.typeCarburant)+')':''}</div>
+      </div>
+    </div>
+    <div class="row"><button class="icon-btn" data-edit-pompe="${p.id}">${ICONS.edit}</button><button class="icon-btn" data-del-pompe="${p.id}">${ICONS.trash}</button></div>
+  </div>`;}).join('')}
+  </div>`}`;
+}
+
+/* ============ RAVITAILLEMENT (réception cuve) ============ */
+function ravitaillementForm(r){
+  const cuveOpts = state.cuves.map(c=>`<option value="${c.id}" ${r.cuveId===c.id?'selected':''}>${esc(c.nom)} (${esc(c.typeCarburant)}) — actuellement ${fmt(c.niveauActuel||0)}/${fmt(c.capacite||0)} L</option>`).join('');
+  return `
+  <div class="formgrid">
+    <label class="field span2"><span>Cuve de dépotage</span><select data-f="cuveId">${cuveOpts||'<option value="">Aucune cuve — crée-en une d\'abord</option>'}</select></label>
+    <label class="field"><span>Quantité livrée (L)</span><input type="number" data-f="quantite" value="${r.quantite||0}"/></label>
+    <label class="field"><span>Date</span><input type="date" data-f="date" value="${r.date||''}"/></label>
+    <label class="field"><span>Fournisseur</span><input data-f="fournisseur" value="${esc(r.fournisseur||'')}"/></label>
+    <label class="field"><span>Coût total (FCFA)</span><input type="number" data-f="coutTotal" value="${r.coutTotal||0}"/></label>
+    <label class="field"><span>N° bon de livraison</span><input data-f="bonLivraison" value="${esc(r.bonLivraison||'')}"/></label>
+    <label class="field"><span>Réceptionnaire</span><input data-f="receptionnaire" value="${esc(r.receptionnaire||(currentUser?currentUser.nomComplet:''))}"/></label>
+  </div>
+  <p style="font-size:11px;color:var(--muted);margin-top:10px;">Le niveau de la cuve choisie sera augmenté automatiquement de la quantité livrée à l'enregistrement.</p>`;
+}
+function viewRavitaillementNew(){
+  return fullFormPageHtml('Nouveau ravitaillement', 'Réception d\'une livraison de carburant dans une cuve', ravitaillementForm({date:new Date().toISOString().slice(0,10)}));
+}
+function viewRavitaillement(){
+  const cm = Object.fromEntries(state.cuves.map(c=>[c.id,c]));
+  const sorted = [...state.ravitaillements].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const totalL = state.ravitaillements.reduce((a,r)=>a+Number(r.quantite||0),0);
+  return `
+  <div class="headrow">
+    <div><h1>Ravitaillement</h1><p class="subtitle" style="margin:0;">${fmt(totalL)} L réceptionnés au total</p></div>
+    <button class="btn btn-accent" id="ravitaillement-new-btn">${ICONS.plus} Nouveau ravitaillement</button>
+  </div>
+  ${sorted.length===0?`<div class="plate p16"><div class="empty">${ICONS.receipt}<span>Aucun ravitaillement enregistré.</span></div></div>`:
+  `<div class="plate" style="overflow:hidden;">
+  <table><thead><tr><th>Date</th><th>Cuve</th><th class="right">Quantité</th><th>Fournisseur</th><th class="right">Coût</th><th>Bon livraison</th><th>Réceptionnaire</th><th></th></tr></thead>
+  <tbody>
+  ${sorted.map(r=>{ const c=cm[r.cuveId];
+    return `<tr class="legend-clickable" data-edit-ravito-row="${r.id}">
+    <td>${r.date||''}</td><td class="mono">${c?esc(c.nom):'—'}</td>
+    <td class="right mono">${fmt(r.quantite)} L</td><td style="color:var(--muted)">${esc(r.fournisseur)||'—'}</td>
+    <td class="right mono" style="color:var(--muted)">${fmt(r.coutTotal)}</td>
+    <td style="color:var(--muted)">${esc(r.bonLivraison)||'—'}</td><td style="color:var(--muted)">${esc(r.receptionnaire)||'—'}</td>
+    <td><button class="icon-btn" data-del-ravito="${r.id}">${ICONS.trash}</button></td>
+  </tr>`;}).join('')}
+  </tbody></table></div>`}`;
+}
+
+/* ============ SAISIE POMPISTE (carburant) ============ */
+function fuelStatutColor(s){
+  return { 'En attente':'var(--accent)', 'Validé':'var(--success)' }[s] || 'var(--muted)';
+}
+function viewFuel(){
+  const em = equipMap();
+  const cm = Object.fromEntries(state.cuves.map(c=>[c.id,c]));
+  const pm = Object.fromEntries(state.pompes.map(p=>[p.id,p]));
+  const isPompiste = currentUser && currentUser.role==='pompiste';
+  let sorted = [...state.fuelLogs].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  if(isPompiste) sorted = sorted.filter(f=>f.pompiste===currentUser.nomComplet);
+  const totalL = state.fuelLogs.reduce((a,f)=>a+Number(f.quantite||0),0);
+  const totalCost = state.fuelLogs.reduce((a,f)=>a+Number(f.cout||0),0);
+  const enAttente = state.fuelLogs.filter(f=>f.statut==='En attente').length;
+  return `
+  <div class="headrow">
+    <div><h1>Saisie pompiste</h1><p class="subtitle" style="margin:0;">${fmt(totalL)} L · ${fmt(totalCost)} FCFA cumulés${isPompiste?' · tes saisies':''}</p></div>
     <button class="btn btn-accent" id="fuel-new-btn">${ICONS.plus} Nouveau plein</button>
   </div>
-  <div class="grid grid-status" style="margin-bottom:16px;">
-    ${state.fleet.map(e=>{
-      const logs = byEquip[e.id]||[]; const total = logs.reduce((a,f)=>a+Number(f.quantite||0),0);
-      const over = logs.length && (total/logs.length) > (e.conso100h||999);
-      return `<div class="plate p14">
-        <div class="between"><span class="mono" style="font-size:13px;">${e.code}</span>${over?ICONS.alert:''}</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:2px;">${fmt(total)} L · ${logs.length} pleins</div>
-      </div>`;
-    }).join('')}
-  </div>
+  ${enAttente>0 && !isPompiste?`<div class="plate p14" style="margin-bottom:16px;border-color:var(--accent);">
+    <div class="row">${ICONS.alert}<strong style="font-size:13px;">${enAttente} saisie(s) en attente de validation</strong><button class="btn btn-ghost" style="margin-left:auto;color:var(--accent);border-color:var(--accent);font-size:12px;" data-nav="fuel-validation">Voir →</button></div>
+  </div>`:''}
   ${sorted.length===0?`<div class="plate p16"><div class="empty">${ICONS.fuel}<span>Aucun plein enregistré.</span></div></div>`:
   `<div class="plate" style="overflow:hidden;">
-  <table><thead><tr><th>Date</th><th>Engin</th><th class="right">Quantité</th><th class="right">Coût</th><th>Opérateur</th><th></th></tr></thead>
+  <table><thead><tr><th>Date</th><th>Engin</th><th>Cuve</th><th>Pompe</th><th class="right">Quantité</th><th class="right">Coût</th><th>Pompiste</th><th>Statut</th><th></th></tr></thead>
   <tbody>
   ${sorted.map(f=>`<tr class="legend-clickable" data-edit-fuel-row="${f.id}">
     <td>${f.date||''}</td><td class="mono">${em[f.equipementId]?.code||'—'}</td>
+    <td style="color:var(--muted)">${f.cuveId&&cm[f.cuveId]?esc(cm[f.cuveId].nom):'—'}</td>
+    <td style="color:var(--muted)">${f.pompeId&&pm[f.pompeId]?esc(pm[f.pompeId].nom):'—'}</td>
     <td class="right mono">${fmt(f.quantite)} L</td><td class="right mono" style="color:var(--muted)">${fmt(f.cout)}</td>
-    <td style="color:var(--muted)">${esc(f.operateur)||'—'}</td>
-    <td><div class="row" style="justify-content:flex-end;"><button class="icon-btn" data-edit-fuel="${f.id}">${ICONS.edit}</button><button class="icon-btn" data-del-fuel="${f.id}">${ICONS.trash}</button></div></td>
+    <td style="color:var(--muted)">${esc(f.pompiste||f.operateur)||'—'}</td>
+    <td><span class="badge" style="color:${fuelStatutColor(f.statut)};border-color:${fuelStatutColor(f.statut)};">${f.statut||'Validé'}</span></td>
+    <td><div class="row" style="justify-content:flex-end;">${f.statut!=='Validé'||!isPompiste?`<button class="icon-btn" data-edit-fuel="${f.id}">${ICONS.edit}</button>`:''}<button class="icon-btn" data-del-fuel="${f.id}">${ICONS.trash}</button></div></td>
   </tr>`).join('')}
   </tbody></table></div>`}`;
 }
 function fuelForm(f){
   const opts = state.fleet.map(e=>`<option value="${e.id}" ${f.equipementId===e.id?'selected':''}>${e.code} — ${e.nom}</option>`).join('');
+  const cuveOpts = state.cuves.map(c=>`<option value="${c.id}" ${f.cuveId===c.id?'selected':''}>${esc(c.nom)} (${esc(c.typeCarburant)})</option>`).join('');
+  const pompesForCuve = f.cuveId ? state.pompes.filter(p=>p.cuveId===f.cuveId) : state.pompes;
+  const pompeOpts = pompesForCuve.map(p=>`<option value="${p.id}" ${f.pompeId===p.id?'selected':''}>${esc(p.nom)}</option>`).join('');
   return `
   <div class="formgrid">
     <label class="field"><span>Engin</span><select data-f="equipementId">${opts}</select></label>
     <label class="field"><span>Date</span><input type="date" data-f="date" value="${f.date||''}"/></label>
+    <label class="field"><span>Cuve</span><select id="fuel-f-cuve">${cuveOpts||'<option value="">Aucune cuve créée</option>'}</select></label>
+    <label class="field"><span>Pompe</span><select data-f="pompeId" id="fuel-f-pompe">${pompeOpts||'<option value="">Aucune pompe pour cette cuve</option>'}</select></label>
     <label class="field"><span>Quantité (L)</span><input type="number" data-f="quantite" value="${f.quantite||0}"/></label>
     <label class="field"><span>Coût (FCFA)</span><input type="number" data-f="cout" value="${f.cout||0}"/></label>
     <label class="field"><span>Heures compteur</span><input type="number" data-f="heures" value="${f.heures||0}"/></label>
-    <label class="field"><span>Opérateur</span><input data-f="operateur" value="${esc(f.operateur)}"/></label>
-  </div>`;
+    <label class="field"><span>Pompiste / opérateur</span><input data-f="pompiste" value="${esc(f.pompiste||f.operateur||(currentUser?currentUser.nomComplet:''))}"/></label>
+    <input type="hidden" data-f="cuveId" id="fuel-f-cuve-hidden" value="${f.cuveId||''}"/>
+  </div>
+  <p style="font-size:11px;color:var(--muted);margin-top:10px;">Cette saisie reste "En attente" jusqu'à validation par le chef magasinier — c'est cette validation qui décompte réellement le stock de la cuve.</p>`;
 }
 let fuelDraft = null;
 let fuelIsNew = false;
 function viewFuelEdit(){
-  return fullFormPageHtml(fuelIsNew?'Nouveau plein':'Modifier le plein', 'Détail du ravitaillement — engin, quantité, coût et compteur', fuelForm(fuelDraft));
+  return fullFormPageHtml(fuelIsNew?'Nouveau plein':'Modifier le plein', 'Détail du plein — engin, cuve, pompe, quantité et coût', fuelForm(fuelDraft));
+}
+
+/* ============ VALIDATION CARBURANT (chef magasinier) ============ */
+function viewFuelValidation(){
+  const em = equipMap();
+  const cm = Object.fromEntries(state.cuves.map(c=>[c.id,c]));
+  const pm = Object.fromEntries(state.pompes.map(p=>[p.id,p]));
+  const pending = state.fuelLogs.filter(f=>f.statut==='En attente').sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  return `
+  <h1>Validation carburant</h1>
+  <p class="subtitle">Vérifie et corrige si besoin les quantités saisies par les pompistes avant validation — le stock de la cuve n'est décompté qu'à ce moment-là</p>
+  ${pending.length===0?`<div class="plate p16"><div class="empty">${ICONS.check}<span>Aucune saisie en attente de validation.</span></div></div>`:
+  `<div style="display:flex;flex-direction:column;gap:10px;">
+  ${pending.map(f=>{ const c = cm[f.cuveId];
+    return `<div class="plate p16">
+    <div class="between wrapwrap" style="gap:12px;margin-bottom:10px;">
+      <div>
+        <div class="row" style="flex-wrap:wrap;"><span style="font-size:13px;font-weight:500;">${em[f.equipementId]?.code||'—'} — ${em[f.equipementId]?.nom||''}</span><span class="badge" style="color:var(--accent);border-color:var(--accent);">En attente</span></div>
+        <div style="font-size:12px;color:var(--muted);">${f.date||''} · Pompiste : ${esc(f.pompiste||f.operateur)||'—'} · Cuve : ${c?esc(c.nom):'—'} · Pompe : ${f.pompeId&&pm[f.pompeId]?esc(pm[f.pompeId].nom):'—'}</div>
+      </div>
+    </div>
+    <div class="row wrapwrap" style="gap:10px;align-items:flex-end;">
+      <label class="field" style="max-width:160px;"><span>Quantité saisie (L)</span><input type="number" id="fv-qty-${f.id}" value="${f.quantite}"/></label>
+      <label class="field" style="max-width:160px;"><span>Coût (FCFA)</span><input type="number" id="fv-cost-${f.id}" value="${f.cout||0}"/></label>
+      ${c?`<span style="font-size:11px;color:var(--muted);padding-bottom:10px;">Stock cuve avant validation : ${fmt(c.niveauActuel||0)} L</span>`:''}
+      <div class="row" style="margin-left:auto;">
+        <button class="btn btn-ghost" style="color:var(--success);border-color:var(--success);" data-validate-fuel="${f.id}">${ICONS.check} Valider</button>
+        <button class="btn btn-ghost" style="color:var(--danger);border-color:var(--danger);" data-del-fuel="${f.id}">${ICONS.trash} Rejeter</button>
+      </div>
+    </div>
+  </div>`;}).join('')}
+  </div>`}`;
 }
 
 /* ============ PARTS ============ */
@@ -3652,7 +3844,8 @@ const EDITABLE_LIST_KEYS = { 'wo-typetravail':'typesTravail', 'wo-type':'woTypes
   'cat-article':'categoriesArticle', 'unite-article':'unitesArticle', 'niveau-critic':'niveauxCriticite',
   'type-mvt':'typesMouvement', 'loc-type':'locationTypes', 'affectation':'affectations', 'fonction':'fonctions', 'niveau-appro':'niveauxApprobation',
   'type-conge':'typesConge', 'type-formation':'typesFormation', 'statut-recrut':'statutsRecrutement',
-  'norme-hse':'normesHSE', 'strategie-maint':'typesStrategieMaintenance', 'objectif-maint':'objectifsMaintenance' };
+  'norme-hse':'normesHSE', 'strategie-maint':'typesStrategieMaintenance', 'objectif-maint':'objectifsMaintenance',
+  'type-carburant':'typesCarburant' };
 function wireEditableLists(){
   document.querySelectorAll('[data-elist-add]').forEach(b=>b.addEventListener('click',()=>{
     const prefix = b.dataset.elistAdd; const key = EDITABLE_LIST_KEYS[prefix];
@@ -3682,6 +3875,7 @@ function wireEditableLists(){
       'norme-hse': ()=>state.workOrders.some(w=>w.normeHSE===val) || state.gammesOperatoires.some(g=>g.normeHSE===val),
       'strategie-maint': ()=>state.pmPlans.some(p=>p.typeStrategie===val),
       'objectif-maint': ()=>state.pmPlans.some(p=>p.objectif===val),
+      'type-carburant': ()=>state.cuves.some(c=>c.typeCarburant===val),
     };
     const used = usageCheckers[prefix] ? usageCheckers[prefix]() : false;
     const doDelete = ()=>{ state[key].splice(i,1); persist(); render(); };
@@ -3750,6 +3944,7 @@ function viewSettings(){
     ${editableListBlock('Normes / réglementations HSE', 'normesHSE', 'norme-hse', 'Nouvelle norme (ex: ISO 45001)')}
     ${editableListBlock('Types de stratégie de maintenance', 'typesStrategieMaintenance', 'strategie-maint', 'Nouveau type (ex: Basé condition)')}
     ${editableListBlock('Objectifs de maintenance', 'objectifsMaintenance', 'objectif-maint', 'Nouvel objectif (ex: Qualité)')}
+    ${editableListBlock('Types de carburant', 'typesCarburant', 'type-carburant', 'Nouveau type (ex: GPL)')}
 
     <div class="plate p16">
       <h3 class="oswald" style="text-transform:uppercase;font-size:14px;margin:0 0 10px;">Autres référentiels</h3>
@@ -5034,10 +5229,10 @@ function attachHandlers(){
     else confirmModal('Supprimer cette gamme opératoire ?', doDelete, {danger:true, okLabel:'Supprimer'});
   }));
 
-  // Fuel
+  // Fuel (saisie pompiste)
   const fn = document.querySelector('#fuel-new-btn');
   if(fn) fn.addEventListener('click', ()=>{
-    fuelDraft = {id:null, equipementId: state.fleet[0]?.id||'', date:new Date().toISOString().slice(0,10), quantite:0, cout:0, heures:0, operateur:''};
+    fuelDraft = {id:null, equipementId: state.fleet[0]?.id||'', date:new Date().toISOString().slice(0,10), quantite:0, cout:0, heures:0, cuveId: state.cuves[0]?.id||'', pompeId:'', pompiste: currentUser?currentUser.nomComplet:'', statut:'En attente'};
     fuelIsNew = true; currentView='fuel-edit'; render();
   });
   document.querySelectorAll('[data-edit-fuel]').forEach(b=>b.addEventListener('click',(e)=>{
@@ -5050,14 +5245,27 @@ function attachHandlers(){
     fuelIsNew = false; currentView='fuel-edit'; render();
   }));
   if(currentView==='fuel-edit'){
+    const cuveSel = document.getElementById('fuel-f-cuve');
+    const cuveHidden = document.getElementById('fuel-f-cuve-hidden');
+    if(cuveSel && cuveHidden){
+      cuveSel.addEventListener('change', ()=>{
+        cuveHidden.value = cuveSel.value;
+        fuelDraft.cuveId = cuveSel.value; fuelDraft.pompeId = '';
+        render();
+      });
+    }
     const ffpBack = document.getElementById('ffp-back');
     if(ffpBack) ffpBack.addEventListener('click', ()=>{ currentView='fuel'; fuelDraft=null; render(); });
     const ffpSubmit = document.getElementById('ffp-submit');
     if(ffpSubmit) ffpSubmit.addEventListener('click', ()=>{
       const data = collectDataF();
+      if(cuveSel) data.cuveId = cuveSel.value;
       if(!data.equipementId||!data.quantite){ alert('Engin et quantité requis'); return; }
       const patch = {...data, quantite:Number(data.quantite), cout:Number(data.cout), heures:Number(data.heures)};
-      if(fuelIsNew){ state.fuelLogs.push({...patch, id:uid()}); persist(); toast('Plein enregistré'); }
+      if(fuelIsNew){
+        state.fuelLogs.push({...patch, id:uid(), statut:'En attente'});
+        persist(); toast('Plein enregistré — en attente de validation par le magasinier');
+      }
       else { const f = state.fuelLogs.find(x=>x.id===fuelDraft.id); Object.assign(f, patch); persist(); toast('Plein mis à jour'); }
       currentView='fuel'; fuelDraft=null; render();
     });
@@ -5067,6 +5275,134 @@ function attachHandlers(){
     confirmModal('Supprimer ce plein ?', ()=>{
       state.fuelLogs = state.fuelLogs.filter(x=>x.id!==b.dataset.delFuel);
       persist(); render(); toast('Plein supprimé');
+    }, {danger:true, okLabel:'Supprimer'});
+  }));
+
+  // Validation carburant (chef magasinier)
+  document.querySelectorAll('[data-validate-fuel]').forEach(b=>b.addEventListener('click',()=>{
+    const f = state.fuelLogs.find(x=>x.id===b.dataset.validateFuel);
+    if(!f) return;
+    const qtyInput = document.getElementById('fv-qty-'+f.id);
+    const costInput = document.getElementById('fv-cost-'+f.id);
+    const qty = Number(qtyInput.value)||0;
+    const cost = Number(costInput.value)||0;
+    if(qty<=0){ alert('Quantité invalide'); return; }
+    const c = state.cuves.find(x=>x.id===f.cuveId);
+    const doValidate = ()=>{
+      confirmModal('Valider ce plein de '+qty+' L ? Le stock de la cuve sera décompté en conséquence.', ()=>{
+        f.quantiteSaisie = f.quantite;
+        f.quantite = qty; f.cout = cost;
+        f.statut = 'Validé'; f.validateur = currentUser?currentUser.nomComplet:''; f.dateValidation = new Date().toISOString().slice(0,10);
+        if(c){ c.niveauActuel = Math.max(0, Number(c.niveauActuel||0) - qty); }
+        logAudit('Plein validé — '+qty+' L pour engin '+(f.equipementId||'?')+(c?' (cuve '+c.nom+')':''));
+        persist(); render(); toast('Plein validé, stock de la cuve mis à jour');
+      });
+    };
+    if(c && qty>Number(c.niveauActuel||0)){
+      confirmModal('Attention : la cuve '+c.nom+' n\'a que '+fmt(c.niveauActuel||0)+' L en stock, moins que les '+qty+' L à valider. Valider quand même ?', doValidate, {danger:true, okLabel:'Valider quand même'});
+    } else doValidate();
+  }));
+
+  // Cuves
+  const cuven = document.querySelector('#cuve-new-btn');
+  if(cuven) cuven.addEventListener('click', ()=>{
+    cuveDraft = {id:null, nom:'', typeCarburant:state.typesCarburant[0], capacite:0, niveauActuel:0, statut:'Opérationnel', emplacement:''};
+    cuveIsNew = true; currentView='cuve-edit'; render();
+  });
+  document.querySelectorAll('[data-edit-cuve]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
+    cuveDraft = JSON.parse(JSON.stringify(state.cuves.find(x=>x.id===b.dataset.editCuve)));
+    cuveIsNew = false; currentView='cuve-edit'; render();
+  }));
+  document.querySelectorAll('[data-edit-cuve-row]').forEach(row=>row.addEventListener('click',()=>{
+    cuveDraft = JSON.parse(JSON.stringify(state.cuves.find(x=>x.id===row.dataset.editCuveRow)));
+    cuveIsNew = false; currentView='cuve-edit'; render();
+  }));
+  if(currentView==='cuve-edit'){
+    const ffpBack = document.getElementById('ffp-back');
+    if(ffpBack) ffpBack.addEventListener('click', ()=>{ currentView='cuves'; cuveDraft=null; render(); });
+    const ffpSubmit = document.getElementById('ffp-submit');
+    if(ffpSubmit) ffpSubmit.addEventListener('click', ()=>{
+      const data = collectDataF();
+      if(!data.nom){ alert('Nom requis'); return; }
+      const patch = {...data, capacite:Number(data.capacite), niveauActuel:Number(data.niveauActuel)};
+      if(cuveIsNew){ state.cuves.push({...patch, id:uid()}); persist(); toast('Cuve ajoutée'); }
+      else { const c = state.cuves.find(x=>x.id===cuveDraft.id); Object.assign(c, patch); persist(); toast('Cuve mise à jour'); }
+      currentView='cuves'; cuveDraft=null; render();
+    });
+  }
+  document.querySelectorAll('[data-del-cuve]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
+    const used = state.pompes.some(p=>p.cuveId===b.dataset.delCuve);
+    const doDelete = ()=>{ state.cuves = state.cuves.filter(x=>x.id!==b.dataset.delCuve); persist(); render(); toast('Cuve supprimée'); };
+    if(used) confirmModal('Des pompes sont reliées à cette cuve. La supprimer quand même ?', doDelete, {danger:true, okLabel:'Supprimer quand même'});
+    else confirmModal('Supprimer cette cuve ?', doDelete, {danger:true, okLabel:'Supprimer'});
+  }));
+
+  // Pompes
+  const pompen = document.querySelector('#pompe-new-btn');
+  if(pompen) pompen.addEventListener('click', ()=>{
+    pompeDraft = {id:null, nom:'', cuveId: state.cuves[0]?.id||'', statut:'Opérationnel'};
+    pompeIsNew = true; currentView='pompe-edit'; render();
+  });
+  document.querySelectorAll('[data-edit-pompe]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
+    pompeDraft = JSON.parse(JSON.stringify(state.pompes.find(x=>x.id===b.dataset.editPompe)));
+    pompeIsNew = false; currentView='pompe-edit'; render();
+  }));
+  document.querySelectorAll('[data-edit-pompe-row]').forEach(row=>row.addEventListener('click',()=>{
+    pompeDraft = JSON.parse(JSON.stringify(state.pompes.find(x=>x.id===row.dataset.editPompeRow)));
+    pompeIsNew = false; currentView='pompe-edit'; render();
+  }));
+  if(currentView==='pompe-edit'){
+    const ffpBack = document.getElementById('ffp-back');
+    if(ffpBack) ffpBack.addEventListener('click', ()=>{ currentView='pompes'; pompeDraft=null; render(); });
+    const ffpSubmit = document.getElementById('ffp-submit');
+    if(ffpSubmit) ffpSubmit.addEventListener('click', ()=>{
+      const data = collectDataF();
+      if(!data.nom){ alert('Nom requis'); return; }
+      if(pompeIsNew){ state.pompes.push({...data, id:uid()}); persist(); toast('Pompe ajoutée'); }
+      else { const p = state.pompes.find(x=>x.id===pompeDraft.id); Object.assign(p, data); persist(); toast('Pompe mise à jour'); }
+      currentView='pompes'; pompeDraft=null; render();
+    });
+  }
+  document.querySelectorAll('[data-del-pompe]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
+    confirmModal('Supprimer cette pompe ?', ()=>{
+      state.pompes = state.pompes.filter(x=>x.id!==b.dataset.delPompe);
+      persist(); render(); toast('Pompe supprimée');
+    }, {danger:true, okLabel:'Supprimer'});
+  }));
+
+  // Ravitaillement
+  const ravn = document.querySelector('#ravitaillement-new-btn');
+  if(ravn) ravn.addEventListener('click', ()=>{ currentView='ravitaillement-new'; render(); });
+  if(currentView==='ravitaillement-new'){
+    const ffpBack = document.getElementById('ffp-back');
+    if(ffpBack) ffpBack.addEventListener('click', ()=>{ currentView='ravitaillement'; render(); });
+    const ffpSubmit = document.getElementById('ffp-submit');
+    if(ffpSubmit) ffpSubmit.addEventListener('click', ()=>{
+      const data = collectDataF();
+      if(!data.cuveId||!data.quantite){ alert('Cuve et quantité requises'); return; }
+      const qty = Number(data.quantite)||0;
+      const c = state.cuves.find(x=>x.id===data.cuveId);
+      const doSave = ()=>{
+        state.ravitaillements.push({...data, id:uid(), quantite:qty, coutTotal:Number(data.coutTotal)||0});
+        if(c) c.niveauActuel = Number(c.niveauActuel||0) + qty;
+        logAudit('Ravitaillement — '+qty+' L dans '+(c?c.nom:'?'));
+        persist(); toast('Ravitaillement enregistré, stock de la cuve mis à jour');
+        currentView='ravitaillement'; render();
+      };
+      if(c && c.capacite>0 && (Number(c.niveauActuel||0)+qty) > c.capacite){
+        confirmModal('Cette quantité dépasse la capacité de la cuve ('+fmt(c.capacite)+' L). Enregistrer quand même ?', doSave, {danger:true, okLabel:'Enregistrer quand même'});
+      } else doSave();
+    });
+  }
+  document.querySelectorAll('[data-del-ravito]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
+    confirmModal('Supprimer ce ravitaillement ? (le stock de la cuve ne sera pas réajusté automatiquement)', ()=>{
+      state.ravitaillements = state.ravitaillements.filter(x=>x.id!==b.dataset.delRavito);
+      persist(); render(); toast('Ravitaillement supprimé');
     }, {danger:true, okLabel:'Supprimer'});
   }));
 
@@ -6065,7 +6401,8 @@ async function init(){
       normesHSE: ["Aucune","ATEX","Électrique (NFC 18-510)","Levage","Travail en hauteur","Espace confiné","Chimique","Autre"],
       typesStrategieMaintenance: ["Préventif systématique","Conditionnel","Prédictif","Correctif"],
       objectifsMaintenance: ["Disponibilité","Sécurité","Réduction des coûts","Environnement"],
-      gammesOperatoires: [] };
+      gammesOperatoires: [],
+      cuves: [], pompes: [], ravitaillements: [], typesCarburant: ["Diesel","Essence","Pétrole"] };
   } else {
     // compatibilité ascendante : ajoute le module usine si absent d'un compte existant
     if(!data.locations || data.locations.length===0){
@@ -6114,6 +6451,10 @@ async function init(){
     data.typesStrategieMaintenance = (data.typesStrategieMaintenance && data.typesStrategieMaintenance.length) ? data.typesStrategieMaintenance : ["Préventif systématique","Conditionnel","Prédictif","Correctif"];
     data.objectifsMaintenance = (data.objectifsMaintenance && data.objectifsMaintenance.length) ? data.objectifsMaintenance : ["Disponibilité","Sécurité","Réduction des coûts","Environnement"];
     data.gammesOperatoires = data.gammesOperatoires || [];
+    data.cuves = data.cuves || [];
+    data.pompes = data.pompes || [];
+    data.ravitaillements = data.ravitaillements || [];
+    data.typesCarburant = (data.typesCarburant && data.typesCarburant.length) ? data.typesCarburant : ["Diesel","Essence","Pétrole"];
     (data.parts||[]).forEach(p=>{
       if(p.fournisseurPrincipal===undefined) p.fournisseurPrincipal = p.fournisseur||'';
       if(!p.categorie) p.categorie = state.categoriesArticle[4];
