@@ -392,6 +392,13 @@ function canSee(navId){
   if(!currentUser) return false;
   if(currentUser.statutCompte==='Inactif') return false;
   if(currentUser.role==='admin') return true;
+
+  // Nouveau système : liste précise de pages cochées sur la fiche utilisateur
+  if(currentUser.modules && currentUser.modules.pages && typeof currentUser.modules.pages==='object'){
+    return expandAllowedPages(currentUser.modules.pages).has(navId);
+  }
+
+  // Repli pour les comptes pas encore configurés avec le nouveau système : anciennes règles par rôle
   const moduleOf = { wo:'maintenance', pm:'maintenance', gammes:'maintenance', notif:'maintenance', floc:'maintenance', plant:'maintenance', production:'maintenance', measures:'maintenance', fleet:'maintenance', fuel:'maintenance', 'fuel-validation':'maintenance', cuves:'maintenance', pompes:'maintenance', ravitaillement:'maintenance',
     parts:'stock', resa:'stock', da:'achats', bc:'achats', personnel:'rh', conges:'rh', formations:'rh', effectifs:'rh', recrutement:'rh', maternite:'rh', dashboard:'reporting', costs:'reporting', reports:'reporting' };
   const mod = moduleOf[navId];
@@ -840,6 +847,24 @@ const NAV = [
     {id:'audit', label:'Historique & audit', icon:'receipt'},
   ]},
 ];
+// Chaque page cochable de la fiche utilisateur donne aussi accès à ses sous-pages (édition, création...)
+const PAGE_GROUPS = {
+  dashboard:['dashboard'], wo:['wo','wo-edit'], notif:['notif','notif-edit'],
+  fleet:['fleet','fleet-edit'], pm:['pm','pm-edit'], gammes:['gammes','gamme-edit'], measures:['measures','measures-edit'],
+  fuel:['fuel','fuel-edit'], 'fuel-validation':['fuel-validation'], cuves:['cuves','cuve-edit'], pompes:['pompes','pompe-edit'], ravitaillement:['ravitaillement','ravitaillement-new'],
+  floc:['floc','floc-edit'], plant:['plant','plant-edit'], production:['production','prod-edit'],
+  parts:['parts','part-edit','mvt-new'], resa:['resa','resa-new'],
+  personnel:['personnel','personnel-edit'], conges:['conges','conge-edit'], formations:['formations','formation-edit'],
+  effectifs:['effectifs'], recrutement:['recrutement','candidature-edit'], maternite:['maternite','maternity-edit'],
+  da:['da','da-edit'], bc:['bc','bc-edit','bc-receive'],
+  costs:['costs','cc-edit'], reports:['reports'],
+  settings:['settings'], users:['users','user-create','user-edit'], audit:['audit'],
+};
+function expandAllowedPages(pages){
+  const allowed = new Set();
+  Object.keys(pages||{}).forEach(navId=>{ if(pages[navId] && PAGE_GROUPS[navId]) PAGE_GROUPS[navId].forEach(id=>allowed.add(id)); });
+  return allowed;
+}
 function openMobileMenu(){
   const sb = document.getElementById('sidebar');
   const bd = document.getElementById('mobile-backdrop');
@@ -3716,6 +3741,7 @@ function viewUsers(){
 function userAccessFieldsHtml(u, modules){
   const others = allUsers.filter(x=>x.user_id!==(u?u.user_id:null));
   modules = modules || (u?u.modules:{}) || {};
+  const pages = (modules && modules.pages && typeof modules.pages==='object') ? modules.pages : null;
   return `
   <div style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-family:'Oswald',sans-serif;margin:22px 0 8px;">Rôle & hiérarchie</div>
   <div class="formgrid">
@@ -3727,10 +3753,37 @@ function userAccessFieldsHtml(u, modules){
     <label class="field"><span>Supérieur hiérarchique direct</span><select data-f="superieur_id"><option value="">— Aucun —</option>${others.map(o=>`<option value="${o.user_id}" ${u&&u.superieur_id===o.user_id?'selected':''}>${esc(o.nom_complet)} (${esc(o.identifiant)||o.email})</option>`).join('')}</select></label>
     <label class="field span2"><span>Niveau d'approbation</span><select data-f="niveau_approbation">${state.niveauxApprobation.map(n=>`<option ${(u&&u.niveau_approbation)===n?'selected':''}>${n}</option>`).join('')}</select></label>
   </div>
-  <div style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-family:'Oswald',sans-serif;margin:22px 0 8px;">Accès par module</div>
-  <div class="formgrid">
-    ${MODULES_ACCES.map(m=>`<label class="field"><span>${m.label}</span><select data-uf-mod="${m.id}">${NIVEAUX_ACCES.map(n=>`<option ${(modules[m.id]||'Écriture')===n?'selected':''}>${n}</option>`).join('')}</select></label>`).join('')}
+  <div class="between" style="margin:22px 0 8px;align-items:baseline;">
+    <div style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-family:'Oswald',sans-serif;">Pages accessibles</div>
+    <div class="row" style="gap:10px;">
+      <span class="legend-clickable" id="uf-pages-check-all" style="font-size:11px;color:var(--steel);">Tout cocher</span>
+      <span class="legend-clickable" id="uf-pages-check-none" style="font-size:11px;color:var(--danger);">Tout décocher</span>
+    </div>
+  </div>
+  <p style="font-size:11px;color:var(--muted);margin:0 0 12px;">Coche précisément les pages que ce profil peut voir et utiliser — pas besoin de repartir d'un rôle standard, chaque compte peut être personnalisé.</p>
+  <div id="uf-pages-groups">
+    ${NAV.map((section,si)=>{
+      const checkedCount = section.items.filter(it=>pages ? pages[it.id] : defaultPageChecked(u&&u.role, it.id)).length;
+      return `<details class="uf-page-group" style="margin-bottom:8px;border:1px solid var(--border);border-radius:6px;padding:2px 14px;" ${checkedCount>0?'open':''}>
+      <summary style="cursor:pointer;font-weight:600;font-size:13px;color:var(--text);padding:10px 0;">${esc(section.section)} <span class="uf-group-count" style="font-size:11px;color:var(--muted);font-weight:400;">(${checkedCount}/${section.items.length})</span></summary>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:4px 0 12px;">
+        ${section.items.map(it=>{
+          const checked = pages ? !!pages[it.id] : defaultPageChecked(u&&u.role, it.id);
+          return `<label style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--text);cursor:pointer;"><input type="checkbox" data-uf-page="${it.id}" ${checked?'checked':''} style="width:auto;"/> ${esc(it.label)}</label>`;
+        }).join('')}
+      </div>
+    </details>`;
+    }).join('')}
   </div>`;
+}
+function defaultPageChecked(role, navId){
+  // Pré-cochage indicatif au moment de la création, basé sur le rôle choisi — librement modifiable ensuite
+  if(!role || role==='admin') return true;
+  const savedCurrentUser = currentUser;
+  currentUser = { role, statutCompte:'Actif', modules:{} };
+  const res = canSee(navId);
+  currentUser = savedCurrentUser;
+  return res;
 }
 function viewUserCreate(){
   return `
@@ -5929,6 +5982,33 @@ function attachHandlers(){
   }
 
   // Utilisateurs (admin)
+  // Cases à cocher "Pages accessibles" (création ET modification d'utilisateur)
+  document.querySelectorAll('.uf-page-group').forEach(group=>{
+    group.querySelectorAll('[data-uf-page]').forEach(cb=>cb.addEventListener('change', ()=>{
+      const total = group.querySelectorAll('[data-uf-page]').length;
+      const checked = group.querySelectorAll('[data-uf-page]:checked').length;
+      const counter = group.querySelector('.uf-group-count');
+      if(counter) counter.textContent = `(${checked}/${total})`;
+    }));
+  });
+  const ufCheckAll = document.getElementById('uf-pages-check-all');
+  if(ufCheckAll) ufCheckAll.addEventListener('click', ()=>{
+    document.querySelectorAll('[data-uf-page]').forEach(cb=>{ cb.checked = true; cb.dispatchEvent(new Event('change')); });
+  });
+  const ufCheckNone = document.getElementById('uf-pages-check-none');
+  if(ufCheckNone) ufCheckNone.addEventListener('click', ()=>{
+    document.querySelectorAll('[data-uf-page]').forEach(cb=>{ cb.checked = false; cb.dispatchEvent(new Event('change')); });
+  });
+  if(currentView==='user-create'){
+    const roleSel = document.querySelector('[data-f="role"]');
+    if(roleSel) roleSel.addEventListener('change', ()=>{
+      document.querySelectorAll('[data-uf-page]').forEach(cb=>{
+        cb.checked = defaultPageChecked(roleSel.value, cb.dataset.ufPage);
+        cb.dispatchEvent(new Event('change'));
+      });
+    });
+  }
+
   const userCreateBtn = document.getElementById('user-create-btn');
   if(userCreateBtn) userCreateBtn.addEventListener('click', ()=>{ currentView='user-create'; render(); });
   const userCreateBack = document.getElementById('user-create-back');
@@ -5947,8 +6027,9 @@ function attachHandlers(){
     const affectation = document.querySelector('[data-f="affectation"]')?.value||'Les deux';
     const superieur_id = document.querySelector('[data-f="superieur_id"]')?.value||null;
     const niveau_approbation = document.querySelector('[data-f="niveau_approbation"]')?.value||'Technique';
-    const modules = {};
-    MODULES_ACCES.forEach(m=>{ const el = document.querySelector(`[data-uf-mod="${m.id}"]`); if(el) modules[m.id]=el.value; });
+    const pages = {};
+    document.querySelectorAll('[data-uf-page]').forEach(el=>{ if(el.checked) pages[el.dataset.ufPage]=true; });
+    const modules = { pages };
     const email = identifiantToEmail(identifiant);
     const adminIdentifiant = currentUser.identifiant;
     try{
@@ -5972,8 +6053,9 @@ function attachHandlers(){
   if(userEditSubmit) userEditSubmit.addEventListener('click', async ()=>{
     const u = allUsers.find(x=>x.user_id===userEditDraftId);
     if(!u) return;
-    const modules = {};
-    MODULES_ACCES.forEach(m=>{ const el = document.querySelector(`[data-uf-mod="${m.id}"]`); if(el) modules[m.id]=el.value; });
+    const pages = {};
+    document.querySelectorAll('[data-uf-page]').forEach(el=>{ if(el.checked) pages[el.dataset.ufPage]=true; });
+    const modules = { pages };
     const updates = {
       nom_complet: document.querySelector('[data-f="nom_complet"]')?.value||u.nom_complet,
       fonction: document.querySelector('[data-f="fonction"]')?.value||u.fonction,
