@@ -270,7 +270,10 @@ const ROLE_LABELS_DEFAULT = [
 ];
 function roleLabel(id){ const r = (state.rolesApplicatifs||ROLE_LABELS_DEFAULT).find(x=>x.id===id); return r?r.label:(id||'—'); }
 const CAPACITES = [
-  {id:'superviser_ot', label:"Superviser les ordres de travail (confirmer, suspendre, annuler, transférer, relancer, clôturer, approuver les budgets)"},
+  {id:'confirmer_ot', label:"Confirmer et lancer les ordres de travail (Créé → Confirmé → En cours)"},
+  {id:'controler_ot', label:"Suspendre, réouvrir, annuler ou transférer un ordre de travail"},
+  {id:'cloturer_ot', label:"Déconfirmer, clôturer ou déclôturer techniquement un ordre de travail"},
+  {id:'budget_ot', label:"Approuver le budget et clôturer financièrement un ordre de travail"},
   {id:'archiver_ot', label:"Archiver les ordres de travail clôturés financièrement"},
   {id:'valider_avis', label:"Valider les demandes d'intervention et les convertir en ordre de travail"},
   {id:'valider_conges', label:"Valider ou refuser les demandes de congé"},
@@ -284,7 +287,10 @@ function hasCapacite(id, fallbackIfNonConfigure){
 }
 function defaultCapaciteChecked(role, capId){
   const admins = ['admin','planificateur'];
-  if(capId==='superviser_ot') return admins.includes(role);
+  if(capId==='confirmer_ot') return admins.includes(role);
+  if(capId==='controler_ot') return admins.includes(role);
+  if(capId==='cloturer_ot') return admins.includes(role);
+  if(capId==='budget_ot') return role==='admin';
   if(capId==='archiver_ot') return role==='admin';
   if(capId==='valider_avis') return admins.includes(role);
   if(capId==='valider_conges') return role==='admin' || role==='rh';
@@ -1787,7 +1793,12 @@ function viewWOEdit(){
   const personnelDuPoste = state.personnel.filter(p=>p.statut==='Actif' && (!w.poste || p.poste===w.poste));
 
   const isTechEdit = currentUser && currentUser.role==='technicien';
-  const canSuperviseEdit = currentUser && hasCapacite('superviser_ot', currentUser.role==='planificateur');
+  const canConfirmOT = currentUser && hasCapacite('confirmer_ot', currentUser.role==='planificateur');
+  const canControlOT = currentUser && hasCapacite('controler_ot', currentUser.role==='planificateur');
+  const canCloseOT = currentUser && hasCapacite('cloturer_ot', currentUser.role==='planificateur');
+  const canBudgetOT = currentUser && hasCapacite('budget_ot', false);
+  // Conservé pour compat : utilisé par le bouton "Lancer" et le calcul de canExecute (peut confirmer OU contrôler)
+  const canSuperviseEdit = canConfirmOT || canControlOT || canCloseOT;
 
   const hasBudgetTab = !woIsNew && Number(w.cout)>0;
   const woTabs = [
@@ -1806,17 +1817,17 @@ function viewWOEdit(){
   return `
   <div class="wo-toolbar wrapwrap">
     <button class="btn btn-ghost" style="border-color:var(--borderL);" id="wo-back">${ICONS.close} Retour à la liste</button>
-    ${!woIsNew && canSuperviseEdit && s==='Créé' ? `<button class="btn btn-ghost" style="color:var(--steel);border-color:var(--steel);" id="wo-confirm">${ICONS.check} Confirmer</button>` : ''}
-    ${!woIsNew && canSuperviseEdit && s==='Confirmé' ? `<button class="btn btn-ghost" style="color:var(--accent);border-color:var(--accent);" id="wo-launch">${ICONS.activity} Lancer</button>` : ''}
+    ${!woIsNew && canConfirmOT && s==='Créé' ? `<button class="btn btn-ghost" style="color:var(--steel);border-color:var(--steel);" id="wo-confirm">${ICONS.check} Confirmer</button>` : ''}
+    ${!woIsNew && canConfirmOT && s==='Confirmé' ? `<button class="btn btn-ghost" style="color:var(--accent);border-color:var(--accent);" id="wo-launch">${ICONS.activity} Lancer</button>` : ''}
     ${!woIsNew && isTechEdit && w.technicien===currentUser.nomComplet && s==='Confirmé' ? `<button class="btn btn-ghost" style="color:var(--accent);border-color:var(--accent);" id="wo-launch">${ICONS.activity} Exécuter</button>` : ''}
     ${canExecute && (s==='En cours'||s==='Confirmé partiel') ? `<button class="btn btn-ghost" style="color:var(--steel);border-color:var(--steel);" id="wo-finish">${ICONS.check} Marquer terminé${s==='Confirmé partiel'?' (suite)':''}</button>` : ''}
-    ${!woIsNew && canSuperviseEdit && (s==='Confirmé partiel'||s==='Terminé') ? `<button class="btn btn-ghost" style="color:var(--muted);border-color:var(--borderL);" id="wo-deconfirm">${ICONS.close} Déconfirmer</button>` : ''}
-    ${!woIsNew && canSuperviseEdit && s==='Terminé' ? `<button class="btn btn-ghost" style="color:var(--success);border-color:var(--success);" id="wo-close-toolbar">${ICONS.check} Clôturer technique</button>` : ''}
-    ${!woIsNew && canSuperviseEdit && ['Créé','Confirmé','En cours','Confirmé partiel'].includes(s) ? `<button class="btn btn-ghost" style="color:var(--muted);border-color:var(--borderL);" id="wo-suspend">${ICONS.close} Suspendre</button>` : ''}
-    ${!woIsNew && canSuperviseEdit && s==='Suspendu' ? `<button class="btn btn-ghost" style="color:var(--accent);border-color:var(--accent);" id="wo-reopen">${ICONS.activity} Réouvrir</button>` : ''}
-    ${!woIsNew && canSuperviseEdit && s==='Clôturé' ? `<button class="btn btn-ghost" style="color:var(--accent);border-color:var(--accent);" id="wo-reopen">${ICONS.activity} Déclôturer</button>` : ''}
-    ${!woIsNew && canSuperviseEdit && !finalStates.includes(s) ? `<button class="btn btn-ghost" style="color:var(--danger);border-color:var(--danger);" id="wo-cancel">${ICONS.trash} Annuler</button>` : ''}
-    ${!woIsNew && canSuperviseEdit && !finalStates.includes(s) ? `<button class="btn btn-ghost" style="color:var(--steel);border-color:var(--steel);" id="wo-transfer">${ICONS.users} Transférer</button>` : ''}
+    ${!woIsNew && canCloseOT && (s==='Confirmé partiel'||s==='Terminé') ? `<button class="btn btn-ghost" style="color:var(--muted);border-color:var(--borderL);" id="wo-deconfirm">${ICONS.close} Déconfirmer</button>` : ''}
+    ${!woIsNew && canCloseOT && s==='Terminé' ? `<button class="btn btn-ghost" style="color:var(--success);border-color:var(--success);" id="wo-close-toolbar">${ICONS.check} Clôturer technique</button>` : ''}
+    ${!woIsNew && canControlOT && ['Créé','Confirmé','En cours','Confirmé partiel'].includes(s) ? `<button class="btn btn-ghost" style="color:var(--muted);border-color:var(--borderL);" id="wo-suspend">${ICONS.close} Suspendre</button>` : ''}
+    ${!woIsNew && canControlOT && s==='Suspendu' ? `<button class="btn btn-ghost" style="color:var(--accent);border-color:var(--accent);" id="wo-reopen">${ICONS.activity} Réouvrir</button>` : ''}
+    ${!woIsNew && canCloseOT && s==='Clôturé' ? `<button class="btn btn-ghost" style="color:var(--accent);border-color:var(--accent);" id="wo-reopen">${ICONS.activity} Déclôturer</button>` : ''}
+    ${!woIsNew && canControlOT && !finalStates.includes(s) ? `<button class="btn btn-ghost" style="color:var(--danger);border-color:var(--danger);" id="wo-cancel">${ICONS.trash} Annuler</button>` : ''}
+    ${!woIsNew && canControlOT && !finalStates.includes(s) ? `<button class="btn btn-ghost" style="color:var(--steel);border-color:var(--steel);" id="wo-transfer">${ICONS.users} Transférer</button>` : ''}
     ${!woIsNew && isAdminEdit && s==='Clôturé' && w.clotureFinanciere && !w.archive ? `<button class="btn btn-ghost" style="color:var(--success);border-color:var(--success);" id="wo-archive">${ICONS.receipt} Archiver</button>` : ''}
     ${!woIsNew ? `<button class="btn btn-ghost" style="color:var(--muted);border-color:var(--borderL);" id="wo-workflow">${ICONS.layers} Workflow</button>` : ''}
     ${!woIsNew ? `<button class="btn btn-ghost" style="color:var(--muted);border-color:var(--borderL);" id="wo-print-pdf">${ICONS.report} Imprimer PDF</button>` : ''}
@@ -1904,12 +1915,12 @@ function viewWOEdit(){
         <span style="font-size:12px;color:var(--muted);">Budget</span>
         <div style="font-size:13px;color:${w.budgetApprouve?'var(--success)':'var(--accent)'};">${w.budgetApprouve?('Approuvé par '+esc(w.approbateurBudget)):'En attente d\'approbation'}</div>
       </div>
-      ${canSuperviseEdit && !w.budgetApprouve ? `<button class="btn btn-ghost" id="wo-approve-budget" style="color:var(--success);border-color:var(--success);">${ICONS.check} Approuver le budget</button>` : ''}
+      ${canBudgetOT && !w.budgetApprouve ? `<button class="btn btn-ghost" id="wo-approve-budget" style="color:var(--success);border-color:var(--success);">${ICONS.check} Approuver le budget</button>` : ''}
       <div style="margin-left:auto;">
         <span style="font-size:12px;color:var(--muted);">Clôture financière</span>
         <div style="font-size:13px;color:${w.clotureFinanciere?'var(--success)':'var(--muted)'};">${w.clotureFinanciere?('Clôturé par '+esc(w.clotureFinancierePar)):'Non clôturé'}</div>
       </div>
-      ${canSuperviseEdit && w.statut==='Clôturé' && !w.clotureFinanciere ? `<button class="btn btn-ghost" id="wo-close-financial" style="color:var(--success);border-color:var(--success);">${ICONS.check} Clôturer financièrement</button>` : ''}
+      ${canBudgetOT && w.statut==='Clôturé' && !w.clotureFinanciere ? `<button class="btn btn-ghost" id="wo-close-financial" style="color:var(--success);border-color:var(--success);">${ICONS.check} Clôturer financièrement</button>` : ''}
     </div>
   </div>` : ''}
 
