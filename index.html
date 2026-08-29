@@ -269,6 +269,28 @@ const ROLE_LABELS_DEFAULT = [
   {id:'pompiste', label:'Pompiste (station)'}, {id:'magasinier', label:'Chef magasinier'}
 ];
 function roleLabel(id){ const r = (state.rolesApplicatifs||ROLE_LABELS_DEFAULT).find(x=>x.id===id); return r?r.label:(id||'—'); }
+const CAPACITES = [
+  {id:'superviser_ot', label:"Superviser les ordres de travail (confirmer, suspendre, annuler, transférer, relancer, clôturer, approuver les budgets)"},
+  {id:'archiver_ot', label:"Archiver les ordres de travail clôturés financièrement"},
+  {id:'valider_avis', label:"Valider les demandes d'intervention et les convertir en ordre de travail"},
+  {id:'valider_conges', label:"Valider ou refuser les demandes de congé"},
+  {id:'valider_stock', label:"Valider les sorties de stock (réservations de pièces)"},
+];
+function hasCapacite(id, fallbackIfNonConfigure){
+  if(!currentUser) return false;
+  if(currentUser.role==='admin') return true;
+  if(currentUser.modules && currentUser.modules.capacites && typeof currentUser.modules.capacites==='object') return !!currentUser.modules.capacites[id];
+  return fallbackIfNonConfigure;
+}
+function defaultCapaciteChecked(role, capId){
+  const admins = ['admin','planificateur'];
+  if(capId==='superviser_ot') return admins.includes(role);
+  if(capId==='archiver_ot') return role==='admin';
+  if(capId==='valider_avis') return admins.includes(role);
+  if(capId==='valider_conges') return role==='admin' || role==='rh';
+  if(capId==='valider_stock') return admins.includes(role) || role==='magasinier';
+  return false;
+}
 const FONCTIONS = ["Technicien","Planificateur","Superviseur","Responsable","Administrateur"];
 const NIVEAUX_HIER = [1,2,3,4,5];
 const STATUTS_COMPTE = ["Actif","Inactif"];
@@ -1765,7 +1787,7 @@ function viewWOEdit(){
   const personnelDuPoste = state.personnel.filter(p=>p.statut==='Actif' && (!w.poste || p.poste===w.poste));
 
   const isTechEdit = currentUser && currentUser.role==='technicien';
-  const canSuperviseEdit = currentUser && (currentUser.role==='admin' || currentUser.role==='planificateur');
+  const canSuperviseEdit = currentUser && hasCapacite('superviser_ot', currentUser.role==='planificateur');
 
   const hasBudgetTab = !woIsNew && Number(w.cout)>0;
   const woTabs = [
@@ -1776,7 +1798,7 @@ function viewWOEdit(){
     {id:'documents', label:'Documents'},
     ...(hasBudgetTab ? [{id:'budget', label:'Budget & clôture'}] : []),
   ];
-  const isAdminEdit = currentUser && currentUser.role==='admin';
+  const isAdminEdit = currentUser && hasCapacite('archiver_ot', false);
   const canExecute = !woIsNew && (canSuperviseEdit || (isTechEdit && w.technicien===currentUser.nomComplet));
   const s = w.statut;
   const finalStates = ['Clôturé','Annulé'];
@@ -2751,7 +2773,7 @@ function viewParts(){
           <span style="font-size:13px;margin-left:8px;">${pt?esc(pt.nom):'Pièce supprimée'} × ${fmt(r.quantite)}${pt?' '+uniteAbrev(pt):''}</span>
           <span style="font-size:11px;color:var(--muted);margin-left:8px;">${r.workOrderId?('OT '+(wom[r.workOrderId]?.numero||'—')):r.type}</span>
         </div>
-        ${isValidating?'':`<button class="btn btn-ghost" style="font-size:11px;padding:3px 8px;color:var(--success);" data-open-validate-resa="${r.id}">${ICONS.check} Valider sortie</button>`}
+        ${isValidating||!hasCapacite('valider_stock', true)?'':`<button class="btn btn-ghost" style="font-size:11px;padding:3px 8px;color:var(--success);" data-open-validate-resa="${r.id}">${ICONS.check} Valider sortie</button>`}
         </div>
         ${isValidating?`<div class="row wrapwrap" style="gap:8px;align-items:center;margin-top:8px;background:var(--panel);border-radius:6px;padding:8px;">
           <span style="font-size:11px;color:var(--muted);">Stock actuel : <strong style="color:${pt&&Number(pt.quantite)<r.quantite?'var(--danger)':'var(--text)'};">${pt?fmt(pt.quantite)+' '+uniteAbrev(pt):'—'}</strong></span>
@@ -3164,7 +3186,7 @@ function prodForm(p){
 function viewNotif(){
   const em = equipMap();
   const isTech = currentUser && currentUser.role==='technicien';
-  const canSupervise = currentUser && (currentUser.role==='admin' || currentUser.role==='planificateur');
+  const canSupervise = currentUser && hasCapacite('valider_avis', currentUser.role==='planificateur');
   const allEquip = [...state.fleet, ...state.plantEquipment];
   const sorted = [...state.notifications].sort((a,b)=>(b.dateCreation||'').localeCompare(a.dateCreation||''));
   return `
@@ -3402,7 +3424,7 @@ function viewCongeEdit(){
 }
 function viewConges(){
   const pm = Object.fromEntries(state.personnel.map(p=>[p.id,p]));
-  const canManageRH = currentUser && (currentUser.role==='admin' || currentUser.role==='rh');
+  const canManageRH = currentUser && hasCapacite('valider_conges', currentUser.role==='rh');
   let list = [...state.leaveRequests];
   if(congesFilterStatut!=='Tous') list = list.filter(c=>c.statut===congesFilterStatut);
   if(congesFilterPersonnel!=='Tous') list = list.filter(c=>c.personnelId===congesFilterPersonnel);
@@ -3784,6 +3806,15 @@ function userAccessFieldsHtml(u, modules){
       </div>
     </details>`;
     }).join('')}
+  </div>
+  <div style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-family:'Oswald',sans-serif;margin:22px 0 8px;">Capacités de validation</div>
+  <p style="font-size:11px;color:var(--muted);margin:0 0 10px;">Coche précisément ce que ce compte a le droit de valider ou d'approuver — indépendamment de son rôle.</p>
+  <div style="display:flex;flex-direction:column;gap:8px;">
+    ${CAPACITES.map(cap=>{
+      const caps = (modules && modules.capacites && typeof modules.capacites==='object') ? modules.capacites : null;
+      const checked = caps ? !!caps[cap.id] : defaultCapaciteChecked(u&&u.role, cap.id);
+      return `<label style="display:flex;align-items:flex-start;gap:8px;font-size:12.5px;color:var(--text);cursor:pointer;background:var(--panelR);border-radius:6px;padding:9px 12px;"><input type="checkbox" data-uf-cap="${cap.id}" ${checked?'checked':''} style="width:auto;margin-top:2px;"/> <span>${esc(cap.label)}</span></label>`;
+    }).join('')}
   </div>`;
 }
 function defaultPageChecked(role, navId){
@@ -4069,7 +4100,7 @@ function viewResa(){
     <td style="font-size:12px;color:${r.statut==='Sortie validée'?'var(--success)':'var(--accent)'};">${r.statut||'En attente'}</td>
     <td style="color:var(--muted);font-size:12px;">${r.dateCreation||''}</td>
     <td>${isValidating ? '' : `<div class="row" style="justify-content:flex-end;">
-      ${(r.statut||'En attente')==='En attente'?`<button class="btn btn-ghost" style="font-size:11px;padding:3px 8px;color:var(--success);" data-open-validate-resa="${r.id}">${ICONS.check} Valider sortie</button>`:''}
+      ${(r.statut||'En attente')==='En attente' && hasCapacite('valider_stock', true)?`<button class="btn btn-ghost" style="font-size:11px;padding:3px 8px;color:var(--success);" data-open-validate-resa="${r.id}">${ICONS.check} Valider sortie</button>`:''}
       <button class="icon-btn" data-del-resa="${r.id}">${ICONS.trash}</button>
     </div>`}</td>
   </tr>${isValidating ? `<tr><td colspan="8" style="background:var(--panel);padding:10px 14px;">
@@ -6034,6 +6065,9 @@ function attachHandlers(){
         cb.checked = defaultPageChecked(roleSel.value, cb.dataset.ufPage);
         cb.dispatchEvent(new Event('change'));
       });
+      document.querySelectorAll('[data-uf-cap]').forEach(cb=>{
+        cb.checked = defaultCapaciteChecked(roleSel.value, cb.dataset.ufCap);
+      });
     });
   }
 
@@ -6057,7 +6091,9 @@ function attachHandlers(){
     const niveau_approbation = document.querySelector('[data-f="niveau_approbation"]')?.value||'Technique';
     const pages = {};
     document.querySelectorAll('[data-uf-page]').forEach(el=>{ if(el.checked) pages[el.dataset.ufPage]=true; });
-    const modules = { pages };
+    const capacites = {};
+    document.querySelectorAll('[data-uf-cap]').forEach(el=>{ if(el.checked) capacites[el.dataset.ufCap]=true; });
+    const modules = { pages, capacites };
     const email = identifiantToEmail(identifiant);
     const adminIdentifiant = currentUser.identifiant;
     try{
@@ -6083,7 +6119,9 @@ function attachHandlers(){
     if(!u) return;
     const pages = {};
     document.querySelectorAll('[data-uf-page]').forEach(el=>{ if(el.checked) pages[el.dataset.ufPage]=true; });
-    const modules = { pages };
+    const capacites = {};
+    document.querySelectorAll('[data-uf-cap]').forEach(el=>{ if(el.checked) capacites[el.dataset.ufCap]=true; });
+    const modules = { pages, capacites };
     const updates = {
       nom_complet: document.querySelector('[data-f="nom_complet"]')?.value||u.nom_complet,
       fonction: document.querySelector('[data-f="fonction"]')?.value||u.fonction,
