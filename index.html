@@ -270,14 +270,14 @@ const ROLE_LABELS_DEFAULT = [
 ];
 function roleLabel(id){ const r = (state.rolesApplicatifs||ROLE_LABELS_DEFAULT).find(x=>x.id===id); return r?r.label:(id||'—'); }
 const CAPACITES = [
-  {id:'confirmer_ot', label:"Confirmer et lancer les ordres de travail (Créé → Confirmé → En cours)"},
-  {id:'controler_ot', label:"Suspendre, réouvrir, annuler ou transférer un ordre de travail"},
-  {id:'cloturer_ot', label:"Déconfirmer, clôturer ou déclôturer techniquement un ordre de travail"},
-  {id:'budget_ot', label:"Approuver le budget et clôturer financièrement un ordre de travail"},
-  {id:'archiver_ot', label:"Archiver les ordres de travail clôturés financièrement"},
-  {id:'valider_avis', label:"Valider les demandes d'intervention et les convertir en ordre de travail"},
-  {id:'valider_conges', label:"Valider ou refuser les demandes de congé"},
-  {id:'valider_stock', label:"Valider les sorties de stock (réservations de pièces)"},
+  {id:'confirmer_ot', label:"Confirmer / lancer un OT", full:"Confirmer et lancer les ordres de travail (Créé → Confirmé → En cours)"},
+  {id:'controler_ot', label:"Suspendre / annuler / transférer", full:"Suspendre, réouvrir, annuler ou transférer un ordre de travail"},
+  {id:'cloturer_ot', label:"Clôturer techniquement un OT", full:"Déconfirmer, clôturer ou déclôturer techniquement un ordre de travail"},
+  {id:'budget_ot', label:"Approuver budget / clôture financière", full:"Approuver le budget et clôturer financièrement un ordre de travail"},
+  {id:'archiver_ot', label:"Archiver les OT clôturés", full:"Archiver les ordres de travail clôturés financièrement"},
+  {id:'valider_avis', label:"Valider un avis (→ OT)", full:"Valider les demandes d'intervention et les convertir en ordre de travail"},
+  {id:'valider_conges', label:"Valider les congés", full:"Valider ou refuser les demandes de congé"},
+  {id:'valider_stock', label:"Valider les sorties de stock", full:"Valider les sorties de stock (réservations de pièces)"},
 ];
 function hasCapacite(id, fallbackIfNonConfigure){
   if(!currentUser) return false;
@@ -3820,11 +3820,11 @@ function userAccessFieldsHtml(u, modules){
   </div>
   <div style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-family:'Oswald',sans-serif;margin:22px 0 8px;">Capacités de validation</div>
   <p style="font-size:11px;color:var(--muted);margin:0 0 10px;">Coche précisément ce que ce compte a le droit de valider ou d'approuver — indépendamment de son rôle.</p>
-  <div style="display:flex;flex-direction:column;gap:8px;">
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 16px;">
     ${CAPACITES.map(cap=>{
       const caps = (modules && modules.capacites && typeof modules.capacites==='object') ? modules.capacites : null;
       const checked = caps ? !!caps[cap.id] : defaultCapaciteChecked(u&&u.role, cap.id);
-      return `<label style="display:flex;align-items:flex-start;gap:8px;font-size:12.5px;color:var(--text);cursor:pointer;background:var(--panelR);border-radius:6px;padding:9px 12px;"><input type="checkbox" data-uf-cap="${cap.id}" ${checked?'checked':''} style="width:auto;margin-top:2px;"/> <span>${esc(cap.label)}</span></label>`;
+      return `<label title="${esc(cap.full)}" style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--text);cursor:pointer;"><input type="checkbox" data-uf-cap="${cap.id}" ${checked?'checked':''} style="width:auto;flex-shrink:0;"/> ${esc(cap.label)}</label>`;
     }).join('')}
   </div>`;
 }
