@@ -263,11 +263,12 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
 });
 
 /* ============ AUTHENTIFICATION & RÔLES ============ */
-const ROLE_LABELS = {
-  admin: 'Administrateur', planificateur: 'Planificateur maintenance',
-  technicien: 'Technicien terrain', rh: 'Responsable RH',
-  pompiste: 'Pompiste (station)', magasinier: 'Chef magasinier'
-};
+const ROLE_LABELS_DEFAULT = [
+  {id:'admin', label:'Administrateur'}, {id:'planificateur', label:'Planificateur maintenance'},
+  {id:'technicien', label:'Technicien terrain'}, {id:'rh', label:'Responsable RH'},
+  {id:'pompiste', label:'Pompiste (station)'}, {id:'magasinier', label:'Chef magasinier'}
+];
+function roleLabel(id){ const r = (state.rolesApplicatifs||ROLE_LABELS_DEFAULT).find(x=>x.id===id); return r?r.label:(id||'—'); }
 const FONCTIONS = ["Technicien","Planificateur","Superviseur","Responsable","Administrateur"];
 const NIVEAUX_HIER = [1,2,3,4,5];
 const STATUTS_COMPTE = ["Actif","Inactif"];
@@ -479,6 +480,10 @@ function normalizeState(){
   if(!Array.isArray(state.pompes)) state.pompes = [];
   if(!Array.isArray(state.ravitaillements)) state.ravitaillements = [];
   if(!Array.isArray(state.typesCarburant) || state.typesCarburant.length===0) state.typesCarburant = ["Diesel","Essence","Pétrole"];
+  if(!Array.isArray(state.rolesApplicatifs) || state.rolesApplicatifs.length===0) state.rolesApplicatifs = [...ROLE_LABELS_DEFAULT];
+  else { // s'assure que les 6 rôles intégrés sont toujours présents (comportements spéciaux liés à leur id)
+    ROLE_LABELS_DEFAULT.forEach(def=>{ if(!state.rolesApplicatifs.some(r=>r.id===def.id)) state.rolesApplicatifs.push({...def}); });
+  }
   state.fuelLogs.forEach(f=>{ if(!f.statut) f.statut = 'Validé'; }); // pleins déjà existants avant ce module : considérés déjà validés
   state.personnel.forEach(p=>{ if(p.soldeConges===undefined || p.soldeConges===null || p.soldeConges==='') p.soldeConges = 26; });
 }
@@ -742,7 +747,12 @@ let state = { fleet: [], workOrders: [], fuelLogs: [], parts: [], pmPlans: [], l
   objectifsMaintenance: ["Disponibilité","Sécurité","Réduction des coûts","Environnement"],
   gammesOperatoires: [],
   cuves: [], pompes: [], ravitaillements: [],
-  typesCarburant: ["Diesel","Essence","Pétrole"] };
+  typesCarburant: ["Diesel","Essence","Pétrole"],
+  rolesApplicatifs: [
+    {id:'admin', label:'Administrateur'}, {id:'planificateur', label:'Planificateur maintenance'},
+    {id:'technicien', label:'Technicien terrain'}, {id:'rh', label:'Responsable RH'},
+    {id:'pompiste', label:'Pompiste (station)'}, {id:'magasinier', label:'Chef magasinier'}
+  ] };
 let currentView = 'dashboard';
 
 /* ============ HELPERS ============ */
@@ -910,7 +920,7 @@ function renderNav(){
   document.getElementById('fleet-count').textContent = `${state.fleet.length} engins · ${state.plantEquipment.length} machines`;
   const uiTop = document.getElementById('user-info-top');
   if(uiTop && currentUser){
-    uiTop.innerHTML = `<b>${esc(currentUser.nomComplet)}</b> · ${ROLE_LABELS[currentUser.role]||currentUser.role}`;
+    uiTop.innerHTML = `<b>${esc(currentUser.nomComplet)}</b> · ${roleLabel(currentUser.role)}`;
   }
   const lbTop = document.getElementById('logout-btn-top');
   if(lbTop) lbTop.addEventListener('click', handleLogout);
@@ -3729,7 +3739,7 @@ function viewUsers(){
     <td style="color:var(--muted);">${esc(u.fonction)||'—'}</td>
     <td class="mono" style="color:var(--muted);">${u.niveau_hierarchique||1}</td>
     <td><span class="badge" style="color:${u.statut_compte==='Inactif'?'var(--danger)':'var(--success)'};border-color:${u.statut_compte==='Inactif'?'var(--danger)':'var(--success)'};">${u.statut_compte||'Actif'}</span></td>
-    <td style="color:var(--text);">${ROLE_LABELS[u.role]||u.role}</td>
+    <td style="color:var(--text);">${roleLabel(u.role)}</td>
     <td style="color:var(--muted);">${esc(u.affectation)||'Les deux'}</td>
     <td style="color:var(--muted);font-size:12px;">${u.superieur_id&&um[u.superieur_id]?esc(um[u.superieur_id].nom_complet):'—'}</td>
     <td style="color:var(--muted);font-size:12px;">${u.derniere_connexion?new Date(u.derniere_connexion).toLocaleString('fr-FR'):'Jamais'}</td>
@@ -3748,7 +3758,7 @@ function userAccessFieldsHtml(u, modules){
     <label class="field"><span>Fonction / poste</span><select data-f="fonction">${state.fonctions.map(f=>`<option ${(u&&u.fonction)===f?'selected':''}>${f}</option>`).join('')}</select></label>
     <label class="field"><span>Niveau hiérarchique (1-5)</span><select data-f="niveau_hierarchique">${NIVEAUX_HIER.map(n=>`<option value="${n}" ${Number(u&&u.niveau_hierarchique)===n?'selected':''}>${n}</option>`).join('')}</select></label>
     <label class="field"><span>Statut du compte</span><select data-f="statut_compte">${STATUTS_COMPTE.map(s=>`<option ${(u&&u.statut_compte||'Actif')===s?'selected':''}>${s}</option>`).join('')}</select></label>
-    <label class="field"><span>Rôle applicatif</span><select data-f="role" ${u&&u.user_id===currentUser.id?'disabled title="Tu ne peux pas changer ton propre rôle"':''}>${Object.keys(ROLE_LABELS).map(r=>`<option value="${r}" ${(u&&u.role||'technicien')===r?'selected':''}>${ROLE_LABELS[r]}</option>`).join('')}</select></label>
+    <label class="field"><span>Rôle applicatif</span><select data-f="role" ${u&&u.user_id===currentUser.id?'disabled title="Tu ne peux pas changer ton propre rôle"':''}>${(state.rolesApplicatifs||ROLE_LABELS_DEFAULT).map(r=>`<option value="${r.id}" ${(u&&u.role||'technicien')===r.id?'selected':''}>${esc(r.label)}</option>`).join('')}</select></label>
     <label class="field"><span>Affectation (équipements visibles)</span><select data-f="affectation">${state.affectations.map(a=>`<option ${(u&&u.affectation||'Les deux')===a?'selected':''}>${a}</option>`).join('')}</select></label>
     <label class="field"><span>Supérieur hiérarchique direct</span><select data-f="superieur_id"><option value="">— Aucun —</option>${others.map(o=>`<option value="${o.user_id}" ${u&&u.superieur_id===o.user_id?'selected':''}>${esc(o.nom_complet)} (${esc(o.identifiant)||o.email})</option>`).join('')}</select></label>
     <label class="field span2"><span>Niveau d'approbation</span><select data-f="niveau_approbation">${state.niveauxApprobation.map(n=>`<option ${(u&&u.niveau_approbation)===n?'selected':''}>${n}</option>`).join('')}</select></label>
@@ -3998,6 +4008,24 @@ function viewSettings(){
     ${editableListBlock('Types de stratégie de maintenance', 'typesStrategieMaintenance', 'strategie-maint', 'Nouveau type (ex: Basé condition)')}
     ${editableListBlock('Objectifs de maintenance', 'objectifsMaintenance', 'objectif-maint', 'Nouvel objectif (ex: Qualité)')}
     ${editableListBlock('Types de carburant', 'typesCarburant', 'type-carburant', 'Nouveau type (ex: GPL)')}
+
+    <div class="plate p16">
+      <h3 class="oswald" style="text-transform:uppercase;font-size:14px;margin:0 0 10px;">Rôles applicatifs</h3>
+      <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:10px;max-height:240px;overflow-y:auto;">
+        ${state.rolesApplicatifs.map((r,i)=>{
+          const builtin = ROLE_LABELS_DEFAULT.some(d=>d.id===r.id);
+          return `<div class="between card-item" style="padding:4px 6px 4px 10px;">
+            <input data-role-label="${i}" value="${esc(r.label)}" style="border:none;background:transparent;font-size:13px;flex:1;padding:4px;color:var(--text);"/>
+            ${builtin?`<span title="Rôle intégré — comportements spéciaux liés à ce rôle dans l'app" style="font-size:10px;color:var(--muted);padding:0 8px;white-space:nowrap;">🔒 intégré</span>`:`<button class="icon-btn" data-role-del="${i}">${ICONS.trash}</button>`}
+          </div>`;
+        }).join('')}
+      </div>
+      <div class="row">
+        <input id="role-new-input" placeholder="Nouveau rôle (ex: Superviseur site)" style="flex:1;"/>
+        <button class="btn btn-ghost" id="role-add" type="button">${ICONS.plus} Ajouter</button>
+      </div>
+      <p style="font-size:11px;color:var(--muted);margin-top:10px;">Les rôles intégrés (🔒) déclenchent des comportements spéciaux dans l'app (qui peut valider un OT, gérer le RH, etc.) et ne peuvent pas être supprimés — mais leur libellé affiché reste modifiable. Un rôle que tu ajoutes profite pleinement du système "Pages accessibles" de la fiche utilisateur, sans ces automatismes.</p>
+    </div>
 
     <div class="plate p16">
       <h3 class="oswald" style="text-transform:uppercase;font-size:14px;margin:0 0 10px;">Autres référentiels</h3>
@@ -6114,6 +6142,31 @@ function attachHandlers(){
     userEditDraftId = tr.dataset.editUserRow; currentView='user-edit'; render();
   }));
 
+  // Rôles applicatifs
+  document.querySelectorAll('[data-role-label]').forEach(inp=>inp.addEventListener('change', ()=>{
+    const i = Number(inp.dataset.roleLabel);
+    const val = inp.value.trim();
+    if(val){ state.rolesApplicatifs[i].label = val; persist(); toast('Libellé du rôle mis à jour'); }
+  }));
+  const roleAdd = document.getElementById('role-add');
+  if(roleAdd) roleAdd.addEventListener('click', ()=>{
+    const input = document.getElementById('role-new-input');
+    const label = input.value.trim();
+    if(!label) return;
+    let base = label.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'') || 'role';
+    let id = base, n = 2;
+    while(state.rolesApplicatifs.some(r=>r.id===id)){ id = base+'-'+n; n++; }
+    state.rolesApplicatifs.push({id, label});
+    persist(); render(); toast('Rôle "'+label+'" ajouté');
+  });
+  document.querySelectorAll('[data-role-del]').forEach(b=>b.addEventListener('click',()=>{
+    const i = Number(b.dataset.roleDel);
+    const r = state.rolesApplicatifs[i];
+    confirmModal('Supprimer le rôle "'+r.label+'" ? Assure-toi qu\'aucun utilisateur ne l\'utilise encore (vérifie dans "Utilisateurs").', ()=>{
+      state.rolesApplicatifs.splice(i,1); persist(); render(); toast('Rôle supprimé');
+    }, {danger:true, okLabel:'Supprimer'});
+  }));
+
   // Postes responsables
   const posteAdd = document.getElementById('poste-add');
   if(posteAdd) posteAdd.addEventListener('click', ()=>{
@@ -6484,7 +6537,12 @@ async function init(){
       typesStrategieMaintenance: ["Préventif systématique","Conditionnel","Prédictif","Correctif"],
       objectifsMaintenance: ["Disponibilité","Sécurité","Réduction des coûts","Environnement"],
       gammesOperatoires: [],
-      cuves: [], pompes: [], ravitaillements: [], typesCarburant: ["Diesel","Essence","Pétrole"] };
+      cuves: [], pompes: [], ravitaillements: [], typesCarburant: ["Diesel","Essence","Pétrole"],
+      rolesApplicatifs: [
+        {id:'admin', label:'Administrateur'}, {id:'planificateur', label:'Planificateur maintenance'},
+        {id:'technicien', label:'Technicien terrain'}, {id:'rh', label:'Responsable RH'},
+        {id:'pompiste', label:'Pompiste (station)'}, {id:'magasinier', label:'Chef magasinier'}
+      ] };
   } else {
     // compatibilité ascendante : ajoute le module usine si absent d'un compte existant
     if(!data.locations || data.locations.length===0){
@@ -6537,6 +6595,11 @@ async function init(){
     data.pompes = data.pompes || [];
     data.ravitaillements = data.ravitaillements || [];
     data.typesCarburant = (data.typesCarburant && data.typesCarburant.length) ? data.typesCarburant : ["Diesel","Essence","Pétrole"];
+    data.rolesApplicatifs = (data.rolesApplicatifs && data.rolesApplicatifs.length) ? data.rolesApplicatifs : [
+      {id:'admin', label:'Administrateur'}, {id:'planificateur', label:'Planificateur maintenance'},
+      {id:'technicien', label:'Technicien terrain'}, {id:'rh', label:'Responsable RH'},
+      {id:'pompiste', label:'Pompiste (station)'}, {id:'magasinier', label:'Chef magasinier'}
+    ];
     (data.parts||[]).forEach(p=>{
       if(p.fournisseurPrincipal===undefined) p.fournisseurPrincipal = p.fournisseur||'';
       if(!p.categorie) p.categorie = state.categoriesArticle[4];
