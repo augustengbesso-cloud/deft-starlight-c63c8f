@@ -266,16 +266,19 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
 const ROLE_LABELS_DEFAULT = [
   {id:'admin', label:'Administrateur'}, {id:'planificateur', label:'Planificateur maintenance'},
   {id:'technicien', label:'Technicien terrain'}, {id:'rh', label:'Responsable RH'},
-  {id:'pompiste', label:'Pompiste (station)'}, {id:'magasinier', label:'Chef magasinier'}
+  {id:'pompiste', label:'Pompiste (station)'}, {id:'magasinier', label:'Chef magasinier'},
+  {id:'chef-atelier', label:"Chef d'atelier"}, {id:'directeur-exploitation', label:"Directeur d'exploitation"}
 ];
 function roleLabel(id){ const r = (state.rolesApplicatifs||ROLE_LABELS_DEFAULT).find(x=>x.id===id); return r?r.label:(id||'—'); }
 const CAPACITES = [
-  {id:'confirmer_ot', label:"Confirmer / lancer un OT", full:"Confirmer et lancer les ordres de travail (Créé → Confirmé → En cours)"},
-  {id:'controler_ot', label:"Suspendre / annuler / transférer", full:"Suspendre, réouvrir, annuler ou transférer un ordre de travail"},
-  {id:'cloturer_ot', label:"Clôturer techniquement un OT", full:"Déconfirmer, clôturer ou déclôturer techniquement un ordre de travail"},
-  {id:'budget_ot', label:"Approuver budget / clôture financière", full:"Approuver le budget et clôturer financièrement un ordre de travail"},
+  {id:'valider_avis', label:"Valider un avis technicien", full:"Valide ou refuse un avis technicien (pertinence, complétude) — étape 2 du circuit (Chef d'atelier)"},
+  {id:'planifier_ot', label:"Générer et planifier un OT", full:"Génère l'ordre de travail à partir d'un avis validé, affecte ressources, gammes opératoires et équipe — étape 3 du circuit (Planificateur)"},
+  {id:'autoriser_ot', label:"Autoriser le lancement d'un OT", full:"Vérifie la cohérence budgétaire/opérationnelle et autorise le lancement des travaux — étape 4 du circuit (Directeur d'exploitation)"},
+  {id:'controler_qualite_ot', label:"Contrôler la qualité d'un OT", full:"Vérifie la conformité des travaux exécutés, valide ou demande une reprise — étape 6 du circuit (Chef d'atelier)"},
+  {id:'cloturer_ot', label:"Clôturer techniquement un OT", full:"Vérifie que toutes les données sont saisies et clôture techniquement l'OT — étape 7 du circuit (Planificateur), + déconfirmer/déclôturer en cas d'erreur"},
+  {id:'controler_ot', label:"Suspendre / annuler / transférer", full:"Suspendre, réouvrir, annuler ou transférer un ordre de travail, à toute étape du circuit"},
+  {id:'budget_ot', label:"Approuver budget / clôture financière", full:"Approuver le budget et clôturer financièrement un ordre de travail — indépendant du circuit technique"},
   {id:'archiver_ot', label:"Archiver les OT clôturés", full:"Archiver les ordres de travail clôturés financièrement"},
-  {id:'valider_avis', label:"Valider un avis (→ OT)", full:"Valider les demandes d'intervention et les convertir en ordre de travail"},
   {id:'valider_conges', label:"Valider les congés", full:"Valider ou refuser les demandes de congé"},
   {id:'valider_stock', label:"Valider les sorties de stock", full:"Valider les sorties de stock (réservations de pièces)"},
 ];
@@ -287,12 +290,14 @@ function hasCapacite(id, fallbackIfNonConfigure){
 }
 function defaultCapaciteChecked(role, capId){
   const admins = ['admin','planificateur'];
-  if(capId==='confirmer_ot') return admins.includes(role);
-  if(capId==='controler_ot') return admins.includes(role);
+  if(capId==='valider_avis') return admins.includes(role) || role==='chef-atelier';
+  if(capId==='planifier_ot') return admins.includes(role);
+  if(capId==='autoriser_ot') return role==='admin' || role==='directeur-exploitation';
+  if(capId==='controler_qualite_ot') return admins.includes(role) || role==='chef-atelier';
   if(capId==='cloturer_ot') return admins.includes(role);
+  if(capId==='controler_ot') return admins.includes(role);
   if(capId==='budget_ot') return role==='admin';
   if(capId==='archiver_ot') return role==='admin';
-  if(capId==='valider_avis') return admins.includes(role);
   if(capId==='valider_conges') return role==='admin' || role==='rh';
   if(capId==='valider_stock') return admins.includes(role) || role==='magasinier';
   return false;
@@ -438,6 +443,8 @@ function canSee(navId){
     rh: ['fleet','fleet-edit','wo','wo-edit','pm','pm-edit','gammes','gamme-edit','fuel','fuel-edit','fuel-validation','cuves','cuve-edit','pompes','pompe-edit','ravitaillement','ravitaillement-new','parts','part-edit','mvt-new','floc','floc-edit','plant','plant-edit','production','prod-edit','notif','notif-edit','measures','measures-edit','costs','cc-edit','reports','settings','users','user-create','user-edit','audit','da','da-edit','bc','bc-edit','bc-receive','resa','resa-new'],
     pompiste: ['dashboard','fleet','fleet-edit','pm','pm-edit','gammes','gamme-edit','measures','measures-edit','floc','floc-edit','plant','plant-edit','production','prod-edit','parts','part-edit','mvt-new','costs','cc-edit','resa','resa-new','da','da-edit','bc','bc-edit','bc-receive','personnel','personnel-edit','conges','conge-edit','formations','formation-edit','effectifs','recrutement','candidature-edit','maternite','maternity-edit','reports','settings','users','user-create','user-edit','audit','wo','wo-edit','notif','notif-edit','fuel-validation','cuves','cuve-edit','pompes','pompe-edit','ravitaillement','ravitaillement-new'],
     magasinier: ['fleet','fleet-edit','pm','pm-edit','gammes','gamme-edit','measures','measures-edit','floc','floc-edit','plant','plant-edit','production','prod-edit','costs','cc-edit','da','da-edit','bc','bc-edit','bc-receive','personnel','personnel-edit','conges','conge-edit','formations','formation-edit','effectifs','recrutement','candidature-edit','maternite','maternity-edit','reports','settings','users','user-create','user-edit','audit','wo','wo-edit','notif','notif-edit'],
+    'chef-atelier': ['fleet','fleet-edit','fuel','fuel-edit','fuel-validation','cuves','cuve-edit','pompes','pompe-edit','ravitaillement','ravitaillement-new','parts','part-edit','mvt-new','costs','cc-edit','da','da-edit','bc','bc-edit','bc-receive','resa','resa-new','personnel','personnel-edit','conges','conge-edit','formations','formation-edit','effectifs','recrutement','candidature-edit','maternite','maternity-edit','reports','settings','users','user-create','user-edit','audit'],
+    'directeur-exploitation': ['fleet-edit','pm-edit','gammes','gamme-edit','fuel','fuel-edit','fuel-validation','cuves','cuve-edit','pompes','pompe-edit','ravitaillement','ravitaillement-new','parts','part-edit','mvt-new','floc','floc-edit','plant','plant-edit','production','prod-edit','measures','measures-edit','resa','resa-new','personnel','personnel-edit','conges','conge-edit','formations','formation-edit','effectifs','recrutement','candidature-edit','maternite','maternity-edit','settings','users','user-create','user-edit','audit','wo-edit','notif-edit'],
   };
   const blocked = restricted[currentUser.role] || [];
   return !blocked.includes(navId);
@@ -513,6 +520,13 @@ function normalizeState(){
     ROLE_LABELS_DEFAULT.forEach(def=>{ if(!state.rolesApplicatifs.some(r=>r.id===def.id)) state.rolesApplicatifs.push({...def}); });
   }
   state.fuelLogs.forEach(f=>{ if(!f.statut) f.statut = 'Validé'; }); // pleins déjà existants avant ce module : considérés déjà validés
+  state.workOrders.forEach(w=>{
+    if(w.statut==='Ouvert' || w.statut==='Créé') w.statut = 'OT Planifié';
+    else if(w.statut==='Confirmé') w.statut = 'OT Autorisé';
+    else if(w.statut==='Confirmé partiel' || w.statut==='En cours') w.statut = 'OT En cours';
+    else if(w.statut==='Terminé') w.statut = 'OT Réalisé';
+    else if(w.statut==='Clôturé') w.statut = 'OT Clôturé';
+  });
   state.personnel.forEach(p=>{ if(p.soldeConges===undefined || p.soldeConges===null || p.soldeConges==='') p.soldeConges = 26; });
 }
 async function loadRemote(){
@@ -682,13 +696,13 @@ function drawDonut(canvas, segments){
 }
 const DEFAULT_EQUIP_TYPES = ["Pelleteuse","Tombereau","Foreuse","Groupe électrogène","Ligne de production","Machine industrielle","Convoyeur","Emballeuse","Autre"];
 const STATUTS = ["Opérationnel","En maintenance","En panne","À l'arrêt"];
-const WO_STATUTS = ["Créé","Confirmé partiel","Confirmé","En cours","Suspendu","Terminé","Clôturé","Annulé"];
-const WO_STATUTS_ACTIFS = ["Créé","Confirmé partiel","Confirmé","En cours","Suspendu"]; // comptent comme "ouverts" dans les KPI
+const WO_STATUTS = ["OT Généré","OT Planifié","OT Autorisé","OT En cours","OT en reprise","OT Réalisé","OT Validé Atelier","Suspendu","OT Clôturé","Annulé"];
+const WO_STATUTS_ACTIFS = ["OT Généré","OT Planifié","OT Autorisé","OT En cours","OT en reprise","OT Réalisé","OT Validé Atelier","Suspendu"]; // comptent comme "ouverts" dans les KPI
 const WO_PRIORITES = ["Basse","Normale","Haute","Urgente"];
 const SITES = ["CIGRAC","Usine"];
 const LOCATION_TYPES = ["Site","Atelier","Ligne","Machine"];
 const PM_TYPES = ["Date","Heures","Kilométrage"];
-const NOTIF_STATUTS = ["Nouvelle","Validée","En traitement","Convertie en OT","Clôturée"];
+const NOTIF_STATUTS = ["Nouvelle","Validée","Refusée","En traitement","Convertie en OT","Clôturée"];
 const NOTIF_PRIORITES = ["Basse","Normale","Haute","Urgente"];
 const POINT_TYPES = ["Compteur (heures/km)","Température","Vibration","Pression","Autre mesure"];
 const DEFAULT_POSTES = ["Électricien","Mécanicien","Soudeur","Hydraulicien","Automaticien","Chaudronnier","Opérateur","Autre"];
@@ -779,7 +793,8 @@ let state = { fleet: [], workOrders: [], fuelLogs: [], parts: [], pmPlans: [], l
   rolesApplicatifs: [
     {id:'admin', label:'Administrateur'}, {id:'planificateur', label:'Planificateur maintenance'},
     {id:'technicien', label:'Technicien terrain'}, {id:'rh', label:'Responsable RH'},
-    {id:'pompiste', label:'Pompiste (station)'}, {id:'magasinier', label:'Chef magasinier'}
+    {id:'pompiste', label:'Pompiste (station)'}, {id:'magasinier', label:'Chef magasinier'},
+    {id:'chef-atelier', label:"Chef d'atelier"}, {id:'directeur-exploitation', label:"Directeur d'exploitation"}
   ] };
 let currentView = 'dashboard';
 
@@ -798,11 +813,11 @@ function logAudit(action){
   if(state.auditLog.length>500) state.auditLog.length = 500;
 }
 function woStatutColor(statut){
-  return { 'Créé':'var(--muted)', 'Confirmé partiel':'var(--accent)', 'Confirmé':'var(--steel)', 'En cours':'var(--accent)', 'Suspendu':'var(--accent)', 'Terminé':'var(--steel)', 'Clôturé':'var(--success)', 'Annulé':'var(--danger)' }[statut] || 'var(--muted)';
+  return { 'OT Généré':'var(--muted)', 'OT Planifié':'var(--steel)', 'OT Autorisé':'var(--steel)', 'OT En cours':'var(--accent)', 'OT en reprise':'var(--danger)', 'OT Réalisé':'var(--steel)', 'OT Validé Atelier':'var(--steel)', 'Suspendu':'var(--accent)', 'OT Clôturé':'var(--success)', 'Annulé':'var(--danger)' }[statut] || 'var(--muted)';
 }
 function woStatusBadges(w){
   // Reproduit l'esprit du bandeau "statut système" SAP (LANC/DANP/DELN...) à partir de l'état réel de l'OT
-  const statutColors = { 'Créé':'var(--muted)', 'Confirmé partiel':'var(--accent)', 'Confirmé':'var(--steel)', 'En cours':'var(--accent)', 'Suspendu':'var(--accent)', 'Terminé':'var(--steel)', 'Clôturé':'var(--success)', 'Annulé':'var(--danger)' };
+  const statutColors = { 'OT Généré':'var(--muted)', 'OT Planifié':'var(--steel)', 'OT Autorisé':'var(--steel)', 'OT En cours':'var(--accent)', 'OT en reprise':'var(--danger)', 'OT Réalisé':'var(--steel)', 'OT Validé Atelier':'var(--steel)', 'Suspendu':'var(--accent)', 'OT Clôturé':'var(--success)', 'Annulé':'var(--danger)' };
   const tags = [{t: w.statut.toUpperCase(), c: statutColors[w.statut]||'var(--muted)'}];
   if(w.operations && w.operations.length) tags.push({t:'OPÉR. SAISIES', c:'var(--steel)'});
   if(w.piecesUtilisees && w.piecesUtilisees.length) tags.push({t:'COMPOSANTS', c:'var(--steel)'});
@@ -960,7 +975,7 @@ function computeKpis(){
   const dispo = state.fleet.filter(e=>e.statut==="Opérationnel").length;
   const pannes = state.fleet.filter(e=>e.statut==="En panne").length;
   const disponibilite = Math.round((dispo/total)*1000)/10;
-  const closed = state.workOrders.filter(w=>w.type==="Correctif" && w.statut==="Terminé" && w.dateCreation && w.dateFin);
+  const closed = state.workOrders.filter(w=>w.type==="Panne / Correctif" && w.statut==="OT Clôturé" && w.dateCreation && w.dateFin);
   const mttrH = closed.length ? closed.reduce((a,w)=>a+Math.max(0,(new Date(w.dateFin)-new Date(w.dateCreation))/36e5),0)/closed.length : 0;
   const coutMaintenance = state.workOrders.reduce((a,w)=>a+Number(w.cout||0),0);
   const coutCarburant = state.fuelLogs.reduce((a,f)=>a+Number(f.cout||0),0);
@@ -1119,7 +1134,7 @@ function drawDashboardCharts(){
   const danger = getComputedStyle(document.documentElement).getPropertyValue('--danger').trim() || '#E5533C';
   drawBarChart(document.getElementById('chart-maint-cost'), months.map(monthLabel), maintByMonth, accent);
   drawBarChart(document.getElementById('chart-fuel-cost'), months.map(monthLabel), fuelByMonth, steel);
-  const woColors = { 'Créé':muted, 'Confirmé partiel':accent, 'Confirmé':steel, 'En cours':accent, 'Suspendu':accent, 'Terminé':steel, 'Clôturé':success, 'Annulé':danger };
+  const woColors = { 'OT Généré':muted, 'OT Planifié':steel, 'OT Autorisé':steel, 'OT En cours':accent, 'OT en reprise':danger, 'OT Réalisé':steel, 'OT Validé Atelier':steel, 'Suspendu':accent, 'OT Clôturé':success, 'Annulé':danger };
   const woFiltered = state.workOrders.filter(w=>matchesFilter(w.equipementId));
   drawDonut(document.getElementById('chart-wo-status'), WO_STATUTS.map(s=>({label:s, value: woFiltered.filter(w=>w.statut===s).length || 0.0001, color: woColors[s]})));
   const persColors = [accent, steel, success];
@@ -1725,7 +1740,7 @@ function viewWO(){
       <div class="row">
         <span style="font-size:12px;color:${woStatutColor(w.statut)}">${w.statut}</span>
         ${w.cout>0?`<span class="mono" style="font-size:12px;color:var(--muted);">${fmt(w.cout)} FCFA</span>`:''}
-        ${!isTech && w.statut==='Terminé' ? `<button class="btn btn-ghost" style="font-size:11px;padding:3px 8px;color:var(--success);" data-close-wo="${w.id}">${ICONS.check} Clôturer</button>`:''}
+        ${!isTech && hasCapacite('cloturer_ot', currentUser&&currentUser.role==='planificateur') && w.statut==='OT Validé Atelier' ? `<button class="btn btn-ghost" style="font-size:11px;padding:3px 8px;color:var(--success);" data-close-wo="${w.id}">${ICONS.check} Clôturer</button>`:''}
         <button class="icon-btn" data-open-wo="${w.id}">${ICONS.edit}</button>
         ${isTech?'':`<button class="icon-btn" data-del-wo="${w.id}">${ICONS.trash}</button>`}
       </div>
@@ -1761,7 +1776,7 @@ function fmtDuree(mins){
 }
 function blankWO(){
   return { id:null, numero:null, categorieEquipement:'', equipementId:'', type:'Panne / Correctif',
-    typeTravail: state.typesTravail[0], poste: state.postes[0], titre:'', description:'', priorite:'Normale', statut:'Créé',
+    typeTravail: state.typesTravail[0], poste: state.postes[0], titre:'', description:'', priorite:'Normale', statut:'OT Planifié',
     dateCreation:new Date().toISOString().slice(0,10), dateDebut:new Date().toISOString().slice(0,10), dateFin:'',
     technicien:'', cout:0, operations:[], piecesUtilisees:[],
     permisTravail:false, consignation:'', budgetApprouve:false, approbateurBudget:'', clotureFinanciere:false, clotureFinancierePar:'', documents:[],
@@ -1793,12 +1808,14 @@ function viewWOEdit(){
   const personnelDuPoste = state.personnel.filter(p=>p.statut==='Actif' && (!w.poste || p.poste===w.poste));
 
   const isTechEdit = currentUser && currentUser.role==='technicien';
-  const canConfirmOT = currentUser && hasCapacite('confirmer_ot', currentUser.role==='planificateur');
+  const canPlanifierOT = currentUser && hasCapacite('planifier_ot', currentUser.role==='planificateur');
+  const canAutoriserOT = currentUser && hasCapacite('autoriser_ot', currentUser.role==='directeur-exploitation');
+  const canControlerQualiteOT = currentUser && hasCapacite('controler_qualite_ot', currentUser.role==='chef-atelier');
   const canControlOT = currentUser && hasCapacite('controler_ot', currentUser.role==='planificateur');
   const canCloseOT = currentUser && hasCapacite('cloturer_ot', currentUser.role==='planificateur');
   const canBudgetOT = currentUser && hasCapacite('budget_ot', false);
-  // Conservé pour compat : utilisé par le bouton "Lancer" et le calcul de canExecute (peut confirmer OU contrôler)
-  const canSuperviseEdit = canConfirmOT || canControlOT || canCloseOT;
+  // Conservé pour compat : utilisé pour le calcul global de canExecute
+  const canSuperviseEdit = canPlanifierOT || canAutoriserOT || canControlerQualiteOT || canControlOT || canCloseOT;
 
   const hasBudgetTab = !woIsNew && Number(w.cout)>0;
   const woTabs = [
@@ -1810,25 +1827,29 @@ function viewWOEdit(){
     ...(hasBudgetTab ? [{id:'budget', label:'Budget & clôture'}] : []),
   ];
   const isAdminEdit = currentUser && hasCapacite('archiver_ot', false);
-  const canExecute = !woIsNew && (canSuperviseEdit || (isTechEdit && w.technicien===currentUser.nomComplet));
+  const canExecute = !woIsNew && (isTechEdit && w.technicien===currentUser.nomComplet) || (currentUser && currentUser.role==='admin');
   const s = w.statut;
-  const finalStates = ['Clôturé','Annulé'];
+  const finalStates = ['OT Clôturé','Annulé'];
 
   return `
   <div class="wo-toolbar wrapwrap">
     <button class="btn btn-ghost" style="border-color:var(--borderL);" id="wo-back">${ICONS.close} Retour à la liste</button>
-    ${!woIsNew && canConfirmOT && s==='Créé' ? `<button class="btn btn-ghost" style="color:var(--steel);border-color:var(--steel);" id="wo-confirm">${ICONS.check} Confirmer</button>` : ''}
-    ${!woIsNew && canConfirmOT && s==='Confirmé' ? `<button class="btn btn-ghost" style="color:var(--accent);border-color:var(--accent);" id="wo-launch">${ICONS.activity} Lancer</button>` : ''}
-    ${!woIsNew && isTechEdit && w.technicien===currentUser.nomComplet && s==='Confirmé' ? `<button class="btn btn-ghost" style="color:var(--accent);border-color:var(--accent);" id="wo-launch">${ICONS.activity} Exécuter</button>` : ''}
-    ${canExecute && (s==='En cours'||s==='Confirmé partiel') ? `<button class="btn btn-ghost" style="color:var(--steel);border-color:var(--steel);" id="wo-finish">${ICONS.check} Marquer terminé${s==='Confirmé partiel'?' (suite)':''}</button>` : ''}
-    ${!woIsNew && canCloseOT && (s==='Confirmé partiel'||s==='Terminé') ? `<button class="btn btn-ghost" style="color:var(--muted);border-color:var(--borderL);" id="wo-deconfirm">${ICONS.close} Déconfirmer</button>` : ''}
-    ${!woIsNew && canCloseOT && s==='Terminé' ? `<button class="btn btn-ghost" style="color:var(--success);border-color:var(--success);" id="wo-close-toolbar">${ICONS.check} Clôturer technique</button>` : ''}
-    ${!woIsNew && canControlOT && ['Créé','Confirmé','En cours','Confirmé partiel'].includes(s) ? `<button class="btn btn-ghost" style="color:var(--muted);border-color:var(--borderL);" id="wo-suspend">${ICONS.close} Suspendre</button>` : ''}
+    ${!woIsNew && canPlanifierOT && s==='OT Généré' ? `<button class="btn btn-ghost" style="color:var(--steel);border-color:var(--steel);" id="wo-plan">${ICONS.check} Planifier</button>` : ''}
+    ${!woIsNew && canAutoriserOT && s==='OT Planifié' ? `<button class="btn btn-ghost" style="color:var(--steel);border-color:var(--steel);" id="wo-authorize">${ICONS.check} Autoriser</button>` : ''}
+    ${!woIsNew && canAutoriserOT && s==='OT Planifié' ? `<button class="btn btn-ghost" style="color:var(--danger);border-color:var(--danger);" id="wo-authorize-refuse">${ICONS.close} Refuser l'autorisation</button>` : ''}
+    ${!woIsNew && canExecute && s==='OT Autorisé' ? `<button class="btn btn-ghost" style="color:var(--accent);border-color:var(--accent);" id="wo-launch">${ICONS.activity} Lancer / Exécuter</button>` : ''}
+    ${canExecute && s==='OT En cours' ? `<button class="btn btn-ghost" style="color:var(--steel);border-color:var(--steel);" id="wo-finish">${ICONS.check} Marquer terminé</button>` : ''}
+    ${!woIsNew && canExecute && s==='OT en reprise' ? `<button class="btn btn-ghost" style="color:var(--accent);border-color:var(--accent);" id="wo-resume">${ICONS.activity} Relancer l'exécution</button>` : ''}
+    ${!woIsNew && canControlerQualiteOT && s==='OT Réalisé' ? `<button class="btn btn-ghost" style="color:var(--success);border-color:var(--success);" id="wo-quality-ok">${ICONS.check} Valider la qualité</button>` : ''}
+    ${!woIsNew && canControlerQualiteOT && (s==='OT Réalisé'||s==='OT Validé Atelier') ? `<button class="btn btn-ghost" style="color:var(--danger);border-color:var(--danger);" id="wo-quality-rework">${ICONS.close} Demander une reprise</button>` : ''}
+    ${!woIsNew && canCloseOT && s==='OT Validé Atelier' ? `<button class="btn btn-ghost" style="color:var(--success);border-color:var(--success);" id="wo-close-toolbar">${ICONS.check} Clôturer technique</button>` : ''}
+    ${!woIsNew && canCloseOT && ['OT Réalisé','OT Validé Atelier'].includes(s) ? `<button class="btn btn-ghost" style="color:var(--muted);border-color:var(--borderL);" id="wo-deconfirm">${ICONS.close} Déconfirmer</button>` : ''}
+    ${!woIsNew && canControlOT && !finalStates.includes(s) && s!=='Suspendu' ? `<button class="btn btn-ghost" style="color:var(--muted);border-color:var(--borderL);" id="wo-suspend">${ICONS.close} Suspendre</button>` : ''}
     ${!woIsNew && canControlOT && s==='Suspendu' ? `<button class="btn btn-ghost" style="color:var(--accent);border-color:var(--accent);" id="wo-reopen">${ICONS.activity} Réouvrir</button>` : ''}
-    ${!woIsNew && canCloseOT && s==='Clôturé' ? `<button class="btn btn-ghost" style="color:var(--accent);border-color:var(--accent);" id="wo-reopen">${ICONS.activity} Déclôturer</button>` : ''}
+    ${!woIsNew && canCloseOT && s==='OT Clôturé' ? `<button class="btn btn-ghost" style="color:var(--accent);border-color:var(--accent);" id="wo-reopen">${ICONS.activity} Déclôturer</button>` : ''}
     ${!woIsNew && canControlOT && !finalStates.includes(s) ? `<button class="btn btn-ghost" style="color:var(--danger);border-color:var(--danger);" id="wo-cancel">${ICONS.trash} Annuler</button>` : ''}
     ${!woIsNew && canControlOT && !finalStates.includes(s) ? `<button class="btn btn-ghost" style="color:var(--steel);border-color:var(--steel);" id="wo-transfer">${ICONS.users} Transférer</button>` : ''}
-    ${!woIsNew && isAdminEdit && s==='Clôturé' && w.clotureFinanciere && !w.archive ? `<button class="btn btn-ghost" style="color:var(--success);border-color:var(--success);" id="wo-archive">${ICONS.receipt} Archiver</button>` : ''}
+    ${!woIsNew && isAdminEdit && s==='OT Clôturé' && w.clotureFinanciere && !w.archive ? `<button class="btn btn-ghost" style="color:var(--success);border-color:var(--success);" id="wo-archive">${ICONS.receipt} Archiver</button>` : ''}
     ${!woIsNew ? `<button class="btn btn-ghost" style="color:var(--muted);border-color:var(--borderL);" id="wo-workflow">${ICONS.layers} Workflow</button>` : ''}
     ${!woIsNew ? `<button class="btn btn-ghost" style="color:var(--muted);border-color:var(--borderL);" id="wo-print-pdf">${ICONS.report} Imprimer PDF</button>` : ''}
     <div class="row" style="margin-left:auto;">
@@ -1920,7 +1941,7 @@ function viewWOEdit(){
         <span style="font-size:12px;color:var(--muted);">Clôture financière</span>
         <div style="font-size:13px;color:${w.clotureFinanciere?'var(--success)':'var(--muted)'};">${w.clotureFinanciere?('Clôturé par '+esc(w.clotureFinancierePar)):'Non clôturé'}</div>
       </div>
-      ${canBudgetOT && w.statut==='Clôturé' && !w.clotureFinanciere ? `<button class="btn btn-ghost" id="wo-close-financial" style="color:var(--success);border-color:var(--success);">${ICONS.check} Clôturer financièrement</button>` : ''}
+      ${canBudgetOT && w.statut==='OT Clôturé' && !w.clotureFinanciere ? `<button class="btn btn-ghost" id="wo-close-financial" style="color:var(--success);border-color:var(--success);">${ICONS.check} Clôturer financièrement</button>` : ''}
     </div>
   </div>` : ''}
 
@@ -2056,19 +2077,32 @@ function wireWOEditor(){
   function quickTransition(newStatut, extra){
     syncGeneralFieldsFromDOM();
     w.statut = newStatut;
-    if((newStatut==='Terminé'||newStatut==='Clôturé') && !w.dateFin) w.dateFin = new Date().toISOString().slice(0,10);
+    if((newStatut==='OT Réalisé'||newStatut==='OT Clôturé') && !w.dateFin) w.dateFin = new Date().toISOString().slice(0,10);
     if(extra) Object.assign(w, extra);
     const idx = state.workOrders.findIndex(x=>x.id===w.id);
     if(idx>-1) state.workOrders[idx] = {...w};
     const eq = equipMap()[w.equipementId];
     if(eq){
-      if(newStatut==='Terminé' || newStatut==='Clôturé' || newStatut==='Annulé') eq.statut='Opérationnel';
-      else if(newStatut==='En cours' || newStatut==='Confirmé partiel') eq.statut='En maintenance';
+      if(newStatut==='OT Clôturé' || newStatut==='Annulé') eq.statut='Opérationnel';
+      else eq.statut='En maintenance';
     }
     logAudit('OT '+w.numero+' → '+newStatut); persist(); toast('Statut : '+newStatut); render();
   }
-  const confirmBtn = document.getElementById('wo-confirm');
-  if(confirmBtn) confirmBtn.addEventListener('click', ()=>quickTransition('Confirmé'));
+  const planBtn = document.getElementById('wo-plan');
+  if(planBtn) planBtn.addEventListener('click', ()=>{
+    if(!w.technicien){ alert("Affecte un responsable (onglet Données générales) avant de planifier l'OT."); return; }
+    confirmModal('Planifier '+w.numero+' ? Vérifie que les gammes opératoires et les ressources sont bien renseignées.', ()=>quickTransition('OT Planifié'));
+  });
+  const authorizeBtn = document.getElementById('wo-authorize');
+  if(authorizeBtn) authorizeBtn.addEventListener('click', ()=>{
+    confirmModal('Autoriser le lancement de '+w.numero+' ? Vérifie la cohérence budgétaire et opérationnelle avant de confirmer.', ()=>quickTransition('OT Autorisé', { autorisePar: currentUser?currentUser.nomComplet:'', dateAutorisation: new Date().toISOString().slice(0,10) }));
+  });
+  const authorizeRefuseBtn = document.getElementById('wo-authorize-refuse');
+  if(authorizeRefuseBtn) authorizeRefuseBtn.addEventListener('click', ()=>{
+    promptModal('Refuser l\'autorisation de '+w.numero, 'Motif du refus', (motif)=>{
+      quickTransition('OT Généré', { motifRefusAutorisation: motif });
+    }, {textarea:true});
+  });
   const deconfirmBtn = document.getElementById('wo-deconfirm');
   if(deconfirmBtn) deconfirmBtn.addEventListener('click', ()=>openDeconfirmPanel(w));
   const workflowBtn = document.getElementById('wo-workflow');
@@ -2076,14 +2110,26 @@ function wireWOEditor(){
   const printPdfBtn = document.getElementById('wo-print-pdf');
   if(printPdfBtn) printPdfBtn.addEventListener('click', ()=>exportSingleWOToPDF(w));
   const launchBtn = document.getElementById('wo-launch');
-  if(launchBtn) launchBtn.addEventListener('click', ()=>quickTransition('En cours'));
+  if(launchBtn) launchBtn.addEventListener('click', ()=>quickTransition('OT En cours'));
+  const resumeBtn = document.getElementById('wo-resume');
+  if(resumeBtn) resumeBtn.addEventListener('click', ()=>quickTransition('OT En cours'));
   const finishBtn = document.getElementById('wo-finish');
   if(finishBtn) finishBtn.addEventListener('click', ()=>{
     if(!w.operations || w.operations.length===0){ alert("Ajoute au moins une opération avec ses intervenants dans l'onglet \"Opérations\" avant de marquer l'OT comme terminé — c'est là que tu enregistres le travail réellement effectué."); return; }
     openConfirmationPanel(w);
   });
+  const qualityOkBtn = document.getElementById('wo-quality-ok');
+  if(qualityOkBtn) qualityOkBtn.addEventListener('click', ()=>{
+    confirmModal('Valider la qualité des travaux de '+w.numero+' ?', ()=>quickTransition('OT Validé Atelier', { controleQualitePar: currentUser?currentUser.nomComplet:'', dateControleQualite: new Date().toISOString().slice(0,10) }));
+  });
+  const qualityReworkBtn = document.getElementById('wo-quality-rework');
+  if(qualityReworkBtn) qualityReworkBtn.addEventListener('click', ()=>{
+    promptModal('Demander une reprise sur '+w.numero, 'Motif de la reprise (ce qui doit être corrigé)', (motif)=>{
+      quickTransition('OT en reprise', { motifReprise: motif });
+    }, {textarea:true});
+  });
   const closeBtn = document.getElementById('wo-close-toolbar');
-  if(closeBtn) closeBtn.addEventListener('click', ()=>{ confirmModal('Clôturer techniquement '+w.numero+' ?', ()=>quickTransition('Clôturé')); });
+  if(closeBtn) closeBtn.addEventListener('click', ()=>{ confirmModal('Clôturer techniquement '+w.numero+' ? Vérifie que temps, coûts et pièces sont bien saisis.', ()=>quickTransition('OT Clôturé')); });
   const suspendBtn = document.getElementById('wo-suspend');
   if(suspendBtn) suspendBtn.addEventListener('click', ()=>{
     promptModal('Suspendre '+w.numero, 'Motif de suspension (pièces manquantes, ressources...)', (motif)=>{
@@ -2097,7 +2143,7 @@ function wireWOEditor(){
       quickTransition(target, { statutAvantSuspension:null });
     } else {
       confirmModal('Rouvrir '+w.numero+' ? La clôture financière déjà validée sera remise à zéro.', ()=>{
-        quickTransition('En cours', { clotureFinanciere:false, clotureFinancierePar:'' });
+        quickTransition('OT Validé Atelier', { clotureFinanciere:false, clotureFinancierePar:'' });
       });
     }
   });
@@ -2319,7 +2365,7 @@ function wireWOEditor(){
   const saveHandler = ()=>{
     syncGeneralFieldsFromDOM();
     if(!w.titre || !w.equipementId){ alert('Libellé et équipement requis — vérifie l\'onglet "Données générales"'); woEditTab='general'; render(); return; }
-    if((w.statut==='Terminé' || w.statut==='Clôturé') && !w.dateFin) w.dateFin = new Date().toISOString().slice(0,10);
+    if((w.statut==='OT Réalisé' || w.statut==='OT Validé Atelier' || w.statut==='OT Clôturé') && !w.dateFin) w.dateFin = new Date().toISOString().slice(0,10);
     const eqForStatus = [...state.fleet,...state.plantEquipment].find(x=>x.id===w.equipementId);
 
     if(woIsNew){
@@ -2329,7 +2375,7 @@ function wireWOEditor(){
       state.workOrders.push(w);
       reservePendingParts();
       if(eqForStatus){
-        if(w.statut==='Terminé' || w.statut==='Clôturé') eqForStatus.statut='Opérationnel';
+        if(w.statut==='OT Clôturé') eqForStatus.statut='Opérationnel';
         else eqForStatus.statut='En maintenance';
       }
       logAudit('Création OT '+w.numero+' — '+w.titre);
@@ -2339,8 +2385,8 @@ function wireWOEditor(){
       const idx = state.workOrders.findIndex(x=>x.id===w.id);
       if(idx>-1) state.workOrders[idx] = w;
       if(eqForStatus){
-        if(w.statut==='Terminé' || w.statut==='Clôturé' || w.statut==='Annulé') eqForStatus.statut='Opérationnel';
-        else if(w.statut!=='Créé' || eqForStatus.statut!=='En panne') eqForStatus.statut='En maintenance';
+        if(w.statut==='OT Clôturé' || w.statut==='Annulé') eqForStatus.statut='Opérationnel';
+        else if(w.statut!=='OT Généré' || eqForStatus.statut!=='En panne') eqForStatus.statut='En maintenance';
       }
       persist(); render(); toast('Ordre de travail mis à jour');
     }
@@ -3197,7 +3243,8 @@ function prodForm(p){
 function viewNotif(){
   const em = equipMap();
   const isTech = currentUser && currentUser.role==='technicien';
-  const canSupervise = currentUser && hasCapacite('valider_avis', currentUser.role==='planificateur');
+  const canSupervise = currentUser && hasCapacite('valider_avis', currentUser.role==='chef-atelier');
+  const canGenererOT = currentUser && hasCapacite('planifier_ot', currentUser.role==='planificateur');
   const allEquip = [...state.fleet, ...state.plantEquipment];
   const sorted = [...state.notifications].sort((a,b)=>(b.dateCreation||'').localeCompare(a.dateCreation||''));
   return `
@@ -3212,7 +3259,7 @@ function viewNotif(){
     return `
   <div class="plate p14 between wrapwrap legend-clickable" data-edit-notif-row="${n.id}" style="gap:12px;">
     <div class="row" style="min-width:0;">
-      <span class="led" style="background:${n.statut==='Clôturée'||n.statut==='Convertie en OT'?'var(--success)':n.statut==='Validée'?'var(--steel)':n.priorite==='Urgente'?'var(--danger)':'var(--accent)'}"></span>
+      <span class="led" style="background:${n.statut==='Clôturée'||(n.statut==='Validée'&&n.workOrderId)?'var(--success)':n.statut==='Validée'?'var(--steel)':n.statut==='Refusée'?'var(--danger)':n.priorite==='Urgente'?'var(--danger)':'var(--accent)'}"></span>
       <div>
         <div class="row" style="flex-wrap:wrap;">
           <span class="mono" style="font-size:11px;color:var(--muted);">${n.numero||'—'}</span>
@@ -3223,8 +3270,9 @@ function viewNotif(){
       </div>
     </div>
     <div class="row">
-      ${canSupervise && n.statut==='Nouvelle' ? `<button class="btn btn-ghost" style="font-size:11px;padding:4px 8px;color:var(--steel);" data-validate-notif="${n.id}">${ICONS.check} Valider</button>` : ''}
-      ${canSupervise && n.statut==='Validée' ? `<button class="btn btn-ghost" style="font-size:11px;padding:4px 8px;" data-convert-notif="${n.id}">${ICONS.convert} Convertir en OT</button>` : ''}
+      ${canSupervise && n.statut==='Nouvelle' ? `<button class="btn btn-ghost" style="font-size:11px;padding:4px 8px;color:var(--steel);" data-validate-notif="${n.id}">${ICONS.check} Valider l'avis</button>` : ''}
+      ${canSupervise && n.statut==='Nouvelle' ? `<button class="btn btn-ghost" style="font-size:11px;padding:4px 8px;color:var(--danger);" data-reject-notif="${n.id}">${ICONS.close} Refuser</button>` : ''}
+      ${canGenererOT && n.statut==='Validée' && !n.workOrderId ? `<button class="btn btn-ghost" style="font-size:11px;padding:4px 8px;color:var(--success);" data-convert-notif="${n.id}">${ICONS.convert} Générer l'OT</button>` : ''}
       ${!isTech?`<button class="icon-btn" data-edit-notif="${n.id}">${ICONS.edit}</button>`:''}
       ${!isTech?`<button class="icon-btn" data-del-notif="${n.id}">${ICONS.trash}</button>`:''}
     </div>
@@ -4365,7 +4413,7 @@ function computeReportData(){
   });
   if(mtbfList.length) mtbfH = mtbfList.reduce((a,x)=>a+x.mtbfH,0)/mtbfList.length;
   const nbCrees = wos.length;
-  const nbClotures = wos.filter(w=>w.statut==='Clôturé').length;
+  const nbClotures = wos.filter(w=>w.statut==='OT Clôturé').length;
   const pctPreventif = wos.length ? Math.round(wos.filter(w=>w.type==='Préventif').length/wos.length*1000)/10 : 0;
   const pctCorrectif = wos.length ? Math.round(correctifs.length/wos.length*1000)/10 : 0;
 
@@ -4558,18 +4606,14 @@ function recomputeConfirmStatus(w){
   const confirmed = (w.operations||[]).filter(o=>o.confirme).length;
   if(total===0) return;
   const eq = equipMap()[w.equipementId];
-  if(confirmed===0){
-    w.statut = 'En cours';
-    w.dateFin = '';
-    if(eq) eq.statut = 'En maintenance';
-  } else if(confirmed<total){
-    w.statut = 'Confirmé partiel';
+  if(confirmed<total){
+    w.statut = 'OT En cours';
     w.dateFin = '';
     if(eq) eq.statut = 'En maintenance';
   } else {
-    w.statut = 'Terminé';
+    w.statut = 'OT Réalisé';
     if(!w.dateFin) w.dateFin = new Date().toISOString().slice(0,10);
-    if(eq) eq.statut = 'Opérationnel';
+    if(eq) eq.statut = 'En maintenance'; // reste en maintenance : contrôle qualité + clôture encore à faire
   }
 }
 function openConfirmationPanel(wId){
@@ -4719,20 +4763,30 @@ function openWorkflowPanel(w){
   const ops = w.operations||[];
   const totalOps = ops.length, confirmedOps = ops.filter(o=>o.confirme).length;
   const s = w.statut;
+  const order = ["OT Généré","OT Planifié","OT Autorisé","OT En cours","OT Réalisé","OT Validé Atelier","OT Clôturé"];
+  const idxActuel = order.indexOf(s);
+  const passed = (key)=> idxActuel > order.indexOf(key) || s==='OT Clôturé';
+  const isNow = (key)=> s===key;
   const stages = [
-    { key:'Créé', label:'Création', done:true, info: 'Créé le '+(w.dateCreation||'—')+(linkedNotif?' · à partir de l\'avis '+(linkedNotif.numero||''):'') },
-    { key:'Confirmation', label:'Confirmation (validation administrative)', done: s!=='Créé',
-      info: s==='Créé' ? 'En attente de validation par un responsable ou planificateur' : 'Ordre validé, prêt à être lancé',
-      pending: s==='Créé' },
-    { key:'Exécution', label:'Exécution', done: ['En cours','Confirmé partiel','Terminé','Clôturé'].includes(s),
-      info: w.technicien ? 'Responsable : '+w.technicien : 'Aucun responsable assigné',
-      pending: s==='Confirmé' },
-    { key:'ConfirmationOps', label:'Confirmation des heures effectuées', done: ['Terminé','Clôturé'].includes(s),
-      info: totalOps===0 ? 'Aucune opération à confirmer' : `${confirmedOps} / ${totalOps} opération(s) confirmée(s)`,
-      pending: s==='En cours' || s==='Confirmé partiel' },
-    { key:'Clôture', label:'Clôture technique & financière', done: s==='Clôturé',
-      info: s==='Clôturé' ? ('Clôturé le '+(w.dateFin||'—')+(w.clotureFinanciere?' · clôture financière validée par '+(w.clotureFinancierePar||''):' · clôture financière en attente')) : (s==='Terminé' ? 'Prêt pour clôture technique' : 'En attente de fin d\'exécution'),
-      pending: s==='Terminé' },
+    { key:'OT Généré', label:'1. Création de l\'avis (Technicien)', done: idxActuel>=0,
+      info: linkedNotif ? 'Avis '+(linkedNotif.numero||'')+' déclaré par le technicien' : 'OT créé directement (sans avis)' },
+    { key:'ValidationAvis', label:'2. Validation de l\'avis (Chef d\'atelier)', done: idxActuel>=0,
+      info: linkedNotif && linkedNotif.statut==='Validée' ? 'Avis validé, OT généré' : (w.categorieEquipement!==undefined && !linkedNotif ? 'Étape sautée (OT créé directement)' : '—') },
+    { key:'OT Planifié', label:'3. Planification (Planificateur)', done: passed('OT Planifié')||isNow('OT Planifié'),
+      info: isNow('OT Généré') ? 'En attente de planification (ressources, gammes, équipe)' : (w.technicien?'Responsable affecté : '+w.technicien:'Aucun responsable affecté'),
+      pending: isNow('OT Généré') },
+    { key:'OT Autorisé', label:'4. Autorisation (Directeur d\'exploitation)', done: passed('OT Autorisé')||isNow('OT Autorisé'),
+      info: w.autorisePar ? 'Autorisé par '+w.autorisePar+' le '+(w.dateAutorisation||'') : (isNow('OT Planifié')?'En attente d\'autorisation':'—'),
+      pending: isNow('OT Planifié') },
+    { key:'OT En cours', label:'5. Exécution des travaux (Technicien)', done: passed('OT Réalisé')||['OT Réalisé','OT Validé Atelier','OT Clôturé'].includes(s),
+      info: totalOps===0 ? (isNow('OT en reprise')?'Reprise demandée : '+(w.motifReprise||''):'Aucune opération saisie') : `${confirmedOps} / ${totalOps} opération(s) confirmée(s)`,
+      pending: isNow('OT Autorisé') || isNow('OT En cours') || isNow('OT en reprise') },
+    { key:'OT Validé Atelier', label:'6. Contrôle qualité (Chef d\'atelier)', done: isNow('OT Validé Atelier')||isNow('OT Clôturé'),
+      info: w.controleQualitePar ? 'Validé par '+w.controleQualitePar+' le '+(w.dateControleQualite||'') : (isNow('OT Réalisé')?'En attente de contrôle qualité':'—'),
+      pending: isNow('OT Réalisé') },
+    { key:'OT Clôturé', label:'7. Clôture technique (Planificateur)', done: isNow('OT Clôturé'),
+      info: isNow('OT Clôturé') ? ('Clôturé le '+(w.dateFin||'—')+(w.clotureFinanciere?' · clôture financière validée par '+(w.clotureFinancierePar||''):' · clôture financière en attente')) : (isNow('OT Validé Atelier') ? 'Prêt pour clôture technique' : '—'),
+      pending: isNow('OT Validé Atelier') },
   ];
   const root = document.getElementById('modal-root');
   root.innerHTML = `
@@ -4740,6 +4794,7 @@ function openWorkflowPanel(w){
     <div class="modal" style="max-width:640px;">
       <div class="modal-head"><h3>Suivi du workflow — ${w.numero||''}</h3><button class="icon-btn" id="wo-panel-close">${ICONS.close}</button></div>
       <div class="modal-body">
+        ${s==='Suspendu'||s==='Annulé'||s==='OT en reprise' ? `<div class="plate p14" style="margin-bottom:16px;border-color:var(--danger);"><strong style="color:var(--danger);">${s==='Suspendu'?'⏸ OT suspendu':s==='Annulé'?'✕ OT annulé':'↺ En reprise'}</strong><div style="font-size:11.5px;color:var(--muted);margin-top:4px;">${esc(w.motifSuspension||w.motifAnnulation||w.motifReprise||'')}</div></div>` : ''}
         <div style="display:flex;flex-direction:column;gap:0;">
           ${stages.map((st,i)=>`
           <div class="row" style="align-items:flex-start;gap:12px;">
@@ -5286,10 +5341,11 @@ function attachHandlers(){
     e.stopPropagation();
     const w = state.workOrders.find(x=>x.id===b.dataset.closeWo);
     if(!w) return;
-    confirmModal('Clôturer techniquement et financièrement '+w.numero+' ?', ()=>{
-      w.statut = 'Clôturé';
+    confirmModal('Clôturer techniquement '+w.numero+' ?', ()=>{
+      w.statut = 'OT Clôturé';
       if(!w.dateFin) w.dateFin = new Date().toISOString().slice(0,10);
       const eq = equipMap()[w.equipementId]; if(eq) eq.statut='Opérationnel';
+      logAudit('OT '+w.numero+' → OT Clôturé');
       persist(); render(); toast(w.numero+' clôturé');
     });
   }));
@@ -5780,7 +5836,16 @@ function attachHandlers(){
     const n = state.notifications.find(x=>x.id===b.dataset.validateNotif);
     if(!n) return;
     n.statut = 'Validée';
-    logAudit('Demande '+n.numero+' validée'); persist(); render(); toast(n.numero+' validée — prête pour la création d\'un ordre de travail');
+    logAudit('Demande '+n.numero+' validée par le chef d\'atelier'); persist(); render(); toast(n.numero+' validée — le planificateur peut maintenant générer l\'OT');
+  }));
+  document.querySelectorAll('[data-reject-notif]').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
+    const n = state.notifications.find(x=>x.id===b.dataset.rejectNotif);
+    if(!n) return;
+    promptModal('Refuser l\'avis '+n.numero, 'Motif du refus (précisions demandées au technicien)', (motif)=>{
+      n.statut = 'Refusée'; n.motifRefus = motif;
+      logAudit('Demande '+n.numero+' refusée — '+motif); persist(); render(); toast(n.numero+' refusée, renvoyée au technicien');
+    }, {textarea:true});
   }));
   document.querySelectorAll('[data-convert-notif]').forEach(b=>b.addEventListener('click',(e)=>{
     e.stopPropagation();
@@ -5794,14 +5859,14 @@ function attachHandlers(){
       id:uid(), numero:'OT-'+String(state.woCounter).padStart(4,'0'), equipementId:n.equipementId,
       categorieEquipement: inFleet ? 'Flotte' : inPlant ? 'Usine' : '', type:'Panne / Correctif',
       typeTravail: n.type==='Panne'?'Intervention':'Inspection', poste:state.postes[0], titre:n.description.slice(0,60),
-      description:n.description, priorite:n.priorite, statut:'Créé',
+      description:n.description, priorite:n.priorite, statut:'OT Généré',
       dateCreation:new Date().toISOString().slice(0,10), dateDebut:new Date().toISOString().slice(0,10), dateFin:''
     };
     state.workOrders.push(wo);
-    n.statut = 'Convertie en OT';
+    n.statut = 'Validée';
     n.workOrderId = wo.id;
     const eq=[...state.fleet,...state.plantEquipment].find(x=>x.id===n.equipementId); if(eq) eq.statut='En maintenance';
-    logAudit('Demande '+n.numero+' convertie en '+wo.numero); persist(); render(); toast('Notification convertie en '+wo.numero);
+    logAudit('OT '+wo.numero+' généré par le planificateur à partir de l\'avis '+n.numero); persist(); render(); toast(wo.numero+' généré à partir de l\'avis '+n.numero);
   }));
 
   // Compteurs / mesures
@@ -6590,7 +6655,8 @@ async function init(){
       rolesApplicatifs: [
         {id:'admin', label:'Administrateur'}, {id:'planificateur', label:'Planificateur maintenance'},
         {id:'technicien', label:'Technicien terrain'}, {id:'rh', label:'Responsable RH'},
-        {id:'pompiste', label:'Pompiste (station)'}, {id:'magasinier', label:'Chef magasinier'}
+        {id:'pompiste', label:'Pompiste (station)'}, {id:'magasinier', label:'Chef magasinier'},
+        {id:'chef-atelier', label:"Chef d'atelier"}, {id:'directeur-exploitation', label:"Directeur d'exploitation"}
       ] };
   } else {
     // compatibilité ascendante : ajoute le module usine si absent d'un compte existant
@@ -6690,8 +6756,13 @@ async function init(){
         w.categorieEquipement = inFleet ? 'Flotte' : inPlant ? 'Usine' : '';
       }
       if(w.type==='Correctif') w.type = 'Panne / Correctif';
-      // migration de l'ancien statut "Ouvert" vers le nouveau workflow "Créé"
-      if(w.statut==='Ouvert') w.statut = 'Créé';
+      // migration des anciens statuts vers le nouveau circuit à 7 étapes (Technicien → Chef Atelier → Planificateur → Directeur → Clôture)
+      if(w.statut==='Ouvert' || w.statut==='Créé') w.statut = 'OT Planifié';
+      if(w.statut==='Confirmé') w.statut = 'OT Autorisé';
+      if(w.statut==='Confirmé partiel') w.statut = 'OT En cours';
+      if(w.statut==='En cours') w.statut = 'OT En cours';
+      if(w.statut==='Terminé') w.statut = 'OT Réalisé';
+      if(w.statut==='Clôturé') w.statut = 'OT Clôturé';
     });
   }
   state = data;
