@@ -512,6 +512,7 @@ function normalizeState(){
   if(!Array.isArray(state.objectifsMaintenance) || state.objectifsMaintenance.length===0) state.objectifsMaintenance = ["Disponibilité","Sécurité","Réduction des coûts","Environnement"];
   if(!Array.isArray(state.gammesOperatoires)) state.gammesOperatoires = [];
   if(!Array.isArray(state.cuves)) state.cuves = [];
+  if(!Array.isArray(state.pmHistorique)) state.pmHistorique = [];
   if(!Array.isArray(state.pompes)) state.pompes = [];
   if(!Array.isArray(state.ravitaillements)) state.ravitaillements = [];
   if(!Array.isArray(state.typesCarburant) || state.typesCarburant.length===0) state.typesCarburant = ["Diesel","Essence","Pétrole"];
@@ -788,7 +789,7 @@ let state = { fleet: [], workOrders: [], fuelLogs: [], parts: [], pmPlans: [], l
   typesStrategieMaintenance: ["Préventif systématique","Conditionnel","Prédictif","Correctif"],
   objectifsMaintenance: ["Disponibilité","Sécurité","Réduction des coûts","Environnement"],
   gammesOperatoires: [],
-  cuves: [], pompes: [], ravitaillements: [],
+  cuves: [], pompes: [], ravitaillements: [], pmHistorique: [],
   typesCarburant: ["Diesel","Essence","Pétrole"],
   rolesApplicatifs: [
     {id:'admin', label:'Administrateur'}, {id:'planificateur', label:'Planificateur maintenance'},
@@ -1160,7 +1161,8 @@ function viewDashboard(){
   state.plantEquipment.filter(e=>e.statut==="En panne").forEach(e=>alerts.push({lvl:'danger',text:`${e.code} — ${e.nom} (usine) est en panne`}));
   state.parts.filter(p=>Number(p.quantite)<=Number(p.seuil)).forEach(p=>alerts.push({lvl:'accent',text:`Stock bas : ${p.nom} (${p.quantite} restant)`}));
   const now = new Date();
-  state.pmPlans.filter(p=>pmStatus(p,em).urgent).forEach(p=>alerts.push({lvl:'accent',text:`Entretien à échéance : ${em[p.equipementId]?.code||'?'} — ${p.tache} (${pmStatus(p,em).label})`}));
+  state.pmPlans.filter(p=>pmStatus(p,em).urgent && !p.otGenereId).forEach(p=>alerts.push({lvl:'accent',text:`Entretien à échéance : ${em[p.equipementId]?.code||'?'} — ${p.tache} (${pmStatus(p,em).label})`}));
+  state.pmPlans.filter(p=>p.otGenereId && pmSuiviStatut(p)==='Généré').forEach(p=>{ const ot=state.workOrders.find(w=>w.id===p.otGenereId); alerts.push({lvl:'steel',text:`Préventif généré automatiquement : ${ot?ot.numero:'?'} — ${em[p.equipementId]?.code||'?'} (${p.tache}) — à planifier`}); });
   state.notifications.filter(n=>n.statut==="Nouvelle" && n.priorite==="Urgente").forEach(n=>alerts.push({lvl:'danger',text:`Notification urgente : ${em[n.equipementId]?.code||'?'} — ${n.description}`}));
   state.measuringPoints.filter(m=>m.seuilMax!=='' && m.dernierReleve!=='' && Number(m.dernierReleve)>Number(m.seuilMax)).forEach(m=>alerts.push({lvl:'accent',text:`Mesure hors seuil : ${em[m.equipementId]?.code||'?'} — ${m.nom} (${m.dernierReleve})`}));
   const recentWO = [...state.workOrders].sort((a,b)=>(b.dateCreation||'').localeCompare(a.dateCreation||'')).slice(0,6);
@@ -2086,6 +2088,7 @@ function wireWOEditor(){
       if(newStatut==='OT Clôturé' || newStatut==='Annulé') eq.statut='Opérationnel';
       else eq.statut='En maintenance';
     }
+    if(newStatut==='OT Clôturé') pmOnClosure(w);
     logAudit('OT '+w.numero+' → '+newStatut); persist(); toast('Statut : '+newStatut); render();
   }
   const planBtn = document.getElementById('wo-plan');
@@ -2414,6 +2417,102 @@ function pmStatus(p, em){
   const label = p.prochaine ? `Échéance : ${p.prochaine}${daysLeft!==null?` (${daysLeft}j)`:''}` : 'Non planifié';
   return { urgent, label };
 }
+function pmEstimation(p, em){
+  const st = pmStatus(p, em);
+  let estimatedDate = null, avgLabel = '';
+  if(p.type==='Heures' || p.type==='Kilométrage'){
+    const eq = em[p.equipementId];
+    const unite = p.type==='Heures' ? 'h' : 'km';
+    const valeurActuelle = eq ? Number(p.type==='Heures' ? eq.heures : eq.km) || 0 : 0;
+    const prochaineValeur = Number(p.derniereValeur||0) + Number(p.intervalle||0);
+    const restant = prochaineValeur - valeurActuelle;
+    if(p.derniere){
+      const joursEcoules = Math.max(1, Math.round((new Date() - new Date(p.derniere))/864e5));
+      const avgPerDay = (valeurActuelle - Number(p.derniereValeur||0)) / joursEcoules;
+      if(avgPerDay > 0){
+        const joursRestants = Math.max(0, Math.round(restant/avgPerDay));
+        const d = new Date(); d.setDate(d.getDate()+joursRestants);
+        estimatedDate = d.toISOString().slice(0,10);
+        avgLabel = `≈ ${avgPerDay.toFixed(1)} ${unite}/j`;
+      }
+    }
+    if(!estimatedDate) avgLabel = 'Historique insuffisant pour estimer une date';
+  } else {
+    estimatedDate = p.prochaine || null;
+  }
+  return { ...st, estimatedDate, avgLabel };
+}
+function pmSuiviStatut(p){
+  if(!p.otGenereId) return 'À venir';
+  const ot = state.workOrders.find(w=>w.id===p.otGenereId);
+  if(!ot) return 'À venir';
+  if(ot.statut==='OT Clôturé') return 'Clôturé';
+  if(['OT Généré','OT Planifié','OT Autorisé'].includes(ot.statut)) return 'Généré';
+  return 'En cours';
+}
+function pmSuiviColor(s){
+  return { 'À venir':'var(--muted)', 'Généré':'var(--steel)', 'En cours':'var(--accent)', 'Clôturé':'var(--success)' }[s] || 'var(--muted)';
+}
+function checkAutoGeneratePM(){
+  // Génère automatiquement un OT préventif J-2 avant l'échéance estimée, si pas déjà fait pour ce cycle
+  const em = equipMap();
+  let changed = false;
+  state.pmPlans.forEach(p=>{
+    if(p.otGenereId){
+      const ot = state.workOrders.find(w=>w.id===p.otGenereId);
+      if(ot) return; // déjà généré, cycle en cours
+      p.otGenereId = null; // OT introuvable (supprimé) : on autorise une nouvelle génération
+    }
+    const est = pmEstimation(p, em);
+    if(!est.estimatedDate) return;
+    const joursAvant = Math.round((new Date(est.estimatedDate) - new Date())/864e5);
+    if(joursAvant <= 2){
+      const eq = em[p.equipementId];
+      const gamme = p.gammeId ? state.gammesOperatoires.find(g=>g.id===p.gammeId) : null;
+      state.woCounter = (state.woCounter||0)+1;
+      const inFleet = state.fleet.some(e=>e.id===p.equipementId);
+      const wo = {
+        ...blankWO(),
+        id: uid(), numero:'OT-'+String(state.woCounter).padStart(4,'0'), equipementId:p.equipementId,
+        categorieEquipement: inFleet?'Flotte':'Usine', type:'Préventif',
+        typeTravail: 'Inspection', poste: state.postes[0], titre: p.tache,
+        description: gamme ? gamme.description : '', statut:'OT Planifié',
+        dateCreation: new Date().toISOString().slice(0,10), dateDebut: est.estimatedDate, dateFin:'',
+        gammeId: p.gammeId||'', origine:'Préventif automatique (J-2)'
+      };
+      state.workOrders.push(wo);
+      p.otGenereId = wo.id;
+      if(eq) eq.statut = eq.statut==='En panne' ? eq.statut : 'En maintenance';
+      logAudit('Préventif : OT '+wo.numero+' généré automatiquement pour '+(eq?eq.code:'?')+' — échéance estimée '+est.estimatedDate);
+      changed = true;
+    }
+  });
+  if(changed) persist();
+}
+function pmOnClosure(ot){
+  // Boucle fermée : quand l'OT lié à un plan préventif est clôturé, réinitialise le compteur et archive l'historique
+  const p = state.pmPlans.find(x=>x.otGenereId===ot.id);
+  if(!p) return;
+  const em = equipMap();
+  const eq = em[p.equipementId];
+  state.pmHistorique = state.pmHistorique || [];
+  state.pmHistorique.push({
+    id: uid(), pmPlanId: p.id, equipementId: p.equipementId, tache: p.tache, otId: ot.id, otNumero: ot.numero,
+    date: ot.dateFin || new Date().toISOString().slice(0,10),
+    valeur: (p.type==='Heures'||p.type==='Kilométrage') && eq ? Number(p.type==='Heures'?eq.heures:eq.km)||0 : null,
+    unite: p.type==='Heures'?'h':p.type==='Kilométrage'?'km':'date', cout: Number(ot.cout||0)
+  });
+  if(p.type==='Heures' || p.type==='Kilométrage'){
+    p.derniereValeur = eq ? Number(p.type==='Heures'?eq.heures:eq.km)||0 : p.derniereValeur;
+    p.derniere = ot.dateFin || new Date().toISOString().slice(0,10);
+  } else {
+    p.derniere = ot.dateFin || new Date().toISOString().slice(0,10);
+    const d = new Date(p.derniere); d.setDate(d.getDate()+Number(p.frequenceJours||90));
+    p.prochaine = d.toISOString().slice(0,10);
+  }
+  p.otGenereId = null;
+  logAudit('Préventif : compteur réinitialisé pour '+p.tache+' ('+(eq?eq.code:'?')+') après clôture de '+ot.numero);
+}
 /* ============ GAMMES OPÉRATOIRES ============ */
 function gammeForm(g){
   return `
@@ -2460,25 +2559,48 @@ function viewGammes(){
   </div>`}`;
 }
 
+let pmViewMode = 'liste';
 function viewPM(){
   const em = equipMap();
-  const sorted = [...state.pmPlans].sort((a,b)=> (pmStatus(a,em).urgent===pmStatus(b,em).urgent)?0:(pmStatus(a,em).urgent?-1:1));
+  const withEst = state.pmPlans.map(p=>({p, est:pmEstimation(p,em), suivi:pmSuiviStatut(p)}));
+  const sorted = pmViewMode==='suivi'
+    ? [...withEst].sort((a,b)=>(a.est.estimatedDate||'9999').localeCompare(b.est.estimatedDate||'9999'))
+    : [...withEst].sort((a,b)=> (a.est.urgent===b.est.urgent)?0:(a.est.urgent?-1:1));
   return `
   <div class="headrow">
-    <div><h1>Maintenance préventive</h1><p class="subtitle" style="margin:0;">Planification par date ou par compteur (heures/km)</p></div>
-    <button class="btn btn-accent" data-open-pm="new">${ICONS.plus} Nouveau plan</button>
+    <div><h1>Maintenance préventive</h1><p class="subtitle" style="margin:0;">Planification par date ou par compteur (heures/km) — estimation prédictive et génération automatique</p></div>
+    <div class="row">
+      <div class="row" style="background:var(--panelR);border-radius:8px;padding:2px;">
+        <button class="btn ${pmViewMode==='liste'?'btn-accent':'btn-ghost'}" style="padding:6px 12px;font-size:12px;" id="pm-mode-liste" type="button">Liste</button>
+        <button class="btn ${pmViewMode==='suivi'?'btn-accent':'btn-ghost'}" style="padding:6px 12px;font-size:12px;" id="pm-mode-suivi" type="button">Suivi global</button>
+      </div>
+      <button class="btn btn-accent" data-open-pm="new">${ICONS.plus} Nouveau plan</button>
+    </div>
   </div>
   ${sorted.length===0?`<div class="plate p16"><div class="empty">${ICONS.calendar}<span>Aucun plan préventif défini.</span></div></div>`:
-  `<div style="display:flex;flex-direction:column;gap:8px;">
-  ${sorted.map(p=>{
-    const st = pmStatus(p, em);
+  pmViewMode==='suivi' ? `
+  <div class="plate" style="overflow:hidden;">
+  <table><thead><tr><th>Échéance estimée</th><th>Équipement</th><th>Tâche</th><th>Type</th><th>Statut de suivi</th><th></th></tr></thead>
+  <tbody>
+  ${sorted.map(({p,est,suivi})=>{ const ot = p.otGenereId ? state.workOrders.find(w=>w.id===p.otGenereId) : null;
+    return `<tr class="legend-clickable" data-open-pm-row="${p.id}">
+    <td class="mono" style="color:${est.urgent?'var(--danger)':'var(--text)'}">${est.estimatedDate||'—'}</td>
+    <td class="mono">${em[p.equipementId]?.code||'—'}</td>
+    <td>${esc(p.tache)}</td>
+    <td><span class="badge">${p.type||'Date'}</span></td>
+    <td><span class="badge" style="color:${pmSuiviColor(suivi)};border-color:${pmSuiviColor(suivi)};">${suivi}</span>${ot?` <span style="color:var(--muted);font-size:11px;">${ot.numero}</span>`:''}</td>
+    <td><button class="icon-btn" data-open-pm="${p.id}">${ICONS.edit}</button></td>
+  </tr>`;}).join('')}
+  </tbody></table></div>` : `
+  <div style="display:flex;flex-direction:column;gap:8px;">
+  ${sorted.map(({p,est,suivi})=>{
     return `<div class="plate p14 between wrapwrap legend-clickable" data-open-pm-row="${p.id}" style="gap:12px;">
-      <div class="row"><span class="led" style="background:${st.urgent?'var(--danger)':'var(--success)'}"></span>
-        <div><div style="font-size:13px;font-weight:500;">${esc(p.tache)}</div>
-        <div style="font-size:12px;color:var(--muted);">${em[p.equipementId]?.code||'—'} · <span class="badge">${p.type||'Date'}</span>${p.type==='Date'||!p.type?` · tous les ${p.frequenceJours} j`:` · tous les ${p.intervalle} ${p.type==='Heures'?'h':'km'}`}</div></div>
+      <div class="row"><span class="led" style="background:${est.urgent?'var(--danger)':'var(--success)'}"></span>
+        <div><div class="row" style="flex-wrap:wrap;"><span style="font-size:13px;font-weight:500;">${esc(p.tache)}</span><span class="badge" style="color:${pmSuiviColor(suivi)};border-color:${pmSuiviColor(suivi)};">${suivi}</span></div>
+        <div style="font-size:12px;color:var(--muted);">${em[p.equipementId]?.code||'—'} · <span class="badge">${p.type||'Date'}</span>${p.type==='Date'||!p.type?` · tous les ${p.frequenceJours} j`:` · tous les ${p.intervalle} ${p.type==='Heures'?'h':'km'}`}${est.estimatedDate?` · échéance estimée : ${est.estimatedDate}`:''}</div></div>
       </div>
       <div class="row">
-        <span style="font-size:12px;color:${st.urgent?'var(--danger)':'var(--muted)'}">${st.label}</span>
+        <span style="font-size:12px;color:${est.urgent?'var(--danger)':'var(--muted)'}">${est.label}</span>
         <button class="icon-btn" data-open-pm="${p.id}">${ICONS.edit}</button>
         <button class="icon-btn" data-del-pm="${p.id}">${ICONS.trash}</button>
       </div>
@@ -2492,7 +2614,7 @@ let pmIsNew = false;
 function blankPM(){
   return { id:null, equipementId: state.fleet[0]?.id||state.plantEquipment[0]?.id||'', tache:'', type:'Date',
     frequenceJours:90, derniere:'', prochaine:'', intervalle:250, derniereValeur:0,
-    gammeId:'', typeStrategie:state.typesStrategieMaintenance[0], objectif:state.objectifsMaintenance[0] };
+    gammeId:'', typeStrategie:state.typesStrategieMaintenance[0], objectif:state.objectifsMaintenance[0], otGenereId:null };
 }
 function openPMEditor(id){
   pmIsNew = (id==='new');
@@ -2522,7 +2644,17 @@ function viewPMEdit(){
     <label class="field"><span>Intervalle (${unite})</span><input type="number" id="pm-f-intervalle" value="${p.intervalle||(p.type==='Heures'?250:5000)}"/></label>
     <label class="field"><span>Dernier relevé au moment de l'entretien (${unite})</span><input type="number" id="pm-f-derniereValeur" value="${p.derniereValeur||0}"/></label>
     `}
-  </div>`;
+  </div>
+  ${!pmIsNew ? (()=>{ const em=equipMap(); const est=pmEstimation(p,em); const suivi=pmSuiviStatut(p); const ot=p.otGenereId?state.workOrders.find(w=>w.id===p.otGenereId):null;
+    return `<div class="plate p14" style="margin-top:16px;background:var(--panelR);">
+    <div class="row wrapwrap" style="gap:18px;">
+      <div><div style="font-size:10px;text-transform:uppercase;color:var(--muted);">Statut de suivi</div><span class="badge" style="color:${pmSuiviColor(suivi)};border-color:${pmSuiviColor(suivi)};">${suivi}</span>${ot?` <span style="font-size:11px;color:var(--muted);">— ${ot.numero} (${ot.statut})</span>`:''}</div>
+      <div><div style="font-size:10px;text-transform:uppercase;color:var(--muted);">Échéance estimée</div><span style="font-size:13px;font-weight:600;color:${est.urgent?'var(--danger)':'var(--text)'};">${est.estimatedDate||'—'}</span></div>
+      <div><div style="font-size:10px;text-transform:uppercase;color:var(--muted);">Reste à parcourir</div><span style="font-size:13px;">${est.label}</span></div>
+      ${est.avgLabel?`<div><div style="font-size:10px;text-transform:uppercase;color:var(--muted);">Usage moyen</div><span style="font-size:13px;">${est.avgLabel}</span></div>`:''}
+    </div>
+    <p style="font-size:11px;color:var(--muted);margin:10px 0 0;">Un ordre de travail est généré automatiquement 2 jours avant l'échéance estimée. Le compteur se réinitialise tout seul dès que cet OT est clôturé.</p>
+  </div>`; })() : ''}`;
   return fullFormPageHtml(pmIsNew?'Nouveau plan préventif':'Modifier le plan préventif', 'Planification par date ou par compteur (heures/km) — appuyée sur une gamme opératoire réutilisable', body);
 }
 function wirePMEdit(){
@@ -5345,6 +5477,7 @@ function attachHandlers(){
       w.statut = 'OT Clôturé';
       if(!w.dateFin) w.dateFin = new Date().toISOString().slice(0,10);
       const eq = equipMap()[w.equipementId]; if(eq) eq.statut='Opérationnel';
+      pmOnClosure(w);
       logAudit('OT '+w.numero+' → OT Clôturé');
       persist(); render(); toast(w.numero+' clôturé');
     });
@@ -5358,6 +5491,10 @@ function attachHandlers(){
     e.stopPropagation();
     openPMEditor(b.dataset.openPm);
   }));
+  const pmModeListe = document.getElementById('pm-mode-liste');
+  if(pmModeListe) pmModeListe.addEventListener('click', ()=>{ pmViewMode='liste'; render(); });
+  const pmModeSuivi = document.getElementById('pm-mode-suivi');
+  if(pmModeSuivi) pmModeSuivi.addEventListener('click', ()=>{ pmViewMode='suivi'; render(); });
   document.querySelectorAll('[data-open-pm-row]').forEach(row=>row.addEventListener('click',()=>{
     openPMEditor(row.dataset.openPmRow);
   }));
@@ -6651,7 +6788,7 @@ async function init(){
       typesStrategieMaintenance: ["Préventif systématique","Conditionnel","Prédictif","Correctif"],
       objectifsMaintenance: ["Disponibilité","Sécurité","Réduction des coûts","Environnement"],
       gammesOperatoires: [],
-      cuves: [], pompes: [], ravitaillements: [], typesCarburant: ["Diesel","Essence","Pétrole"],
+      cuves: [], pompes: [], ravitaillements: [], pmHistorique: [], typesCarburant: ["Diesel","Essence","Pétrole"],
       rolesApplicatifs: [
         {id:'admin', label:'Administrateur'}, {id:'planificateur', label:'Planificateur maintenance'},
         {id:'technicien', label:'Technicien terrain'}, {id:'rh', label:'Responsable RH'},
@@ -6707,6 +6844,7 @@ async function init(){
     data.objectifsMaintenance = (data.objectifsMaintenance && data.objectifsMaintenance.length) ? data.objectifsMaintenance : ["Disponibilité","Sécurité","Réduction des coûts","Environnement"];
     data.gammesOperatoires = data.gammesOperatoires || [];
     data.cuves = data.cuves || [];
+    data.pmHistorique = data.pmHistorique || [];
     data.pompes = data.pompes || [];
     data.ravitaillements = data.ravitaillements || [];
     data.typesCarburant = (data.typesCarburant && data.typesCarburant.length) ? data.typesCarburant : ["Diesel","Essence","Pétrole"];
@@ -6768,6 +6906,7 @@ async function init(){
   state = data;
   normalizeState();
   applyTheme(state.theme);
+  checkAutoGeneratePM();
   render();
   persist();
   startPolling();
