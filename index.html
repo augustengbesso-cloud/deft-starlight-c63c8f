@@ -2574,9 +2574,13 @@ function viewPM(){
         <button class="btn ${pmViewMode==='liste'?'btn-accent':'btn-ghost'}" style="padding:6px 12px;font-size:12px;" id="pm-mode-liste" type="button">Liste</button>
         <button class="btn ${pmViewMode==='suivi'?'btn-accent':'btn-ghost'}" style="padding:6px 12px;font-size:12px;" id="pm-mode-suivi" type="button">Suivi global</button>
       </div>
+      <button class="btn btn-ghost" id="pm-export-btn">${ICONS.receipt} Exporter Excel</button>
+      <button class="btn btn-ghost" id="pm-import-btn">${ICONS.plus} Importer Excel</button>
+      <input type="file" id="pm-import-file" accept=".xlsx,.xls" style="display:none;"/>
       <button class="btn btn-accent" data-open-pm="new">${ICONS.plus} Nouveau plan</button>
     </div>
   </div>
+  <p style="font-size:11px;color:var(--muted);margin:-4px 0 16px;">L'export/import gère aussi les compteurs (heures/km) de chaque engin et le rattachement aux gammes opératoires — pratique pour créer ou mettre à jour plusieurs plans d'un coup.</p>
   ${sorted.length===0?`<div class="plate p16"><div class="empty">${ICONS.calendar}<span>Aucun plan préventif défini.</span></div></div>`:
   pmViewMode==='suivi' ? `
   <div class="plate" style="overflow:hidden;">
@@ -3439,15 +3443,19 @@ function viewNotifEdit(){
 }
 
 /* ============ COMPTEURS / MESURES ============ */
-function exportCompteursToExcel(){
-  if(state.pmPlans.length===0){ alert("Aucun plan préventif à exporter — crée d'abord tes plans dans Préventif."); return; }
+function exportPMToExcel(){
+  if(state.pmPlans.length===0){ alert("Aucun plan préventif à exporter — crée d'abord un premier plan, ou pars directement d'un fichier vide avec les bonnes colonnes en cliquant Importer."); return; }
   const em = equipMap();
+  const gm = Object.fromEntries(state.gammesOperatoires.map(g=>[g.id,g]));
   const rows = state.pmPlans.map(p=>{
     const eq = em[p.equipementId] || {};
     return {
       'Code équipement': eq.code||'',
+      'Gamme opératoire': p.gammeId && gm[p.gammeId] ? gm[p.gammeId].nom : '',
       'Tâche': p.tache||'',
-      'Type': p.type||'Date',
+      'Type de stratégie': p.typeStrategie||'',
+      'Objectif': p.objectif||'',
+      'Type de déclenchement': p.type||'Date',
       'Compteur actuel Heures': eq.heures!==undefined?eq.heures:'',
       'Compteur actuel Kilométrage': eq.km!==undefined?eq.km:'',
       'Dernière réalisation (date)': p.derniere||'',
@@ -3458,13 +3466,13 @@ function exportCompteursToExcel(){
   });
   const ws = XLSX.utils.json_to_sheet(rows);
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Compteurs');
+  XLSX.utils.book_append_sheet(wb, ws, 'Préventif');
   const dateStr = new Date().toISOString().slice(0,10);
-  XLSX.writeFile(wb, '2NA-MAINT-PROD_compteurs_'+dateStr+'.xlsx');
+  XLSX.writeFile(wb, '2NA-MAINT-PROD_preventif_'+dateStr+'.xlsx');
   toast('Export généré — '+rows.length+' plan(s) préventif(s)');
 }
-function importCompteursRows(rows){
-  let countEq=0, countPm=0;
+function importPMRows(rows){
+  let countEq=0, countPm=0, countGamme=0;
   rows.forEach(r=>{
     const code = String(findCol(r,['Code équipement','Code','Équipement'])||'').trim();
     if(!code) return;
@@ -3475,9 +3483,14 @@ function importCompteursRows(rows){
     if(heuresVal!==undefined && heuresVal!==null && heuresVal!==''){ eq.heures = Number(heuresVal)||0; countEq++; }
     if(kmVal!==undefined && kmVal!==null && kmVal!==''){ eq.km = Number(kmVal)||0; countEq++; }
 
-    const tache = String(findCol(r,['Tâche','Tache'])||'').trim();
+    const gammeNomCol = String(findCol(r,['Gamme opératoire','Gamme operatoire','Gamme'])||'').trim();
+    let tache = String(findCol(r,['Tâche','Tache'])||'').trim();
+    if(!tache) tache = gammeNomCol; // comme dans la fiche : choisir la gamme préremplit la tâche
     if(!tache) return;
-    const type = String(findCol(r,['Type'])||'Date').trim();
+
+    const type = String(findCol(r,['Type de déclenchement','Type'])||'Date').trim();
+    const typeStrategie = String(findCol(r,['Type de stratégie','Type de strategie'])||'').trim();
+    const objectif = String(findCol(r,['Objectif'])||'').trim();
     const derniere = String(findCol(r,['Dernière réalisation (date)','Dernière réalisation','Derniere realisation'])||'').trim();
     const derniereValeur = findCol(r,['Dernière valeur au dernier entretien','Dernière valeur','Derniere valeur']);
     const intervalle = findCol(r,['Intervalle (h ou km)','Intervalle']);
@@ -3490,6 +3503,8 @@ function importCompteursRows(rows){
       state.pmPlans.push(p);
     }
     p.type = PM_TYPES.includes(type) ? type : (p.type||'Date');
+    if(typeStrategie && state.typesStrategieMaintenance.includes(typeStrategie)) p.typeStrategie = typeStrategie;
+    if(objectif && state.objectifsMaintenance.includes(objectif)) p.objectif = objectif;
     if(derniere) p.derniere = derniere;
     if(derniereValeur!==undefined && derniereValeur!=='') p.derniereValeur = Number(derniereValeur)||0;
     if(intervalle!==undefined && intervalle!=='') p.intervalle = Number(intervalle)||0;
@@ -3497,14 +3512,19 @@ function importCompteursRows(rows){
     if(p.type==='Date' && p.derniere && p.frequenceJours){
       const d = new Date(p.derniere); d.setDate(d.getDate()+Number(p.frequenceJours)); p.prochaine = d.toISOString().slice(0,10);
     }
+    // Rattachement automatique de la gamme opératoire : d'abord par la colonne dédiée si renseignée,
+    // sinon en comparant directement le libellé de la tâche au nom d'une gamme existante.
+    const cible = (gammeNomCol || tache).toLowerCase().trim();
+    const gamme = state.gammesOperatoires.find(g=>(g.nom||'').toLowerCase().trim()===cible);
+    if(gamme && p.gammeId!==gamme.id){ p.gammeId = gamme.id; countGamme++; }
     countPm++;
   });
   if(countPm===0 && countEq===0 && rows.length>0){
-    alert("Aucune ligne importée sur "+rows.length+" lues.\n\nColonnes détectées dans ton fichier :\n"+Object.keys(rows[0]).join(", ")+"\n\nVérifie qu'une colonne \"Code équipement\" et une colonne \"Tâche\" sont bien présentes, avec des codes qui correspondent à des équipements existants.");
+    alert("Aucune ligne importée sur "+rows.length+" lues.\n\nColonnes détectées dans ton fichier :\n"+Object.keys(rows[0]).join(", ")+"\n\nVérifie qu'une colonne \"Code équipement\" est bien présente, avec des codes qui correspondent à des équipements existants, et qu'une \"Tâche\" ou une \"Gamme opératoire\" est renseignée sur chaque ligne.");
     return;
   }
   checkAutoGeneratePM();
-  persist(); render(); toast(countPm+' plan(s) préventif(s) et compteurs mis à jour');
+  persist(); render(); toast(countPm+' plan(s) mis à jour'+(countGamme>0?' · '+countGamme+' gamme(s) opératoire(s) rattachée(s)':''));
 }
 function viewMeasures(){
   const em = equipMap();
@@ -3512,15 +3532,6 @@ function viewMeasures(){
   <div class="headrow">
     <div><h1>Compteurs / points de mesure</h1><p class="subtitle" style="margin:0;">Relevés et seuils d'alerte</p></div>
     <button class="btn btn-accent" id="measure-new-btn">${ICONS.plus} Nouveau point de mesure</button>
-  </div>
-  <div class="plate p16" style="margin-bottom:16px;">
-    <h3 class="oswald" style="text-transform:uppercase;font-size:13px;margin:0 0 4px;">Compteurs des entretiens préventifs (heures / kilométrage)</h3>
-    <p style="font-size:12px;color:var(--muted);margin:0 0 12px;">Exporte un fichier avec le compteur actuel et le dernier entretien de chaque engin, mets-le à jour en masse dans Excel, puis réimporte-le — pratique pour mettre à jour plusieurs compteurs d'un coup après une tournée de relevés.</p>
-    <div class="row">
-      <button class="btn btn-ghost" id="compteurs-export-btn">${ICONS.receipt} Exporter Excel</button>
-      <button class="btn btn-ghost" id="compteurs-import-btn">${ICONS.plus} Importer Excel</button>
-      <input type="file" id="compteurs-import-file" accept=".xlsx,.xls" style="display:none;"/>
-    </div>
   </div>
   ${state.measuringPoints.length===0?`<div class="plate p16"><div class="empty">${ICONS.ruler}<span>Aucun point de mesure défini.</span></div></div>`:
   `<div class="plate" style="overflow:hidden;">
@@ -5567,6 +5578,14 @@ function attachHandlers(){
     e.stopPropagation();
     openPMEditor(b.dataset.openPm);
   }));
+  const pmExportBtn = document.getElementById('pm-export-btn');
+  if(pmExportBtn) pmExportBtn.addEventListener('click', exportPMToExcel);
+  const pmImportBtn = document.getElementById('pm-import-btn');
+  const pmImportFile = document.getElementById('pm-import-file');
+  if(pmImportBtn && pmImportFile){
+    pmImportBtn.addEventListener('click', ()=>pmImportFile.click());
+    pmImportFile.addEventListener('change', (e)=>{ if(e.target.files[0]) readExcelFile(e.target.files[0], importPMRows); });
+  }
   const pmModeListe = document.getElementById('pm-mode-liste');
   if(pmModeListe) pmModeListe.addEventListener('click', ()=>{ pmViewMode='liste'; render(); });
   const pmModeSuivi = document.getElementById('pm-mode-suivi');
@@ -6083,14 +6102,6 @@ function attachHandlers(){
   }));
 
   // Compteurs / mesures
-  const compteursExportBtn = document.getElementById('compteurs-export-btn');
-  if(compteursExportBtn) compteursExportBtn.addEventListener('click', exportCompteursToExcel);
-  const compteursImportBtn = document.getElementById('compteurs-import-btn');
-  const compteursImportFile = document.getElementById('compteurs-import-file');
-  if(compteursImportBtn && compteursImportFile){
-    compteursImportBtn.addEventListener('click', ()=>compteursImportFile.click());
-    compteursImportFile.addEventListener('change', (e)=>{ if(e.target.files[0]) readExcelFile(e.target.files[0], importCompteursRows); });
-  }
   const measn = document.querySelector('#measure-new-btn');
   if(measn) measn.addEventListener('click', ()=>{
     const allEquip = [...state.fleet, ...state.plantEquipment];
