@@ -1963,12 +1963,16 @@ function viewWOEdit(){
         const posteSelected = woOpFormOpen[op.id+'_poste'] || state.postes[0];
         const personnelForPoste = state.personnel.filter(p=>p.statut==='Actif' && p.poste===posteSelected);
         return `
-      <div class="card-item" style="padding:10px 12px;${op.confirme?'border-color:var(--success);':''}">
+      <div class="card-item" style="padding:10px 12px;${op.confirme?'border-color:var(--success);background:rgba(76,175,109,.06);':''}">
         <div class="between" style="margin-bottom:8px;">
-          <span style="font-size:13px;font-weight:500;">${esc(op.description)} ${op.confirme?`<span class="badge" style="color:var(--success);border-color:var(--success);margin-left:6px;">${ICONS.check} Confirmée</span>`:''}</span>
+          <label style="display:flex;align-items:center;gap:9px;cursor:pointer;font-size:13px;font-weight:500;">
+            <input type="checkbox" data-wo-op-check="${oi}" ${op.confirme?'checked':''} style="width:17px;height:17px;flex-shrink:0;"/>
+            <span>${esc(op.description)}</span>
+            ${op.confirme?`<span class="badge" style="color:var(--success);border-color:var(--success);">${ICONS.check} Fait${op.confirmePar?' — '+esc(op.confirmePar):''}</span>`:''}
+          </label>
           <button class="icon-btn" data-wo-op-del="${oi}">${ICONS.trash}</button>
         </div>
-        ${op.affectations.length===0?`<span style="font-size:11px;color:var(--muted);">Aucun intervenant affecté.</span>`:
+        ${op.affectations.length===0?`<span style="font-size:11px;color:var(--muted);">Aucun technicien affecté${op.confirme?' — ajoutes-en un pour préciser qui a réalisé la tâche.':'.'}</span>`:
         `<div style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px;">
           ${op.affectations.map((af,ai)=>{
             const mins = af.dureeMin!=null ? af.dureeMin : dureeAffectation(af);
@@ -2246,6 +2250,31 @@ function wireWOEditor(){
     nouvelles.forEach(t=>w.operations.push({id:uid(), description:t, affectations:[], confirme:false}));
     render(); toast(nouvelles.length+' tâche(s) ajoutée(s) depuis la gamme');
   });
+  document.querySelectorAll('[data-wo-op-check]').forEach(cb=>cb.addEventListener('change', ()=>{
+    const oi = Number(cb.dataset.woOpCheck);
+    const op = w.operations[oi];
+    if(!op) return;
+    if(cb.checked){
+      (op.affectations||[]).forEach(af=>{ af.dureeMin = dureeAffectation(af); });
+      op.confirme = true;
+      op.confirmePar = currentUser ? currentUser.nomComplet : '';
+      op.dateConfirmation = new Date().toISOString();
+      recomputeConfirmStatus(w);
+      syncWOToState(w);
+      logAudit('OT '+w.numero+' — opération "'+op.description+'" confirmée par '+op.confirmePar);
+      persist(); toast('Tâche cochée — '+(op.affectations&&op.affectations.length?'':'ajoute un technicien ci-dessous'));
+      if(!op.affectations || op.affectations.length===0){ woOpFormOpen[op.id] = true; woOpFormOpen[op.id+'_poste'] = state.postes[0]; }
+      render();
+    } else {
+      confirmModal('Décocher la tâche "'+op.description+'" ?', ()=>{
+        op.confirme = false; op.confirmePar=''; op.dateConfirmation=null;
+        recomputeConfirmStatus(w);
+        syncWOToState(w);
+        logAudit('OT '+w.numero+' — tâche décochée : "'+op.description+'" par '+(currentUser?currentUser.nomComplet:''));
+        persist(); toast('Tâche décochée'); render();
+      }, {onCancel: ()=>{ cb.checked = true; }});
+    }
+  }));
   const opAdd = document.getElementById('wo-op-add');
   if(opAdd) opAdd.addEventListener('click', ()=>{
     const input = document.getElementById('wo-op-input');
@@ -4895,7 +4924,7 @@ function openConfirmationPanel(wId){
     <div class="modal" style="max-width:760px;">
       <div class="modal-head"><h3>Confirmation des opérations — ${w.numero||''}</h3><button class="icon-btn" id="wo-panel-close">${ICONS.close}</button></div>
       <div class="modal-body">
-        <p style="font-size:12px;color:var(--muted);margin:0 0 10px;">Le travail a été exécuté — vérifie les heures réellement effectuées par intervenant, ajuste-les si besoin, puis clique sur <strong>"Confirmer cette opération"</strong> pour chacune. L'OT reste en <strong>Confirmé partiel</strong> tant que toutes ne sont pas validées, puis passe en <strong>Terminé</strong> une fois complet.</p>
+        <p style="font-size:12px;color:var(--muted);margin:0 0 10px;">Le travail a été exécuté — vérifie les heures réellement effectuées par intervenant, ajuste-les si besoin, puis clique sur <strong>"Confirmer cette opération"</strong> pour chacune. L'OT reste en <strong>OT En cours</strong> tant que toutes ne sont pas validées, puis passe en <strong>OT Réalisé</strong> une fois complet.</p>
         <div class="between" style="background:var(--panel);border-radius:6px;padding:8px 12px;margin-bottom:14px;">
           <span style="font-size:12px;color:var(--muted);">Progression</span>
           <span style="font-size:13px;font-weight:700;color:${confirmedOps===totalOps&&totalOps>0?'var(--success)':'var(--accent)'};">${confirmedOps} / ${totalOps} opération(s) confirmée(s)</span>
@@ -4998,7 +5027,7 @@ function wireWorkflowPanels(w, mode){
       const confirmed = (w.operations||[]).filter(o=>o.confirme).length;
       if(total>0 && confirmed===total){
         closePanel();
-        toast('Toutes les opérations sont confirmées — OT marqué Terminé');
+        toast('Toutes les opérations sont confirmées — OT marqué Réalisé');
       } else {
         openConfirmationPanel(w.id);
       }
@@ -5490,9 +5519,10 @@ function confirmModal(message, onConfirm, opts={}){
     </div>
   </div>`;
   const close = ()=>{ document.getElementById('modal-root').innerHTML=''; };
-  document.getElementById('confirm-overlay').addEventListener('click', e=>{ if(e.target.id==='confirm-overlay') close(); });
-  document.getElementById('confirm-x').addEventListener('click', close);
-  document.getElementById('confirm-cancel').addEventListener('click', close);
+  const cancel = ()=>{ close(); if(opts.onCancel) opts.onCancel(); };
+  document.getElementById('confirm-overlay').addEventListener('click', e=>{ if(e.target.id==='confirm-overlay') cancel(); });
+  document.getElementById('confirm-x').addEventListener('click', cancel);
+  document.getElementById('confirm-cancel').addEventListener('click', cancel);
   document.getElementById('confirm-ok').addEventListener('click', ()=>{ close(); onConfirm(); });
 }
 
