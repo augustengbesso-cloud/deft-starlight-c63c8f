@@ -1895,6 +1895,7 @@ function viewWOEdit(){
         <datalist id="wo-personnel-list">${personnelDuPoste.map(p=>`<option value="${esc(p.nom)}">${esc(p.poste)}</option>`).join('')}</datalist>
       </label>
       <label class="field"><span>Coût (FCFA)</span><input type="number" id="wo-f-cout" value="${w.cout||0}"/></label>
+      <label class="field span2"><span>Gamme opératoire <span style="color:var(--muted);font-weight:400;">(optionnel — permet de charger ses tâches dans l'onglet Opérations)</span></span><select id="wo-f-gamme"><option value="">— Aucune —</option>${state.gammesOperatoires.map(g=>`<option value="${g.id}" ${w.gammeId===g.id?'selected':''}>${esc(g.nom)}</option>`).join('')}</select></label>
     </div>
   </div>` : ''}
 
@@ -1951,6 +1952,10 @@ function viewWOEdit(){
   <div class="plate p16" style="margin-bottom:16px;">
     <h3 class="oswald" style="text-transform:uppercase;font-size:13px;margin:0 0 4px;color:var(--muted);">Opérations effectuées</h3>
     <p style="font-size:11px;color:var(--muted);margin:0 0 12px;">Une tâche peut réunir plusieurs corps de métier — ajoute un intervenant par poste, avec ses heures.</p>
+    ${(()=>{ const gamme = w.gammeId ? state.gammesOperatoires.find(g=>g.id===w.gammeId) : null; const taches = gammeTaches(gamme);
+      return gamme && taches.length>0 ? `<div class="row" style="margin-bottom:14px;">
+        <button class="btn btn-ghost" id="wo-load-gamme-taches" type="button" style="color:var(--steel);border-color:var(--steel);">${ICONS.layers} Charger les ${taches.length} tâche(s) de la gamme « ${esc(gamme.nom)} »</button>
+      </div>` : ''; })()}
     <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px;">
       ${w.operations.length===0?`<span style="font-size:12px;color:var(--muted);">Aucune tâche ajoutée.</span>`:
       w.operations.map((op,oi)=>{
@@ -2230,6 +2235,17 @@ function wireWOEditor(){
     }, {danger:true, okLabel:'Supprimer'});
   }));
 
+  const loadGammeTaches = document.getElementById('wo-load-gamme-taches');
+  if(loadGammeTaches) loadGammeTaches.addEventListener('click', ()=>{
+    const gamme = w.gammeId ? state.gammesOperatoires.find(g=>g.id===w.gammeId) : null;
+    if(!gamme) return;
+    const taches = gammeTaches(gamme);
+    const dejaPresentes = new Set(w.operations.map(o=>o.description.trim().toLowerCase()));
+    const nouvelles = taches.filter(t=>!dejaPresentes.has(t.trim().toLowerCase()));
+    if(nouvelles.length===0){ toast('Toutes les tâches de cette gamme sont déjà dans la liste'); return; }
+    nouvelles.forEach(t=>w.operations.push({id:uid(), description:t, affectations:[], confirme:false}));
+    render(); toast(nouvelles.length+' tâche(s) ajoutée(s) depuis la gamme');
+  });
   const opAdd = document.getElementById('wo-op-add');
   if(opAdd) opAdd.addEventListener('click', ()=>{
     const input = document.getElementById('wo-op-input');
@@ -2351,6 +2367,7 @@ function wireWOEditor(){
     w.dateFin = val('wo-f-fin', w.dateFin);
     w.technicien = val('wo-f-tech', w.technicien);
     w.cout = Number(val('wo-f-cout', w.cout))||0;
+    w.gammeId = val('wo-f-gamme', w.gammeId);
     const permisEl = document.getElementById('wo-f-permis'); if(permisEl) w.permisTravail = permisEl.checked;
     const consigEl = document.getElementById('wo-f-consignation'); if(consigEl) w.consignation = consigEl.value;
     w.normeHSE = val('wo-f-norme', w.normeHSE);
@@ -2417,20 +2434,38 @@ function pmStatus(p, em){
   const label = p.prochaine ? `Échéance : ${p.prochaine}${daysLeft!==null?` (${daysLeft}j)`:''}` : 'Non planifié';
   return { urgent, label };
 }
+function pmNiveau(restant, seuilUrgent){
+  if(restant<=0) return 'depasse';
+  if(restant<=seuilUrgent) return 'proche';
+  return 'ok';
+}
+function pmNiveauColor(niveau){
+  return { depasse:'var(--danger)', proche:'var(--accent)', ok:'var(--success)' }[niveau] || 'var(--muted)';
+}
+function pmNiveauIcon(niveau){
+  return { depasse:'●', proche:'▲', ok:'●' }[niveau] || '●';
+}
 function pmEstimation(p, em){
   const st = pmStatus(p, em);
-  let estimatedDate = null, avgLabel = '';
+  let estimatedDate = null, avgLabel = '', natureDerniere=null, natureProchaine=null, joursRestants=null, resteValeur=null, niveau='ok', unite='';
   if(p.type==='Heures' || p.type==='Kilométrage'){
     const eq = em[p.equipementId];
-    const unite = p.type==='Heures' ? 'h' : 'km';
+    unite = p.type==='Heures' ? 'h' : 'km';
     const valeurActuelle = eq ? Number(p.type==='Heures' ? eq.heures : eq.km) || 0 : 0;
-    const prochaineValeur = Number(p.derniereValeur||0) + Number(p.intervalle||0);
-    const restant = prochaineValeur - valeurActuelle;
+    const intervalle = Number(p.intervalle||0);
+    const prochaineValeur = Number(p.derniereValeur||0) + intervalle;
+    resteValeur = prochaineValeur - valeurActuelle;
+    const seuilUrgent = p.type==='Heures' ? 20 : 200;
+    niveau = pmNiveau(resteValeur, seuilUrgent);
+    if(intervalle>0){
+      natureDerniere = Math.round(Number(p.derniereValeur||0)/intervalle)*intervalle;
+      natureProchaine = natureDerniere + intervalle;
+    }
     if(p.derniere){
       const joursEcoules = Math.max(1, Math.round((new Date() - new Date(p.derniere))/864e5));
       const avgPerDay = (valeurActuelle - Number(p.derniereValeur||0)) / joursEcoules;
       if(avgPerDay > 0){
-        const joursRestants = Math.max(0, Math.round(restant/avgPerDay));
+        joursRestants = Math.round(resteValeur/avgPerDay);
         const d = new Date(); d.setDate(d.getDate()+joursRestants);
         estimatedDate = d.toISOString().slice(0,10);
         avgLabel = `≈ ${avgPerDay.toFixed(1)} ${unite}/j`;
@@ -2439,8 +2474,10 @@ function pmEstimation(p, em){
     if(!estimatedDate) avgLabel = 'Historique insuffisant pour estimer une date';
   } else {
     estimatedDate = p.prochaine || null;
+    if(p.prochaine) joursRestants = Math.round((new Date(p.prochaine)-new Date())/864e5);
+    niveau = joursRestants!==null ? pmNiveau(joursRestants, 7) : 'ok';
   }
-  return { ...st, estimatedDate, avgLabel };
+  return { ...st, estimatedDate, avgLabel, natureDerniere, natureProchaine, joursRestants, resteValeur, niveau, unite };
 }
 function pmSuiviStatut(p){
   if(!p.otGenereId) return 'À venir';
@@ -2452,6 +2489,12 @@ function pmSuiviStatut(p){
 }
 function pmSuiviColor(s){
   return { 'À venir':'var(--muted)', 'Généré':'var(--steel)', 'En cours':'var(--accent)', 'Clôturé':'var(--success)' }[s] || 'var(--muted)';
+}
+function gammeTaches(gamme){
+  if(!gamme || !gamme.procedure) return [];
+  return gamme.procedure.split('\n')
+    .map(l=>l.replace(/^\s*[\d]+[\.\)]\s*/,'').trim()) // retire une numérotation type "1. " ou "1) " en début de ligne
+    .filter(l=>l.length>0);
 }
 function checkAutoGeneratePM(){
   // Génère automatiquement un OT préventif J-2 avant l'échéance estimée, si pas déjà fait pour ce cycle
@@ -2478,7 +2521,8 @@ function checkAutoGeneratePM(){
         typeTravail: 'Inspection', poste: state.postes[0], titre: p.tache,
         description: gamme ? gamme.description : '', statut:'OT Planifié',
         dateCreation: new Date().toISOString().slice(0,10), dateDebut: est.estimatedDate, dateFin:'',
-        gammeId: p.gammeId||'', origine:'Préventif automatique (J-2)'
+        gammeId: p.gammeId||'', origine:'Préventif automatique (J-2)',
+        operations: gamme ? gammeTaches(gamme).map(t=>({id:uid(), description:t, affectations:[], confirme:false})) : []
       };
       state.workOrders.push(wo);
       p.otGenereId = wo.id;
@@ -2565,7 +2609,7 @@ function viewPM(){
   const withEst = state.pmPlans.map(p=>({p, est:pmEstimation(p,em), suivi:pmSuiviStatut(p)}));
   const sorted = pmViewMode==='suivi'
     ? [...withEst].sort((a,b)=>(a.est.estimatedDate||'9999').localeCompare(b.est.estimatedDate||'9999'))
-    : [...withEst].sort((a,b)=> (a.est.urgent===b.est.urgent)?0:(a.est.urgent?-1:1));
+    : [...withEst].sort((a,b)=>{ const order={depasse:0,proche:1,ok:2}; return order[a.est.niveau]-order[b.est.niveau]; });
   return `
   <div class="headrow">
     <div><h1>Maintenance préventive</h1><p class="subtitle" style="margin:0;">Planification par date ou par compteur (heures/km) — estimation prédictive et génération automatique</p></div>
@@ -2584,14 +2628,17 @@ function viewPM(){
   ${sorted.length===0?`<div class="plate p16"><div class="empty">${ICONS.calendar}<span>Aucun plan préventif défini.</span></div></div>`:
   pmViewMode==='suivi' ? `
   <div class="plate" style="overflow:hidden;">
-  <table><thead><tr><th>Échéance estimée</th><th>Équipement</th><th>Tâche</th><th>Type</th><th>Statut de suivi</th><th></th></tr></thead>
+  <table><thead><tr><th></th><th>Échéance estimée</th><th class="right">Reste</th><th class="right">Jours</th><th>Équipement</th><th>Tâche</th><th>Repère (dernier → prochain)</th><th>Statut de suivi</th><th></th></tr></thead>
   <tbody>
   ${sorted.map(({p,est,suivi})=>{ const ot = p.otGenereId ? state.workOrders.find(w=>w.id===p.otGenereId) : null;
     return `<tr class="legend-clickable" data-open-pm-row="${p.id}">
-    <td class="mono" style="color:${est.urgent?'var(--danger)':'var(--text)'}">${est.estimatedDate||'—'}</td>
+    <td><span style="color:${pmNiveauColor(est.niveau)};">${pmNiveauIcon(est.niveau)}</span></td>
+    <td class="mono" style="color:${pmNiveauColor(est.niveau)}">${est.estimatedDate||'—'}</td>
+    <td class="right mono" style="color:${pmNiveauColor(est.niveau)}">${est.resteValeur!==null?Math.round(est.resteValeur)+' '+est.unite:'—'}</td>
+    <td class="right mono" style="color:var(--muted)">${est.joursRestants!==null?est.joursRestants:'—'}</td>
     <td class="mono">${em[p.equipementId]?.code||'—'}</td>
     <td>${esc(p.tache)}</td>
-    <td><span class="badge">${p.type||'Date'}</span></td>
+    <td style="color:var(--muted);font-size:12px;">${est.natureDerniere!==null?`${est.natureDerniere} → ${est.natureProchaine} ${est.unite}`:'—'}</td>
     <td><span class="badge" style="color:${pmSuiviColor(suivi)};border-color:${pmSuiviColor(suivi)};">${suivi}</span>${ot?` <span style="color:var(--muted);font-size:11px;">${ot.numero}</span>`:''}</td>
     <td><button class="icon-btn" data-open-pm="${p.id}">${ICONS.edit}</button></td>
   </tr>`;}).join('')}
@@ -2599,12 +2646,12 @@ function viewPM(){
   <div style="display:flex;flex-direction:column;gap:8px;">
   ${sorted.map(({p,est,suivi})=>{
     return `<div class="plate p14 between wrapwrap legend-clickable" data-open-pm-row="${p.id}" style="gap:12px;">
-      <div class="row"><span class="led" style="background:${est.urgent?'var(--danger)':'var(--success)'}"></span>
+      <div class="row"><span style="color:${pmNiveauColor(est.niveau)};font-size:16px;">${pmNiveauIcon(est.niveau)}</span>
         <div><div class="row" style="flex-wrap:wrap;"><span style="font-size:13px;font-weight:500;">${esc(p.tache)}</span><span class="badge" style="color:${pmSuiviColor(suivi)};border-color:${pmSuiviColor(suivi)};">${suivi}</span></div>
-        <div style="font-size:12px;color:var(--muted);">${em[p.equipementId]?.code||'—'} · <span class="badge">${p.type||'Date'}</span>${p.type==='Date'||!p.type?` · tous les ${p.frequenceJours} j`:` · tous les ${p.intervalle} ${p.type==='Heures'?'h':'km'}`}${est.estimatedDate?` · échéance estimée : ${est.estimatedDate}`:''}</div></div>
+        <div style="font-size:12px;color:var(--muted);">${em[p.equipementId]?.code||'—'} · <span class="badge">${p.type||'Date'}</span>${p.type==='Date'||!p.type?` · tous les ${p.frequenceJours} j`:` · tous les ${p.intervalle} ${p.type==='Heures'?'h':'km'} (repère ${est.natureDerniere} → ${est.natureProchaine})`}${est.estimatedDate?` · échéance estimée : ${est.estimatedDate}${est.joursRestants!==null?' ('+est.joursRestants+'j)':''}`:''}</div></div>
       </div>
       <div class="row">
-        <span style="font-size:12px;color:${est.urgent?'var(--danger)':'var(--muted)'}">${est.label}</span>
+        <span style="font-size:12px;color:${pmNiveauColor(est.niveau)}">${est.label}</span>
         <button class="icon-btn" data-open-pm="${p.id}">${ICONS.edit}</button>
         <button class="icon-btn" data-del-pm="${p.id}">${ICONS.trash}</button>
       </div>
@@ -2651,10 +2698,12 @@ function viewPMEdit(){
   </div>
   ${!pmIsNew ? (()=>{ const em=equipMap(); const est=pmEstimation(p,em); const suivi=pmSuiviStatut(p); const ot=p.otGenereId?state.workOrders.find(w=>w.id===p.otGenereId):null;
     return `<div class="plate p14" style="margin-top:16px;background:var(--panelR);">
-    <div class="row wrapwrap" style="gap:18px;">
+    <div class="row wrapwrap" style="gap:18px;align-items:flex-start;">
+      <div><div style="font-size:10px;text-transform:uppercase;color:var(--muted);">État</div><span style="font-size:16px;color:${pmNiveauColor(est.niveau)};">${pmNiveauIcon(est.niveau)}</span> <span style="font-size:12px;color:${pmNiveauColor(est.niveau)};">${est.niveau==='depasse'?'Dépassé':est.niveau==='proche'?'Proche':'À jour'}</span></div>
       <div><div style="font-size:10px;text-transform:uppercase;color:var(--muted);">Statut de suivi</div><span class="badge" style="color:${pmSuiviColor(suivi)};border-color:${pmSuiviColor(suivi)};">${suivi}</span>${ot?` <span style="font-size:11px;color:var(--muted);">— ${ot.numero} (${ot.statut})</span>`:''}</div>
-      <div><div style="font-size:10px;text-transform:uppercase;color:var(--muted);">Échéance estimée</div><span style="font-size:13px;font-weight:600;color:${est.urgent?'var(--danger)':'var(--text)'};">${est.estimatedDate||'—'}</span></div>
+      <div><div style="font-size:10px;text-transform:uppercase;color:var(--muted);">Échéance estimée</div><span style="font-size:13px;font-weight:600;color:${pmNiveauColor(est.niveau)};">${est.estimatedDate||'—'}</span>${est.joursRestants!==null?` <span style="font-size:11px;color:var(--muted);">(${est.joursRestants} j)</span>`:''}</div>
       <div><div style="font-size:10px;text-transform:uppercase;color:var(--muted);">Reste à parcourir</div><span style="font-size:13px;">${est.label}</span></div>
+      ${est.natureDerniere!==null?`<div><div style="font-size:10px;text-transform:uppercase;color:var(--muted);">Repère (dernier → prochain)</div><span style="font-size:13px;">${est.natureDerniere} → ${est.natureProchaine} ${est.unite}</span></div>`:''}
       ${est.avgLabel?`<div><div style="font-size:10px;text-transform:uppercase;color:var(--muted);">Usage moyen</div><span style="font-size:13px;">${est.avgLabel}</span></div>`:''}
     </div>
     <p style="font-size:11px;color:var(--muted);margin:10px 0 0;">Un ordre de travail est généré automatiquement 2 jours avant l'échéance estimée. Le compteur se réinitialise tout seul dès que cet OT est clôturé.</p>
