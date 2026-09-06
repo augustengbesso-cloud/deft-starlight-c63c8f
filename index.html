@@ -3439,12 +3439,88 @@ function viewNotifEdit(){
 }
 
 /* ============ COMPTEURS / MESURES ============ */
+function exportCompteursToExcel(){
+  if(state.pmPlans.length===0){ alert("Aucun plan préventif à exporter — crée d'abord tes plans dans Préventif."); return; }
+  const em = equipMap();
+  const rows = state.pmPlans.map(p=>{
+    const eq = em[p.equipementId] || {};
+    return {
+      'Code équipement': eq.code||'',
+      'Tâche': p.tache||'',
+      'Type': p.type||'Date',
+      'Compteur actuel Heures': eq.heures!==undefined?eq.heures:'',
+      'Compteur actuel Kilométrage': eq.km!==undefined?eq.km:'',
+      'Dernière réalisation (date)': p.derniere||'',
+      'Dernière valeur au dernier entretien': p.derniereValeur!==undefined?p.derniereValeur:'',
+      'Intervalle (h ou km)': p.intervalle!==undefined?p.intervalle:'',
+      'Fréquence (jours, si type=Date)': p.frequenceJours!==undefined?p.frequenceJours:''
+    };
+  });
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Compteurs');
+  const dateStr = new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb, '2NA-MAINT-PROD_compteurs_'+dateStr+'.xlsx');
+  toast('Export généré — '+rows.length+' plan(s) préventif(s)');
+}
+function importCompteursRows(rows){
+  let countEq=0, countPm=0;
+  rows.forEach(r=>{
+    const code = String(findCol(r,['Code équipement','Code','Équipement'])||'').trim();
+    if(!code) return;
+    const eq = [...state.fleet, ...state.plantEquipment].find(e=>e.code.toLowerCase()===code.toLowerCase());
+    if(!eq) return;
+    const heuresVal = findCol(r,['Compteur actuel Heures','Heures actuel','Heures']);
+    const kmVal = findCol(r,['Compteur actuel Kilométrage','Kilométrage actuel','Kilométrage','KM']);
+    if(heuresVal!==undefined && heuresVal!==null && heuresVal!==''){ eq.heures = Number(heuresVal)||0; countEq++; }
+    if(kmVal!==undefined && kmVal!==null && kmVal!==''){ eq.km = Number(kmVal)||0; countEq++; }
+
+    const tache = String(findCol(r,['Tâche','Tache'])||'').trim();
+    if(!tache) return;
+    const type = String(findCol(r,['Type'])||'Date').trim();
+    const derniere = String(findCol(r,['Dernière réalisation (date)','Dernière réalisation','Derniere realisation'])||'').trim();
+    const derniereValeur = findCol(r,['Dernière valeur au dernier entretien','Dernière valeur','Derniere valeur']);
+    const intervalle = findCol(r,['Intervalle (h ou km)','Intervalle']);
+    const frequenceJours = findCol(r,['Fréquence (jours, si type=Date)','Fréquence (jours)','Frequence']);
+
+    let p = state.pmPlans.find(x=>x.equipementId===eq.id && (x.tache||'').toLowerCase().trim()===tache.toLowerCase());
+    if(!p){
+      p = blankPM();
+      p.id = uid(); p.equipementId = eq.id; p.tache = tache;
+      state.pmPlans.push(p);
+    }
+    p.type = PM_TYPES.includes(type) ? type : (p.type||'Date');
+    if(derniere) p.derniere = derniere;
+    if(derniereValeur!==undefined && derniereValeur!=='') p.derniereValeur = Number(derniereValeur)||0;
+    if(intervalle!==undefined && intervalle!=='') p.intervalle = Number(intervalle)||0;
+    if(frequenceJours!==undefined && frequenceJours!=='') p.frequenceJours = Number(frequenceJours)||90;
+    if(p.type==='Date' && p.derniere && p.frequenceJours){
+      const d = new Date(p.derniere); d.setDate(d.getDate()+Number(p.frequenceJours)); p.prochaine = d.toISOString().slice(0,10);
+    }
+    countPm++;
+  });
+  if(countPm===0 && countEq===0 && rows.length>0){
+    alert("Aucune ligne importée sur "+rows.length+" lues.\n\nColonnes détectées dans ton fichier :\n"+Object.keys(rows[0]).join(", ")+"\n\nVérifie qu'une colonne \"Code équipement\" et une colonne \"Tâche\" sont bien présentes, avec des codes qui correspondent à des équipements existants.");
+    return;
+  }
+  checkAutoGeneratePM();
+  persist(); render(); toast(countPm+' plan(s) préventif(s) et compteurs mis à jour');
+}
 function viewMeasures(){
   const em = equipMap();
   return `
   <div class="headrow">
     <div><h1>Compteurs / points de mesure</h1><p class="subtitle" style="margin:0;">Relevés et seuils d'alerte</p></div>
     <button class="btn btn-accent" id="measure-new-btn">${ICONS.plus} Nouveau point de mesure</button>
+  </div>
+  <div class="plate p16" style="margin-bottom:16px;">
+    <h3 class="oswald" style="text-transform:uppercase;font-size:13px;margin:0 0 4px;">Compteurs des entretiens préventifs (heures / kilométrage)</h3>
+    <p style="font-size:12px;color:var(--muted);margin:0 0 12px;">Exporte un fichier avec le compteur actuel et le dernier entretien de chaque engin, mets-le à jour en masse dans Excel, puis réimporte-le — pratique pour mettre à jour plusieurs compteurs d'un coup après une tournée de relevés.</p>
+    <div class="row">
+      <button class="btn btn-ghost" id="compteurs-export-btn">${ICONS.receipt} Exporter Excel</button>
+      <button class="btn btn-ghost" id="compteurs-import-btn">${ICONS.plus} Importer Excel</button>
+      <input type="file" id="compteurs-import-file" accept=".xlsx,.xls" style="display:none;"/>
+    </div>
   </div>
   ${state.measuringPoints.length===0?`<div class="plate p16"><div class="empty">${ICONS.ruler}<span>Aucun point de mesure défini.</span></div></div>`:
   `<div class="plate" style="overflow:hidden;">
@@ -6007,6 +6083,14 @@ function attachHandlers(){
   }));
 
   // Compteurs / mesures
+  const compteursExportBtn = document.getElementById('compteurs-export-btn');
+  if(compteursExportBtn) compteursExportBtn.addEventListener('click', exportCompteursToExcel);
+  const compteursImportBtn = document.getElementById('compteurs-import-btn');
+  const compteursImportFile = document.getElementById('compteurs-import-file');
+  if(compteursImportBtn && compteursImportFile){
+    compteursImportBtn.addEventListener('click', ()=>compteursImportFile.click());
+    compteursImportFile.addEventListener('change', (e)=>{ if(e.target.files[0]) readExcelFile(e.target.files[0], importCompteursRows); });
+  }
   const measn = document.querySelector('#measure-new-btn');
   if(measn) measn.addEventListener('click', ()=>{
     const allEquip = [...state.fleet, ...state.plantEquipment];
