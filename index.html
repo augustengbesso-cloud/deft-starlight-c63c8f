@@ -430,22 +430,27 @@ function canSee(navId){
 
   // Nouveau système : liste précise de pages cochées sur la fiche utilisateur
   if(currentUser.modules && currentUser.modules.pages && typeof currentUser.modules.pages==='object'){
+    const pg = currentUser.modules.pages;
+    if(pg[navId]===undefined && (navId==='pm-usine'||navId==='gammes-usine'||navId==='dashboard-usine')){
+      // comptes existants : l'accès usine suit l'accès flotte tant que l'admin n'a pas coché explicitement
+      return expandAllowedPages(pg).has(navId==='pm-usine'?'pm':navId==='gammes-usine'?'gammes':'dashboard');
+    }
     return expandAllowedPages(currentUser.modules.pages).has(navId);
   }
 
   // Repli pour les comptes pas encore configurés avec le nouveau système : anciennes règles par rôle
-  const moduleOf = { wo:'maintenance', pm:'maintenance', gammes:'maintenance', notif:'maintenance', floc:'maintenance', plant:'maintenance', production:'maintenance', measures:'maintenance', fleet:'maintenance', fuel:'maintenance', 'fuel-validation':'maintenance', cuves:'maintenance', pompes:'maintenance', ravitaillement:'maintenance',
+  const moduleOf = { 'dashboard-usine':'reporting', 'pm-usine':'maintenance', 'gammes-usine':'maintenance', wo:'maintenance', pm:'maintenance', gammes:'maintenance', notif:'maintenance', floc:'maintenance', plant:'maintenance', production:'maintenance', measures:'maintenance', fleet:'maintenance', fuel:'maintenance', 'fuel-validation':'maintenance', cuves:'maintenance', pompes:'maintenance', ravitaillement:'maintenance',
     parts:'stock', resa:'stock', da:'achats', bc:'achats', personnel:'rh', conges:'rh', formations:'rh', effectifs:'rh', recrutement:'rh', maternite:'rh', dashboard:'reporting', costs:'reporting', reports:'reporting' };
   const mod = moduleOf[navId];
   if(mod && currentUser.modules && currentUser.modules[mod]==='Aucun') return false;
   const restricted = {
     planificateur: ['users','user-create','user-edit','audit'],
-    technicien: ['dashboard','fleet','fleet-edit','pm','pm-edit','gammes','gamme-edit','fuel','fuel-edit','fuel-validation','cuves','cuve-edit','pompes','pompe-edit','ravitaillement','ravitaillement-new','parts','part-edit','mvt-new','floc','floc-edit','plant','plant-edit','production','prod-edit','measures','measures-edit','costs','cc-edit','personnel','personnel-edit','conges','conge-edit','formations','formation-edit','effectifs','recrutement','candidature-edit','maternite','maternity-edit','reports','settings','users','user-create','user-edit','audit','da','da-edit','bc','bc-edit','bc-receive','resa','resa-new'],
-    rh: ['fleet','fleet-edit','wo','wo-edit','pm','pm-edit','gammes','gamme-edit','fuel','fuel-edit','fuel-validation','cuves','cuve-edit','pompes','pompe-edit','ravitaillement','ravitaillement-new','parts','part-edit','mvt-new','floc','floc-edit','plant','plant-edit','production','prod-edit','notif','notif-edit','measures','measures-edit','costs','cc-edit','reports','settings','users','user-create','user-edit','audit','da','da-edit','bc','bc-edit','bc-receive','resa','resa-new'],
-    pompiste: ['dashboard','fleet','fleet-edit','pm','pm-edit','gammes','gamme-edit','measures','measures-edit','floc','floc-edit','plant','plant-edit','production','prod-edit','parts','part-edit','mvt-new','costs','cc-edit','resa','resa-new','da','da-edit','bc','bc-edit','bc-receive','personnel','personnel-edit','conges','conge-edit','formations','formation-edit','effectifs','recrutement','candidature-edit','maternite','maternity-edit','reports','settings','users','user-create','user-edit','audit','wo','wo-edit','notif','notif-edit','fuel-validation','cuves','cuve-edit','pompes','pompe-edit','ravitaillement','ravitaillement-new'],
-    magasinier: ['fleet','fleet-edit','pm','pm-edit','gammes','gamme-edit','measures','measures-edit','floc','floc-edit','plant','plant-edit','production','prod-edit','costs','cc-edit','da','da-edit','bc','bc-edit','bc-receive','personnel','personnel-edit','conges','conge-edit','formations','formation-edit','effectifs','recrutement','candidature-edit','maternite','maternity-edit','reports','settings','users','user-create','user-edit','audit','wo','wo-edit','notif','notif-edit'],
+    technicien: ['dashboard','dashboard-usine','fleet','fleet-edit','pm','pm-usine','pm-edit','gammes','gammes-usine','gamme-edit','fuel','fuel-edit','fuel-validation','cuves','cuve-edit','pompes','pompe-edit','ravitaillement','ravitaillement-new','parts','part-edit','mvt-new','floc','floc-edit','plant','plant-edit','production','prod-edit','measures','measures-edit','costs','cc-edit','personnel','personnel-edit','conges','conge-edit','formations','formation-edit','effectifs','recrutement','candidature-edit','maternite','maternity-edit','reports','settings','users','user-create','user-edit','audit','da','da-edit','bc','bc-edit','bc-receive','resa','resa-new'],
+    rh: ['fleet','fleet-edit','wo','wo-edit','pm','pm-usine','pm-edit','gammes','gammes-usine','gamme-edit','fuel','fuel-edit','fuel-validation','cuves','cuve-edit','pompes','pompe-edit','ravitaillement','ravitaillement-new','parts','part-edit','mvt-new','floc','floc-edit','plant','plant-edit','production','prod-edit','notif','notif-edit','measures','measures-edit','costs','cc-edit','reports','settings','users','user-create','user-edit','audit','da','da-edit','bc','bc-edit','bc-receive','resa','resa-new'],
+    pompiste: ['dashboard','dashboard-usine','fleet','fleet-edit','pm','pm-usine','pm-edit','gammes','gammes-usine','gamme-edit','measures','measures-edit','floc','floc-edit','plant','plant-edit','production','prod-edit','parts','part-edit','mvt-new','costs','cc-edit','resa','resa-new','da','da-edit','bc','bc-edit','bc-receive','personnel','personnel-edit','conges','conge-edit','formations','formation-edit','effectifs','recrutement','candidature-edit','maternite','maternity-edit','reports','settings','users','user-create','user-edit','audit','wo','wo-edit','notif','notif-edit','fuel-validation','cuves','cuve-edit','pompes','pompe-edit','ravitaillement','ravitaillement-new'],
+    magasinier: ['fleet','fleet-edit','pm','pm-usine','pm-edit','gammes','gammes-usine','gamme-edit','measures','measures-edit','floc','floc-edit','plant','plant-edit','production','prod-edit','costs','cc-edit','da','da-edit','bc','bc-edit','bc-receive','personnel','personnel-edit','conges','conge-edit','formations','formation-edit','effectifs','recrutement','candidature-edit','maternite','maternity-edit','reports','settings','users','user-create','user-edit','audit','wo','wo-edit','notif','notif-edit'],
     'chef-atelier': ['fleet','fleet-edit','fuel','fuel-edit','fuel-validation','cuves','cuve-edit','pompes','pompe-edit','ravitaillement','ravitaillement-new','parts','part-edit','mvt-new','costs','cc-edit','da','da-edit','bc','bc-edit','bc-receive','resa','resa-new','personnel','personnel-edit','conges','conge-edit','formations','formation-edit','effectifs','recrutement','candidature-edit','maternite','maternity-edit','reports','settings','users','user-create','user-edit','audit'],
-    'directeur-exploitation': ['fleet-edit','pm-edit','gammes','gamme-edit','fuel','fuel-edit','fuel-validation','cuves','cuve-edit','pompes','pompe-edit','ravitaillement','ravitaillement-new','parts','part-edit','mvt-new','floc','floc-edit','plant','plant-edit','production','prod-edit','measures','measures-edit','resa','resa-new','personnel','personnel-edit','conges','conge-edit','formations','formation-edit','effectifs','recrutement','candidature-edit','maternite','maternity-edit','settings','users','user-create','user-edit','audit','wo-edit','notif-edit'],
+    'directeur-exploitation': ['fleet-edit','pm-edit','gammes','gammes-usine','gamme-edit','fuel','fuel-edit','fuel-validation','cuves','cuve-edit','pompes','pompe-edit','ravitaillement','ravitaillement-new','parts','part-edit','mvt-new','floc','floc-edit','plant','plant-edit','production','prod-edit','measures','measures-edit','resa','resa-new','personnel','personnel-edit','conges','conge-edit','formations','formation-edit','effectifs','recrutement','candidature-edit','maternite','maternity-edit','settings','users','user-create','user-edit','audit','wo-edit','notif-edit'],
   };
   const blocked = restricted[currentUser.role] || [];
   return !blocked.includes(navId);
@@ -875,7 +880,8 @@ function esc(s){ return (s===undefined||s===null)?'':String(s).replace(/[&<>"']/
 /* ============ NAV ============ */
 const NAV = [
   { section:'Vue d\'ensemble', items:[
-    {id:'dashboard', label:'Tableau de bord', icon:'gauge'},
+    {id:'dashboard', label:'Tableau de bord flotte', icon:'gauge'},
+    {id:'dashboard-usine', label:'Tableau de bord usine', icon:'factory'},
   ]},
   { section:'Maintenance', items:[
     {id:'wo', label:'Ordres de travail', icon:'wrench'},
@@ -883,8 +889,8 @@ const NAV = [
   ]},
   { section:'Flotte', items:[
     {id:'fleet', label:'Flotte', icon:'truck'},
-    {id:'pm', label:'Préventif', icon:'calendar'},
-    {id:'gammes', label:'Gammes opératoires', icon:'layers'},
+    {id:'pm', label:'Préventif flotte', icon:'calendar'},
+    {id:'gammes', label:'Gammes opératoires flotte', icon:'layers'},
     {id:'measures', label:'Compteurs / mesures', icon:'ruler'},
   ]},
   { section:'Carburant', items:[
@@ -897,6 +903,8 @@ const NAV = [
   { section:'Usine (Production)', items:[
     {id:'floc', label:'Emplacements', icon:'layers'},
     {id:'plant', label:'Équipements usine', icon:'factory'},
+    {id:'pm-usine', label:'Préventif usine', icon:'calendar'},
+    {id:'gammes-usine', label:'Gammes opératoires usine', icon:'layers'},
     {id:'production', label:'Production / OEE', icon:'activity'},
   ]},
   { section:'Stock', items:[
@@ -927,8 +935,8 @@ const NAV = [
 ];
 // Chaque page cochable de la fiche utilisateur donne aussi accès à ses sous-pages (édition, création...)
 const PAGE_GROUPS = {
-  dashboard:['dashboard'], wo:['wo','wo-edit'], notif:['notif','notif-edit'],
-  fleet:['fleet','fleet-edit'], pm:['pm','pm-edit'], gammes:['gammes','gamme-edit'], measures:['measures','measures-edit'],
+  dashboard:['dashboard'], 'dashboard-usine':['dashboard-usine'], wo:['wo','wo-edit'], notif:['notif','notif-edit'],
+  fleet:['fleet','fleet-edit'], pm:['pm','pm-edit'], gammes:['gammes','gamme-edit'], 'pm-usine':['pm-usine'], 'gammes-usine':['gammes-usine'], measures:['measures','measures-edit'],
   fuel:['fuel','fuel-edit'], 'fuel-validation':['fuel-validation'], cuves:['cuves','cuve-edit'], pompes:['pompes','pompe-edit'], ravitaillement:['ravitaillement','ravitaillement-new'],
   floc:['floc','floc-edit'], plant:['plant','plant-edit'], production:['production','prod-edit'],
   parts:['parts','part-edit','mvt-new'], resa:['resa','resa-new'],
@@ -1058,6 +1066,10 @@ function promoteTitle(){
   bar.style.display = 'none';
 }
 function render(){
+  if(!dashLandingDone && currentUser){
+    dashLandingDone = true;
+    if(currentView==='dashboard' && currentUser.affectation==='Usine' && canSee('dashboard-usine')) currentView = 'dashboard-usine';
+  }
   if(!canSee(currentView)){
     if(canSee('dashboard')) currentView = 'dashboard';
     else {
@@ -1069,13 +1081,16 @@ function render(){
   renderBottomNav();
   renderEnvBadges();
   const c = document.getElementById('content');
-  if(currentView==='dashboard') c.innerHTML = viewDashboard();
+  if(currentView==='dashboard') c.innerHTML = viewDashboard('Flotte');
+  else if(currentView==='dashboard-usine') c.innerHTML = viewDashboard('Usine');
   else if(currentView==='fleet') c.innerHTML = viewFleet();
   else if(currentView==='fleet-edit') c.innerHTML = viewFleetEdit();
   else if(currentView==='wo') c.innerHTML = viewWO();
   else if(currentView==='wo-edit') c.innerHTML = viewWOEdit();
-  else if(currentView==='pm') c.innerHTML = viewPM();
-  else if(currentView==='gammes') c.innerHTML = viewGammes();
+  else if(currentView==='pm') c.innerHTML = viewPM('Flotte');
+  else if(currentView==='pm-usine') c.innerHTML = viewPM('Usine');
+  else if(currentView==='gammes') c.innerHTML = viewGammes('Flotte');
+  else if(currentView==='gammes-usine') c.innerHTML = viewGammes('Usine');
   else if(currentView==='gamme-edit') c.innerHTML = viewGammeEdit();
   else if(currentView==='pm-edit') c.innerHTML = viewPMEdit();
   else if(currentView==='fuel') c.innerHTML = viewFuel();
@@ -1128,13 +1143,15 @@ function render(){
   else if(currentView==='bc-receive') c.innerHTML = viewBcReceive();
   promoteTitle();
   attachHandlers();
-  if(currentView==='dashboard') drawDashboardCharts();
+  if(currentView==='dashboard'||currentView==='dashboard-usine') drawDashboardCharts();
   if(currentView==='reports'){ const rd = computeReportData(); const top = rd.paretoEquip.slice(0,8); drawParetoChart(document.getElementById('chart-pareto'), top.map(x=>x.label), top.map(x=>x.cout)); }
   if(currentView==='users' && allUsers.length===0){ loadAllUsers().then(()=>{ if(currentView==='users') render(); }); }
 }
 function drawDashboardCharts(){
   const em = equipMap();
+  const scope = dashScope;
   const matchesFilter = (equipementId)=>{
+    if(eqScope(equipementId)!==scope) return false;
     if(dashFilterEquip!=='Tous') return equipementId===dashFilterEquip;
     if(dashFilterFamille!=='Tous') return em[equipementId] && em[equipementId].type===dashFilterFamille;
     return true;
@@ -1158,9 +1175,14 @@ function drawDashboardCharts(){
   const muted = getComputedStyle(document.documentElement).getPropertyValue('--muted').trim() || '#8B939A';
   const danger = getComputedStyle(document.documentElement).getPropertyValue('--danger').trim() || '#E5533C';
   drawBarChart(document.getElementById('chart-maint-cost'), months.map(monthLabel), maintByMonth, accent);
-  drawBarChart(document.getElementById('chart-fuel-cost'), months.map(monthLabel), fuelByMonth, steel);
+  const oeeByMonth = months.map(d=>{
+    const key = monthKey(d);
+    const l = state.productionLogs.filter(p=>(p.date||'').slice(0,7)===key && matchesFilter(p.equipementId)).map(oeeOf).filter(v=>v!==null);
+    return l.length ? Math.round(l.reduce((a,b)=>a+b,0)/l.length*10)/10 : 0;
+  });
+  drawBarChart(document.getElementById('chart-fuel-cost'), months.map(monthLabel), scope==='Usine'?oeeByMonth:fuelByMonth, steel);
   const woColors = { 'OT Créé':muted, 'OT En cours':accent, 'OT en reprise':danger, 'OT Réalisé':steel, 'OT Validé Atelier':steel, 'Suspendu':accent, 'OT Clôturé':success, 'Annulé':danger };
-  const woFiltered = state.workOrders.filter(w=>matchesFilter(w.equipementId));
+  const woFiltered = state.workOrders.filter(w=>woScope(w)===scope && matchesFilter(w.equipementId));
   drawDonut(document.getElementById('chart-wo-status'), WO_STATUTS.map(s=>({label:s, value: woFiltered.filter(w=>w.statut===s).length || 0.0001, color: woColors[s]})));
   const persColors = [accent, steel, success];
   drawDonut(document.getElementById('chart-personnel'), state.affectations.map((a,i)=>({label:a, value: state.personnel.filter(p=>p.statut==='Actif'&&p.affectation===a).length || 0.0001, color: persColors[i%3]})));
@@ -1177,37 +1199,94 @@ function kpiCard(label,value,unit,icon,color,sub,navTarget,navPreset){
     ${sub?`<div class="kpi-sub">${sub}</div>`:''}
   </div>`;
 }
-function viewDashboard(){
-  const k = computeKpis();
+let dashLandingDone = false;
+let dashScope = 'Flotte';
+let dashScopeLast = '';
+function eqScope(eqId, fallback){
+  if(state.plantEquipment.some(e=>e.id===eqId)) return 'Usine';
+  if(state.fleet.some(e=>e.id===eqId)) return 'Flotte';
+  return fallback||'';
+}
+function woScope(w){ return eqScope(w.equipementId, w.categorieEquipement); }
+function scopeEquip(scope){ return scope==='Usine' ? state.plantEquipment : state.fleet; }
+function computeScopeKpis(scope){
   const em = equipMap();
+  const equip = scopeEquip(scope);
+  const total = equip.length;
+  const dispo = equip.filter(e=>e.statut==="Opérationnel").length;
+  const disponibilite = total ? Math.round((dispo/total)*1000)/10 : 0;
+  const woS = state.workOrders.filter(w=>woScope(w)===scope);
+  const closed = woS.filter(w=>w.type==="Panne / Correctif" && w.statut==="OT Clôturé" && w.dateCreation && w.dateFin);
+  const mttrH = closed.length ? closed.reduce((a,w)=>a+Math.max(0,(new Date(w.dateFin)-new Date(w.dateCreation))/36e5),0)/closed.length : 0;
+  const ouverts = woS.filter(w=>WO_STATUTS_ACTIFS.includes(w.statut)).length;
+  const cout = woS.reduce((a,w)=>a+Number(w.cout||0),0);
+  const notifOuvertes = state.notifications.filter(n=>eqScope(n.equipementId)===scope && n.statut!=="Clôturée" && n.statut!=="Convertie en OT").length;
+  const plans = state.pmPlans.filter(p=>eqScope(p.equipementId)===scope);
+  const pmEnRetard = plans.filter(p=>pmEstimation(p,em).niveau==='depasse').length;
+  const pmProches = plans.filter(p=>pmEstimation(p,em).niveau==='proche').length;
+  const mesuresHors = state.measuringPoints.filter(m=>eqScope(m.equipementId)===scope && m.seuilMax!=='' && m.dernierReleve!=='' && Number(m.dernierReleve)>Number(m.seuilMax)).length;
+  const logs = state.productionLogs.filter(p=>eqScope(p.equipementId)==='Usine');
+  const oeeList = logs.map(oeeOf).filter(v=>v!==null);
+  const oeeMoyen = oeeList.length ? Math.round(oeeList.reduce((a,b)=>a+b,0)/oeeList.length*10)/10 : null;
+  const arretH = Math.round(logs.reduce((a,p)=>a+Number(p.tempsArretMin||0),0)/6)/10;
+  const litres = state.fuelLogs.filter(f=>eqScope(f.equipementId)==='Flotte').reduce((a,f)=>a+Number(f.quantite||0),0);
+  return { total, disponibilite, mttrH, ouverts, cout, notifOuvertes, pmEnRetard, pmProches, mesuresHors, oeeMoyen, arretH, litres,
+    partsBas: state.parts.filter(p=>Number(p.quantite)<=Number(p.seuil)).length,
+    daOuvertes: state.purchaseRequests.filter(d=>d.statut==="Ouverte").length,
+    bcEnAttente: state.purchaseOrders.filter(b=>b.statut!=="Réceptionné").length };
+}
+function viewDashboard(scope){
+  scope = scope||'Flotte'; dashScope = scope;
+  if(dashScopeLast!==scope){ dashFilterFamille='Tous'; dashFilterEquip='Tous'; dashScopeLast=scope; }
+  const isU = scope==='Usine';
+  const k = computeScopeKpis(scope);
+  const em = equipMap();
+  const equip = scopeEquip(scope);
   const alerts = [];
-  state.fleet.filter(e=>e.statut==="En panne").forEach(e=>alerts.push({lvl:'danger',text:`${e.code} — ${e.nom} est en panne`}));
-  state.plantEquipment.filter(e=>e.statut==="En panne").forEach(e=>alerts.push({lvl:'danger',text:`${e.code} — ${e.nom} (usine) est en panne`}));
+  equip.filter(e=>e.statut==="En panne").forEach(e=>alerts.push({lvl:'danger',text:`${e.code} — ${e.nom} est en panne`}));
   state.parts.filter(p=>Number(p.quantite)<=Number(p.seuil)).forEach(p=>alerts.push({lvl:'accent',text:`Stock bas : ${p.nom} (${p.quantite} restant)`}));
-  const now = new Date();
-  state.pmPlans.filter(p=>pmStatus(p,em).urgent && !p.otGenereId).forEach(p=>alerts.push({lvl:'accent',text:`Entretien à échéance : ${em[p.equipementId]?.code||'?'} — ${p.tache} (${pmStatus(p,em).label})`}));
-  state.pmPlans.filter(p=>p.otGenereId && pmSuiviStatut(p)==='Généré').forEach(p=>{ const ot=state.workOrders.find(w=>w.id===p.otGenereId); alerts.push({lvl:'steel',text:`Préventif généré automatiquement : ${ot?ot.numero:'?'} — ${em[p.equipementId]?.code||'?'} (${p.tache}) — à planifier`}); });
-  state.notifications.filter(n=>n.statut==="Nouvelle" && n.priorite==="Urgente").forEach(n=>alerts.push({lvl:'danger',text:`Notification urgente : ${em[n.equipementId]?.code||'?'} — ${n.description}`}));
-  state.measuringPoints.filter(m=>m.seuilMax!=='' && m.dernierReleve!=='' && Number(m.dernierReleve)>Number(m.seuilMax)).forEach(m=>alerts.push({lvl:'accent',text:`Mesure hors seuil : ${em[m.equipementId]?.code||'?'} — ${m.nom} (${m.dernierReleve})`}));
-  const recentWO = [...state.workOrders].sort((a,b)=>(b.dateCreation||'').localeCompare(a.dateCreation||'')).slice(0,6);
-  const equipOptions = [...state.fleet, ...state.plantEquipment].sort((a,b)=>a.code.localeCompare(b.code));
+  state.pmPlans.filter(p=>eqScope(p.equipementId)===scope && pmStatus(p,em).urgent && !p.otGenereId).forEach(p=>alerts.push({lvl:'accent',text:`Entretien à échéance : ${em[p.equipementId]?.code||'?'} — ${p.tache} (${pmStatus(p,em).label})`}));
+  state.pmPlans.filter(p=>eqScope(p.equipementId)===scope && p.otGenereId && pmSuiviStatut(p)==='Généré').forEach(p=>{ const ot=state.workOrders.find(w=>w.id===p.otGenereId); alerts.push({lvl:'steel',text:`Préventif généré automatiquement : ${ot?ot.numero:'?'} — ${em[p.equipementId]?.code||'?'} (${p.tache}) — à planifier`}); });
+  state.notifications.filter(n=>eqScope(n.equipementId)===scope && n.statut==="Nouvelle" && n.priorite==="Urgente").forEach(n=>alerts.push({lvl:'danger',text:`Notification urgente : ${em[n.equipementId]?.code||'?'} — ${n.description}`}));
+  state.measuringPoints.filter(m=>eqScope(m.equipementId)===scope && m.seuilMax!=='' && m.dernierReleve!=='' && Number(m.dernierReleve)>Number(m.seuilMax)).forEach(m=>alerts.push({lvl:'accent',text:`Mesure hors seuil : ${em[m.equipementId]?.code||'?'} — ${m.nom} (${m.dernierReleve})`}));
+  const woS = state.workOrders.filter(w=>woScope(w)===scope);
+  const recentWO = [...woS].sort((a,b)=>(b.dateCreation||'').localeCompare(a.dateCreation||'')).slice(0,6);
+  const equipOptions = [...equip].sort((a,b)=>a.code.localeCompare(b.code));
+  const familles = [...new Set(equip.map(e=>e.type).filter(Boolean))].sort();
+  const pmWatch = state.pmPlans.filter(p=>eqScope(p.equipementId)===scope).map(p=>({p, est:pmEstimation(p,em)}))
+    .filter(x=>x.est.niveau!=='ok').sort((a,b)=>(a.est.estimatedDate||'9999').localeCompare(b.est.estimatedDate||'9999')).slice(0,6);
+  const switchBtns = [['Flotte','dashboard'],['Usine','dashboard-usine']].filter(([,id])=>canSee(id)).map(([lbl,id])=>
+    `<button class="btn ${lbl===scope?'btn-accent':'btn-ghost'}" style="padding:6px 14px;font-size:12px;" data-nav="${id}" type="button">${lbl}</button>`).join('');
+  const dashNav = isU ? 'plant' : 'fleet';
+  const nbPlant = scope==='Usine' ? `${k.total} machines suivies` : `${k.total} engins suivis`;
+  const kpi1 = isU ? `
+    ${kpiCard('Disponibilité usine', k.disponibilite,'%','factory', k.disponibilite>=80?'var(--success)':'var(--danger)', nbPlant, 'plant')}
+    ${kpiCard('OEE moyen', k.oeeMoyen!==null?k.oeeMoyen.toFixed(1):'—','%','activity', k.oeeMoyen!==null&&k.oeeMoyen>=75?'var(--success)':'var(--accent)','Basé sur relevés production', 'production')}
+    ${kpiCard('MTTR usine', k.mttrH.toFixed(1),'h','wrench','var(--steel)','Temps moyen de réparation', 'reports')}
+    ${kpiCard('OT en cours', k.ouverts,'','wrench','var(--accent)','Ordres de travail usine ouverts', 'wo')}
+    ${kpiCard('Coût maintenance', fmt(k.cout),'FCFA','report','var(--text)','Cumul OT usine', 'reports')}
+    ${kpiCard('Stock critique', k.partsBas,'','package', k.partsBas?'var(--accent)':'var(--success)','Pièces sous seuil', 'parts', 'seuils')}` : `
+    ${kpiCard('Disponibilité flotte', k.disponibilite,'%','gauge', k.disponibilite>=80?'var(--success)':'var(--danger)', nbPlant, 'fleet')}
+    ${kpiCard('MTTR', k.mttrH.toFixed(1),'h','wrench','var(--steel)','Temps moyen de réparation', 'reports')}
+    ${kpiCard('OT en cours', k.ouverts,'','wrench','var(--accent)','Ordres de travail flotte ouverts', 'wo')}
+    ${kpiCard('Coût maintenance', fmt(k.cout),'FCFA','report','var(--text)','Cumul OT flotte', 'reports')}
+    ${kpiCard('Carburant', fmt(k.litres),'L','fuel','var(--steel)','Cumul flotte', 'fuel')}
+    ${kpiCard('Stock critique', k.partsBas,'','package', k.partsBas?'var(--accent)':'var(--success)','Pièces sous seuil', 'parts', 'seuils')}`;
+  const pmNav = isU ? 'pm-usine' : 'pm';
+  const kpi2 = `
+    ${kpiCard("Demandes d'intervention", k.notifOuvertes,'','bell', k.notifOuvertes?'var(--accent)':'var(--success)','Pannes/anomalies non traitées', 'notif')}
+    ${kpiCard('Préventifs en retard', k.pmEnRetard,'','calendar', k.pmEnRetard?'var(--danger)':'var(--success)', k.pmProches+' à échéance proche', pmNav)}
+    ${isU ? kpiCard("Heures d'arrêt", k.arretH,'h','alert', k.arretH>0?'var(--accent)':'var(--success)','Cumul des relevés production', 'production') : ''}
+    ${isU ? kpiCard('Mesures hors seuil', k.mesuresHors,'','ruler', k.mesuresHors?'var(--danger)':'var(--success)','Points de mesure', 'measures') : ''}
+    ${kpiCard('Demandes d\'achat ouvertes', k.daOuvertes,'','cart', k.daOuvertes?'var(--accent)':'var(--success)','En attente de commande', 'da')}
+    ${kpiCard('BC en attente', k.bcEnAttente,'','receipt', k.bcEnAttente?'var(--accent)':'var(--success)','Non réceptionnés', 'bc')}`;
 
   return `
-  <h1>Tableau de bord</h1>
-  <div class="grid grid-kpi" style="margin-bottom:12px;">
-    ${kpiCard('Disponibilité flotte', k.disponibilite,'%','gauge', k.disponibilite>=80?'var(--success)':'var(--danger)', `${k.total} engins suivis`, 'fleet')}
-    ${kpiCard('MTTR', k.mttrH.toFixed(1),'h','wrench','var(--steel)','Temps moyen de réparation', 'reports')}
-    ${kpiCard('OT en cours', k.ouverts,'','wrench','var(--accent)','Ordres de travail ouverts', 'wo')}
-    ${kpiCard('Coût maintenance', fmt(k.coutMaintenance),'FCFA','report','var(--text)','Cumul ordres de travail', 'reports')}
-    ${kpiCard('Carburant', fmt(k.litresTotal),'L','fuel','var(--steel)','Cumul flotte', 'fuel')}
-    ${kpiCard('Stock critique', k.partsBas,'','package', k.partsBas?'var(--accent)':'var(--success)','Pièces sous seuil', 'parts', 'seuils')}
+  <div class="between wrapwrap" style="gap:10px;align-items:center;margin-bottom:6px;"><h1 style="margin:0;">Tableau de bord — ${isU?'Usine':'Flotte'}</h1>
+    ${switchBtns.length>1?`<div class="row" style="background:var(--panelR);border-radius:8px;padding:2px;">${switchBtns}</div>`:''}</div>
+  <div class="grid grid-kpi" style="margin-bottom:12px;">${kpi1}
   </div>
-  <div class="grid grid-kpi" style="margin-bottom:20px;">
-    ${kpiCard('Disponibilité usine', k.disponibilitePlant,'%','factory', k.disponibilitePlant>=80?'var(--success)':'var(--danger)', `${k.totalPlant} machines suivies`, 'plant')}
-    ${kpiCard('OEE moyen', k.oeeMoyen!==null?k.oeeMoyen.toFixed(1):'—','%','activity', k.oeeMoyen!==null&&k.oeeMoyen>=75?'var(--success)':'var(--accent)','Basé sur relevés production', 'production')}
-    ${kpiCard("Demandes d'intervention ouvertes", k.notifOuvertes,'','bell', k.notifOuvertes?'var(--accent)':'var(--success)','Pannes/anomalies non traitées', 'notif')}
-    ${kpiCard('Demandes d\'achat ouvertes', k.daOuvertes,'','cart', k.daOuvertes?'var(--accent)':'var(--success)','En attente de commande', 'da')}
-    ${kpiCard('BC en attente', k.bcEnAttente,'','receipt', k.bcEnAttente?'var(--accent)':'var(--success)','Non réceptionnés', 'bc')}
+  <div class="grid grid-kpi" style="margin-bottom:20px;">${kpi2}
   </div>
 
   <div class="plate p14" style="margin-bottom:16px;">
@@ -1215,7 +1294,7 @@ function viewDashboard(){
       <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;">${ICONS.layers} Filtrer les graphiques :</span>
       <select id="dash-filter-famille" style="flex:1;min-width:150px;">
         <option value="Tous">Toutes familles</option>
-        ${state.equipTypes.map(t=>`<option value="${esc(t)}" ${dashFilterFamille===t?'selected':''}>${esc(t)}</option>`).join('')}
+        ${familles.map(t=>`<option value="${esc(t)}" ${dashFilterFamille===t?'selected':''}>${esc(t)}</option>`).join('')}
       </select>
       <select id="dash-filter-equip" style="flex:1;min-width:170px;">
         <option value="Tous">Tous équipements</option>
@@ -1231,7 +1310,7 @@ function viewDashboard(){
       <canvas id="chart-maint-cost" style="width:100%;height:140px;"></canvas>
     </div>
     <div class="plate p16">
-      <h3 class="oswald" style="text-transform:uppercase;font-size:14px;margin:0 0 10px;">Carburant consommé (6 derniers mois, L)</h3>
+      <h3 class="oswald" style="text-transform:uppercase;font-size:14px;margin:0 0 10px;">${isU?'OEE moyen par mois (%)':'Carburant consommé (6 derniers mois, L)'}</h3>
       <canvas id="chart-fuel-cost" style="width:100%;height:140px;"></canvas>
     </div>
   </div>
@@ -1242,7 +1321,7 @@ function viewDashboard(){
         <canvas id="chart-wo-status" style="width:120px;height:120px;flex-shrink:0;"></canvas>
         <div style="display:flex;flex-direction:column;gap:6px;">
           ${WO_STATUTS.map(s=>{
-            const n = state.workOrders.filter(w=>w.statut===s).length;
+            const n = woS.filter(w=>w.statut===s).length;
             const c = woStatutColor(s);
             return `<div class="row legend-clickable" data-nav-dash="wo:status:${esc(s)}"><span class="led" style="background:${c}"></span><span style="font-size:12px;color:var(--muted);">${s} : <span style="color:var(--text)">${n}</span></span></div>`;
           }).join('')}
@@ -1287,23 +1366,27 @@ function viewDashboard(){
   </div>
   <div class="grid grid-2">
     <div class="plate p16">
-      <h3 class="oswald" style="text-transform:uppercase;font-size:14px;margin:0 0 10px;">État de la flotte</h3>
-      <div class="grid grid-status">
-        ${state.fleet.map(e=>`<div class="card-item legend-clickable" data-nav-dash="fleet">
-          <div class="row"><span class="led" style="background:${statutColor(e.statut)}"></span><span class="mono" style="font-size:12px;">${e.code}</span></div>
-          <div style="font-size:10px;color:var(--muted);margin-top:2px;">${e.type}</div>
-        </div>`).join('')}
-      </div>
-    </div>
-    <div class="plate p16">
-      <h3 class="oswald" style="text-transform:uppercase;font-size:14px;margin:0 0 10px;">État de l'usine</h3>
-      ${state.plantEquipment.length===0?`<div class="empty">${ICONS.factory}<span>Aucune machine enregistrée.</span></div>`:
+      <h3 class="oswald" style="text-transform:uppercase;font-size:14px;margin:0 0 10px;">${isU?"État de l'usine":'État de la flotte'}</h3>
+      ${equip.length===0?`<div class="empty">${ICONS[isU?'factory':'truck']}<span>${isU?'Aucune machine enregistrée.':'Aucun engin enregistré.'}</span></div>`:
       `<div class="grid grid-status">
-        ${state.plantEquipment.map(e=>`<div class="card-item legend-clickable" data-nav-dash="plant">
+        ${equip.map(e=>`<div class="card-item legend-clickable" data-nav-dash="${dashNav}">
           <div class="row"><span class="led" style="background:${statutColor(e.statut)}"></span><span class="mono" style="font-size:12px;">${e.code}</span></div>
           <div style="font-size:10px;color:var(--muted);margin-top:2px;">${e.type}</div>
         </div>`).join('')}
       </div>`}
+    </div>
+    <div class="plate p16">
+      <div class="between" style="margin-bottom:10px;">
+        <div class="row">${ICONS.calendar}<h3 class="oswald" style="text-transform:uppercase;font-size:14px;margin:0;">Préventif à surveiller</h3></div>
+        <button class="btn btn-ghost" style="padding:2px 6px;color:var(--accent);font-size:12px;" data-nav="${pmNav}">Voir tout →</button>
+      </div>
+      ${pmWatch.length===0?`<div class="empty">${ICONS.check}<span>Aucun préventif en retard ou proche.</span></div>`:
+        `<div style="display:flex;flex-direction:column;gap:6px;">
+        ${pmWatch.map(({p,est})=>`<div class="between card-item legend-clickable" data-nav-dash="${pmNav}">
+          <div class="row"><span style="color:${pmNiveauColor(est.niveau)};">${pmNiveauIcon(est.niveau)}</span><span>${esc(p.tache)}</span></div>
+          <span style="color:var(--muted);font-size:12px;">${em[p.equipementId]?.code||'—'} · ${est.estimatedDate||est.label}</span>
+        </div>`).join('')}
+        </div>`}
     </div>
   </div>
   <div class="plate p16" style="margin-top:16px;">
@@ -2677,11 +2760,16 @@ let gammeIsNew = false;
 function viewGammeEdit(){
   return fullFormPageHtml(gammeIsNew?'Nouvelle gamme opératoire':'Modifier la gamme opératoire', 'Procédure standardisée réutilisable — outils, EPI et durée type', gammeForm(gammeDraft));
 }
-function viewGammes(){
-  const list = [...state.gammesOperatoires].sort((a,b)=>(a.nom||'').localeCompare(b.nom||''));
+let gammeScope = 'Flotte';
+let pmScope = 'Flotte';
+function pmListView(){ return pmScope==='Usine'?'pm-usine':'pm'; }
+function gammeListView(){ return gammeScope==='Usine'?'gammes-usine':'gammes'; }
+function viewGammes(scope){
+  scope = scope||'Flotte'; gammeScope = scope;
+  const list = state.gammesOperatoires.filter(g=>!g.categorie||g.categorie===scope).sort((a,b)=>(a.nom||'').localeCompare(b.nom||''));
   return `
   <div class="headrow">
-    <div><h1>Gammes opératoires</h1><p class="subtitle" style="margin:0;">Catalogue de procédures standardisées, réutilisables dans le préventif et les OT</p></div>
+    <div><h1>Gammes opératoires — ${scope==='Usine'?'Usine':'Flotte'}</h1><p class="subtitle" style="margin:0;">Catalogue de procédures standardisées pour ${scope==='Usine'?'les équipements de l\'usine':'les engins de la flotte'}, réutilisables dans le préventif et les OT</p></div>
     <button class="btn btn-accent" id="gamme-new-btn">${ICONS.plus} Nouvelle gamme</button>
   </div>
   ${list.length===0?`<div class="plate p16"><div class="empty">${ICONS.wrench}<span>Aucune gamme opératoire définie — crée des procédures types (vidange, graissage, contrôle électrique...) pour les réutiliser dans le préventif.</span></div></div>`:
@@ -2706,15 +2794,16 @@ function viewGammes(){
 }
 
 let pmViewMode = 'liste';
-function viewPM(){
+function viewPM(scope){
+  scope = scope||'Flotte'; pmScope = scope;
   const em = equipMap();
-  const withEst = state.pmPlans.map(p=>({p, est:pmEstimation(p,em), suivi:pmSuiviStatut(p)}));
+  const withEst = state.pmPlans.filter(p=>equipCategorie(p.equipementId)===scope).map(p=>({p, est:pmEstimation(p,em), suivi:pmSuiviStatut(p)}));
   const sorted = pmViewMode==='suivi'
     ? [...withEst].sort((a,b)=>(a.est.estimatedDate||'9999').localeCompare(b.est.estimatedDate||'9999'))
     : [...withEst].sort((a,b)=>{ const order={depasse:0,proche:1,ok:2}; return order[a.est.niveau]-order[b.est.niveau]; });
   return `
   <div class="headrow">
-    <div><h1>Maintenance préventive</h1><p class="subtitle" style="margin:0;">Planification par date ou par compteur (heures/km) — estimation prédictive et génération automatique</p></div>
+    <div><h1>Maintenance préventive — ${scope==='Usine'?'Usine':'Flotte'}</h1><p class="subtitle" style="margin:0;">Planification par date ou par compteur (heures/km) — estimation prédictive et génération automatique</p></div>
     <div class="row">
       <div class="row" style="background:var(--panelR);border-radius:8px;padding:2px;">
         <button class="btn ${pmViewMode==='liste'?'btn-accent':'btn-ghost'}" style="padding:6px 12px;font-size:12px;" id="pm-mode-liste" type="button">Liste</button>
@@ -2765,7 +2854,7 @@ function viewPM(){
 let pmDraft = null;
 let pmIsNew = false;
 function blankPM(){
-  return { id:null, equipementId: state.fleet[0]?.id||state.plantEquipment[0]?.id||'', tache:'', type:'Date',
+  return { id:null, equipementId: (pmScope==='Usine'?(state.plantEquipment[0]?.id||state.fleet[0]?.id):(state.fleet[0]?.id||state.plantEquipment[0]?.id))||'', tache:'', type:'Date',
     frequenceJours:90, derniere:'', prochaine:'', intervalle:250, derniereValeur:0,
     gammeId:'', typeStrategie:state.typesStrategieMaintenance[0], objectif:state.objectifsMaintenance[0], otGenereId:null };
 }
@@ -2843,7 +2932,7 @@ function wirePMEdit(){
     else { p.gammeId = ''; }
   });
   const ffpBack = document.getElementById('ffp-back');
-  if(ffpBack) ffpBack.addEventListener('click', ()=>{ currentView='pm'; pmDraft=null; render(); });
+  if(ffpBack) ffpBack.addEventListener('click', ()=>{ currentView=pmListView(); pmDraft=null; render(); });
   const ffpSubmit = document.getElementById('ffp-submit');
   if(ffpSubmit) ffpSubmit.addEventListener('click', ()=>{
     p.equipementId = document.getElementById('pm-f-equip').value;
@@ -2863,7 +2952,7 @@ function wirePMEdit(){
     if(!p.tache || !p.equipementId){ alert('Tâche et équipement requis'); return; }
     if(pmIsNew){ p.id = uid(); state.pmPlans.push(p); persist(); toast('Plan préventif ajouté'); }
     else { const idx = state.pmPlans.findIndex(x=>x.id===p.id); if(idx>-1) state.pmPlans[idx]=p; persist(); toast('Plan préventif mis à jour'); }
-    currentView='pm'; pmDraft=null; render();
+    currentView=pmListView(); pmDraft=null; render();
   });
 }
 
@@ -5850,7 +5939,7 @@ function attachHandlers(){
   // Gammes opératoires
   const gamn = document.querySelector('#gamme-new-btn');
   if(gamn) gamn.addEventListener('click', ()=>{
-    gammeDraft = {id:null, nom:'', categorie:'', familleEquipement:'', dureeEstimee:60, description:'', procedure:'', outilsRequis:'', epiRequis:'', normeHSE:state.normesHSE[0]};
+    gammeDraft = {id:null, nom:'', categorie:gammeScope, familleEquipement:'', dureeEstimee:60, description:'', procedure:'', outilsRequis:'', epiRequis:'', normeHSE:state.normesHSE[0]};
     gammeIsNew = true; currentView='gamme-edit'; render();
   });
   document.querySelectorAll('[data-edit-gamme]').forEach(b=>b.addEventListener('click',(e)=>{
@@ -5864,7 +5953,7 @@ function attachHandlers(){
   }));
   if(currentView==='gamme-edit'){
     const ffpBack = document.getElementById('ffp-back');
-    if(ffpBack) ffpBack.addEventListener('click', ()=>{ currentView='gammes'; gammeDraft=null; render(); });
+    if(ffpBack) ffpBack.addEventListener('click', ()=>{ currentView=gammeListView(); gammeDraft=null; render(); });
     const ffpSubmit = document.getElementById('ffp-submit');
     if(ffpSubmit) ffpSubmit.addEventListener('click', ()=>{
       const data = collectDataF();
@@ -5872,7 +5961,7 @@ function attachHandlers(){
       const patch = {...data, dureeEstimee:Number(data.dureeEstimee)||60};
       if(gammeIsNew){ state.gammesOperatoires.push({...patch, id:uid()}); persist(); toast('Gamme opératoire ajoutée'); }
       else { const g = state.gammesOperatoires.find(x=>x.id===gammeDraft.id); Object.assign(g, patch); persist(); toast('Gamme opératoire mise à jour'); }
-      currentView='gammes'; gammeDraft=null; render();
+      currentView=gammeListView(); gammeDraft=null; render();
     });
   }
   document.querySelectorAll('[data-del-gamme]').forEach(b=>b.addEventListener('click',(e)=>{
