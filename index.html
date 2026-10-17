@@ -425,10 +425,23 @@ async function handleLogout(){
   authTab = 'login'; authError = '';
   renderAuthScreen();
 }
+function userZones(){
+  if(!currentUser || currentUser.role==='admin') return ['Flotte','Usine'];
+  if(currentUser.affectation==='Flotte') return ['Flotte'];
+  if(currentUser.affectation==='Usine') return ['Usine'];
+  return ['Flotte','Usine'];
+}
+const FLOTTE_ONLY_PAGES = ['dashboard','fleet','fleet-edit','pm','gammes','fuel','fuel-edit','fuel-validation','cuves','cuve-edit','pompes','pompe-edit','ravitaillement','ravitaillement-new'];
+const USINE_ONLY_PAGES = ['dashboard-usine','pm-usine','gammes-usine','plant','plant-edit','floc','floc-edit','production','prod-edit'];
 function canSee(navId){
   if(!currentUser) return false;
   if(currentUser.statutCompte==='Inactif') return false;
   if(currentUser.role==='admin') return true;
+  { const z = userZones();
+    if(z.length===1){
+      if(z[0]==='Usine' && FLOTTE_ONLY_PAGES.includes(navId)) return false;
+      if(z[0]==='Flotte' && USINE_ONLY_PAGES.includes(navId)) return false;
+    } }
 
   // Nouveau système : liste précise de pages cochées sur la fiche utilisateur
   if(currentUser.modules && currentUser.modules.pages && typeof currentUser.modules.pages==='object'){
@@ -506,6 +519,8 @@ function bcScopeOf(b){ const d=(state.purchaseRequests||[]).find(x=>x.id===b.pur
 let zoneFilter = 'Tous';
 let zoneInit = false;
 function zoneChips(){
+  const zs = userZones();
+  if(zs.length<2) return '';
   return `<div class="row" style="background:var(--panelR);border-radius:8px;padding:2px;margin-bottom:12px;width:fit-content;">${['Tous','Flotte','Usine'].map(x=>`<button class="btn ${zoneFilter===x?'btn-accent':'btn-ghost'}" style="padding:6px 14px;font-size:12px;" data-zone="${x}" type="button">${x==='Tous'?'Tout':x}</button>`).join('')}</div>`;
 }
 function inZone(eqId, fb){ return zoneFilter==='Tous' || (eqScope(eqId,fb)||'')===zoneFilter; }
@@ -911,12 +926,12 @@ const NAV = [
   { section:'Maintenance', items:[
     {id:'wo', label:'Ordres de travail', icon:'wrench'},
     {id:'notif', label:"Demandes d'intervention", icon:'bell'},
+    {id:'measures', label:'Compteurs / mesures', icon:'ruler'},
   ]},
   { section:'Flotte', items:[
     {id:'fleet', label:'Flotte', icon:'truck'},
     {id:'pm', label:'Préventif flotte', icon:'calendar'},
     {id:'gammes', label:'Gammes opératoires flotte', icon:'layers'},
-    {id:'measures', label:'Compteurs / mesures', icon:'ruler'},
   ]},
   { section:'Carburant', items:[
     {id:'fuel', label:'Saisie pompiste', icon:'fuel'},
@@ -1099,6 +1114,7 @@ function render(){
   if(currentUser && !zoneInit){ zoneInit = true; if(currentUser.affectation==='Flotte'||currentUser.affectation==='Usine') zoneFilter = currentUser.affectation; }
   if(ZONE_USINE_VIEWS.includes(currentView)) zoneFilter='Usine';
   else if(ZONE_FLOTTE_VIEWS.includes(currentView)) zoneFilter='Flotte';
+  { const zs = userZones(); if(zs.length===1){ zoneFilter = zs[0]; reportScope = zs[0]; pmScope = zs[0]; gammeScope = zs[0]; } }
   if(currentView==='reports' && zoneFilter!=='Tous') reportScope = zoneFilter;
   if(!dashLandingDone && currentUser){
     dashLandingDone = true;
@@ -2082,7 +2098,7 @@ function viewWOEdit(){
   <div class="plate p16" style="margin-bottom:16px;">
     <h3 class="oswald" style="text-transform:uppercase;font-size:13px;margin:0 0 14px;color:var(--muted);">Données générales</h3>
     <div class="formgrid">
-      <label class="field"><span>Catégorie</span><select id="wo-f-categorie"><option value="">— Choisir —</option>${CATEGORIES_EQUIPEMENT.map(c=>`<option ${w.categorieEquipement===c?'selected':''}>${c}</option>`).join('')}</select></label>
+      <label class="field"><span>Catégorie</span><select id="wo-f-categorie"><option value="">— Choisir —</option>${CATEGORIES_EQUIPEMENT.filter(c=>c==='Bâtiment' ? userZones().length>1 : userZones().includes(c)).map(c=>`<option ${w.categorieEquipement===c?'selected':''}>${c}</option>`).join('')}</select></label>
       <label class="field"><span>Équipement</span><select id="wo-f-equip">${equipOpts}</select></label>
       ${w.categorieEquipement==='Bâtiment' ? `<p style="font-size:11px;color:var(--muted);grid-column:1/-1;margin:-8px 0 0;">Module Bâtiments à venir — aucun équipement disponible pour l'instant.</p>` : ''}
       <label class="field"><span>Type de travail <span style="color:var(--muted);font-weight:400;">(nature technique)</span></span><select id="wo-f-typetravail">${state.typesTravail.map(t=>`<option ${w.typeTravail===t?'selected':''}>${t}</option>`).join('')}</select></label>
@@ -4853,7 +4869,8 @@ function viewDA(){
   </div>`}`;
 }
 function daForm(d){
-  const allEquip = [...state.fleet.map(e=>({...e,grp:'Flotte'})), ...state.plantEquipment.map(e=>({...e,grp:'Usine'}))];
+  const zs = userZones();
+  const allEquip = [...(zs.includes('Flotte')?state.fleet.map(e=>({...e,grp:'Flotte'})):[]), ...(zs.includes('Usine')?state.plantEquipment.map(e=>({...e,grp:'Usine'})):[])];
   const equipOpts = allEquip.map(e=>`<option value="${e.id}" ${d.equipementId===e.id?'selected':''}>[${e.grp}] ${e.code} — ${e.nom}</option>`).join('');
   const woOpts = state.workOrders.map(w=>`<option value="${w.id}" ${d.workOrderId===w.id?'selected':''}>${w.numero} — ${esc(w.titre)}</option>`).join('');
   const ccOpts = state.costCenters.map(c=>`<option value="${c.id}" ${d.costCenterId===c.id?'selected':''}>${esc(c.code)} — ${esc(c.nom)}</option>`).join('');
@@ -5791,7 +5808,7 @@ function viewReports(){
   return `
   <h1>Rapports — ${reportScope}</h1>
   <p class="subtitle">Analyse maintenance ${reportScope==='Usine'?"de l'usine":'de la flotte'} — financier, technique, stratégique</p>
-  <div class="row" style="background:var(--panelR);border-radius:8px;padding:2px;margin-bottom:12px;width:fit-content;">${['Flotte','Usine'].map(x=>`<button class="btn ${reportScope===x?'btn-accent':'btn-ghost'}" style="padding:6px 14px;font-size:12px;" data-report-scope="${x}" type="button">${x}</button>`).join('')}</div>
+  ${userZones().length<2?'':`<div class="row" style="background:var(--panelR);border-radius:8px;padding:2px;margin-bottom:12px;width:fit-content;">${['Flotte','Usine'].map(x=>`<button class="btn ${reportScope===x?'btn-accent':'btn-ghost'}" style="padding:6px 14px;font-size:12px;" data-report-scope="${x}" type="button">${x}</button>`).join('')}</div>`}
 
   <div class="plate p14" style="margin-bottom:16px;">
     <div class="row wrapwrap" style="gap:8px;align-items:center;">
