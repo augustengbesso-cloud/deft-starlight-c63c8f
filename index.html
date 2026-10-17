@@ -1184,8 +1184,10 @@ function drawDashboardCharts(){
   const woColors = { 'OT Créé':muted, 'OT En cours':accent, 'OT en reprise':danger, 'OT Réalisé':steel, 'OT Validé Atelier':steel, 'Suspendu':accent, 'OT Clôturé':success, 'Annulé':danger };
   const woFiltered = state.workOrders.filter(w=>woScope(w)===scope && matchesFilter(w.equipementId));
   drawDonut(document.getElementById('chart-wo-status'), WO_STATUTS.map(s=>({label:s, value: woFiltered.filter(w=>w.statut===s).length || 0.0001, color: woColors[s]})));
-  const persColors = [accent, steel, success];
-  drawDonut(document.getElementById('chart-personnel'), state.affectations.map((a,i)=>({label:a, value: state.personnel.filter(p=>p.statut==='Actif'&&p.affectation===a).length || 0.0001, color: persColors[i%3]})));
+  const pr = persPresence(scope);
+  drawDonut(document.getElementById('chart-personnel'), [
+    {label:'Présents', value: pr.presents.length || 0.0001, color: success},
+    {label:'En congé / absents', value: pr.enConge.length || 0.0001, color: accent}]);
 }
 
 /* ============ DASHBOARD ============ */
@@ -1235,10 +1237,20 @@ function computeScopeKpis(scope){
     daOuvertes: state.purchaseRequests.filter(d=>d.statut==="Ouverte").length,
     bcEnAttente: state.purchaseOrders.filter(b=>b.statut!=="Réceptionné").length };
 }
+function persScope(scope){ return state.personnel.filter(p=>p.statut!=='Inactif' && (p.affectation===scope || p.affectation==='Les deux')); }
+function persPresence(scope){
+  const today = new Date().toISOString().slice(0,10);
+  const staff = persScope(scope);
+  const enConge = staff.filter(p=>p.statut==='Congé' || state.leaveRequests.some(c=>c.personnelId===p.id && c.statut==='Validé' && c.dateDebut<=today && c.dateFin>=today));
+  const ids = new Set(enConge.map(p=>p.id));
+  const presents = staff.filter(p=>!ids.has(p.id));
+  return { staff, enConge, presents };
+}
 function viewDashboard(scope){
   scope = scope||'Flotte'; dashScope = scope;
   if(dashScopeLast!==scope){ dashFilterFamille='Tous'; dashFilterEquip='Tous'; dashScopeLast=scope; }
   const isU = scope==='Usine';
+  const pres = persPresence(scope);
   const k = computeScopeKpis(scope);
   const em = equipMap();
   const equip = scopeEquip(scope);
@@ -1329,15 +1341,14 @@ function viewDashboard(scope){
       </div>
     </div>
     <div class="plate p16">
-      <h3 class="oswald" style="text-transform:uppercase;font-size:14px;margin:0 0 10px;">Personnel actif par affectation</h3>
+      <h3 class="oswald" style="text-transform:uppercase;font-size:14px;margin:0 0 10px;">Présence du personnel — ${isU?'Usine':'Flotte'}</h3>
       <div class="row" style="gap:20px;">
         <canvas id="chart-personnel" style="width:120px;height:120px;flex-shrink:0;"></canvas>
         <div style="display:flex;flex-direction:column;gap:6px;">
-          ${state.affectations.map((a,i)=>{
-            const n = state.personnel.filter(p=>p.statut==='Actif' && p.affectation===a).length;
-            const colors=['var(--accent)','var(--steel)','var(--success)'];
-            return `<div class="row legend-clickable" data-nav-dash="personnel"><span class="led" style="background:${colors[i%3]}"></span><span style="font-size:12px;color:var(--muted);">${a} : <span style="color:var(--text)">${n}</span></span></div>`;
-          }).join('')}
+          <div class="row legend-clickable" data-nav-dash="personnel"><span class="led" style="background:var(--success)"></span><span style="font-size:12px;color:var(--muted);">Présents : <span style="color:var(--text)">${pres.presents.length}</span></span></div>
+          <div class="row legend-clickable" data-nav-dash="conges"><span class="led" style="background:var(--accent)"></span><span style="font-size:12px;color:var(--muted);">En congé / absents : <span style="color:var(--text)">${pres.enConge.length}</span></span></div>
+          <div class="row legend-clickable" data-nav-dash="personnel"><span class="led" style="background:var(--steel)"></span><span style="font-size:12px;color:var(--muted);">Effectif total : <span style="color:var(--text)">${pres.staff.length}</span></span></div>
+          ${pres.enConge.length?`<div style="font-size:11px;color:var(--muted);margin-top:4px;">Absents : ${pres.enConge.slice(0,5).map(p=>esc(p.nom)).join(', ')}${pres.enConge.length>5?'…':''}</div>`:''}
         </div>
       </div>
     </div>
@@ -1396,16 +1407,17 @@ function viewDashboard(scope){
     </div>
     ${(()=>{
       const pm = Object.fromEntries(state.personnel.map(p=>[p.id,p]));
+      const inSc = (id)=>{ const p=pm[id]; return p && (p.affectation===scope || p.affectation==='Les deux'); };
       const today = new Date().toISOString().slice(0,10);
-      const enAttente = state.leaveRequests.filter(c=>c.statut==='Demandé');
-      const enCongeAuj = state.leaveRequests.filter(c=>c.statut==='Validé' && c.dateDebut<=today && c.dateFin>=today);
-      const soldeFaible = state.personnel.filter(p=>p.statut==='Actif' && Number(p.soldeConges)<=3);
+      const enAttente = state.leaveRequests.filter(c=>c.statut==='Demandé' && inSc(c.personnelId));
+      const enCongeAuj = state.leaveRequests.filter(c=>c.statut==='Validé' && c.dateDebut<=today && c.dateFin>=today && inSc(c.personnelId));
+      const soldeFaible = persScope(scope).filter(p=>p.statut==='Actif' && Number(p.soldeConges)<=3);
       const today2 = new Date().toISOString().slice(0,10);
       const in60d = new Date(Date.now()+60*86400000).toISOString().slice(0,10);
-      const habilitationsAExpirer = state.trainings.filter(f=>f.dateExpiration && f.dateExpiration>=today2 && f.dateExpiration<=in60d);
+      const habilitationsAExpirer = state.trainings.filter(f=>f.dateExpiration && (!f.personnelId || inSc(f.personnelId)) && f.dateExpiration>=today2 && f.dateExpiration<=in60d);
       const candidaturesActives = state.candidatures.filter(c=>!['Embauché','Refusée'].includes(c.statut));
       return `<div class="grid grid-kpi" style="margin-bottom:${enCongeAuj.length||enAttente.length?'12px':'0'};">
-        ${kpiCard('Personnel actif', state.personnel.filter(p=>p.statut==='Actif').length,'','users','var(--text)','', 'personnel')}
+        ${kpiCard('Personnel actif', persScope(scope).filter(p=>p.statut==='Actif').length,'','users','var(--text)','', 'personnel')}
         ${kpiCard('Congés en attente', enAttente.length,'','calendar', enAttente.length?'var(--accent)':'var(--success)','à valider','conges')}
         ${kpiCard("En congé aujourd'hui", enCongeAuj.length,'','calendar','var(--steel)','', 'conges')}
         ${kpiCard('Soldes faibles (≤3j)', soldeFaible.length,'','alert', soldeFaible.length?'var(--danger)':'var(--success)','', 'personnel')}
@@ -2772,7 +2784,7 @@ function viewGammes(scope){
     <div><h1>Gammes opératoires — ${scope==='Usine'?'Usine':'Flotte'}</h1><p class="subtitle" style="margin:0;">Catalogue de procédures standardisées pour ${scope==='Usine'?'les équipements de l\'usine':'les engins de la flotte'}, réutilisables dans le préventif et les OT</p></div>
     <button class="btn btn-accent" id="gamme-new-btn">${ICONS.plus} Nouvelle gamme</button>
   </div>
-  ${list.length===0?`<div class="plate p16"><div class="empty">${ICONS.wrench}<span>Aucune gamme opératoire définie — crée des procédures types (vidange, graissage, contrôle électrique...) pour les réutiliser dans le préventif.</span></div></div>`:
+  ${list.length===0?`<div class="plate p16"><div class="empty">${ICONS.wrench}<span>${scope==='Usine'?"Aucune gamme opératoire usine définie — crée des procédures types (graissage convoyeur, contrôle brûleur, vérification roulements, contrôle électrique...) pour les réutiliser dans le préventif.":"Aucune gamme opératoire flotte définie — crée des procédures types (vidange, graissage, contrôle hydraulique...) pour les réutiliser dans le préventif."}</span></div></div>`:
   `<div style="display:flex;flex-direction:column;gap:8px;">
   ${list.map(g=>`
   <div class="plate p14 between wrapwrap legend-clickable" data-edit-gamme-row="${g.id}" style="gap:12px;">
@@ -2803,7 +2815,7 @@ function viewPM(scope){
     : [...withEst].sort((a,b)=>{ const order={depasse:0,proche:1,ok:2}; return order[a.est.niveau]-order[b.est.niveau]; });
   return `
   <div class="headrow">
-    <div><h1>Maintenance préventive — ${scope==='Usine'?'Usine':'Flotte'}</h1><p class="subtitle" style="margin:0;">Planification par date ou par compteur (heures/km) — estimation prédictive et génération automatique</p></div>
+    <div><h1>Maintenance préventive — ${scope==='Usine'?'Usine':'Flotte'}</h1><p class="subtitle" style="margin:0;">${scope==='Usine'?'Planification par date ou par heures de fonctionnement des machines — estimation prédictive et génération automatique des OT':'Planification par date ou par compteur (heures/km) — estimation prédictive et génération automatique'}</p></div>
     <div class="row">
       <div class="row" style="background:var(--panelR);border-radius:8px;padding:2px;">
         <button class="btn ${pmViewMode==='liste'?'btn-accent':'btn-ghost'}" style="padding:6px 12px;font-size:12px;" id="pm-mode-liste" type="button">Liste</button>
@@ -2812,11 +2824,11 @@ function viewPM(scope){
       <button class="btn btn-ghost" id="pm-export-btn">${ICONS.receipt} Exporter Excel</button>
       <button class="btn btn-ghost" id="pm-import-btn">${ICONS.plus} Importer Excel</button>
       <input type="file" id="pm-import-file" accept=".xlsx,.xls" style="display:none;"/>
-      <button class="btn btn-accent" data-open-pm="new">${ICONS.plus} Nouveau plan</button>
+      <button class="btn btn-accent" data-open-pm="new">${ICONS.plus} Nouveau plan ${scope==='Usine'?'usine':'flotte'}</button>
     </div>
   </div>
-  <p style="font-size:11px;color:var(--muted);margin:-4px 0 16px;">L'export/import gère aussi les compteurs (heures/km) de chaque engin et le rattachement aux gammes opératoires — pratique pour créer ou mettre à jour plusieurs plans d'un coup.</p>
-  ${sorted.length===0?`<div class="plate p16"><div class="empty">${ICONS.calendar}<span>Aucun plan préventif défini.</span></div></div>`:
+  <p style="font-size:11px;color:var(--muted);margin:-4px 0 16px;">${scope==='Usine'?"L'export/import gère aussi le compteur d'heures de fonctionnement de chaque machine et le rattachement aux gammes opératoires usine — pratique pour créer ou mettre à jour plusieurs plans d'un coup.":"L'export/import gère aussi les compteurs (heures/km) de chaque engin et le rattachement aux gammes opératoires — pratique pour créer ou mettre à jour plusieurs plans d'un coup."}</p>
+  ${sorted.length===0?`<div class="plate p16"><div class="empty">${ICONS.calendar}<span>${scope==='Usine'?'Aucun plan préventif défini pour les équipements de l\'usine.':'Aucun plan préventif défini pour la flotte.'}</span></div></div>`:
   pmViewMode==='suivi' ? `
   <div class="plate" style="overflow:hidden;">
   <table><thead><tr><th></th><th>Échéance estimée</th><th class="right">Reste</th><th class="right">Jours</th><th>Équipement</th><th>Tâche</th><th>Repère (dernier → prochain)</th><th>Statut de suivi</th><th></th></tr></thead>
@@ -2866,7 +2878,8 @@ function openPMEditor(id){
 }
 function viewPMEdit(){
   const p = pmDraft;
-  const allEquip = [...state.fleet.map(e=>({...e,grp:'Flotte'})), ...state.plantEquipment.map(e=>({...e,grp:'Usine'}))];
+  const scopeP = pmIsNew ? pmScope : equipCategorie(p.equipementId);
+  const allEquip = scopeP==='Usine' ? state.plantEquipment.map(e=>({...e,grp:'Usine'})) : state.fleet.map(e=>({...e,grp:'Flotte'}));
   const equipOpts = allEquip.map(e=>`<option value="${e.id}" ${p.equipementId===e.id?'selected':''}>[${e.grp}] ${e.code} — ${e.nom}</option>`).join('');
   const gammeOpts = gammesPourEquipement(p.equipementId, p.gammeId).map(g=>`<option value="${g.id}" ${p.gammeId===g.id?'selected':''}>${esc(g.nom)}${g.familleEquipement?' ('+esc(g.familleEquipement)+')':''}</option>`).join('');
   const typesDispo = equipCategorie(p.equipementId)==='Usine' ? PM_TYPES.filter(t=>t!=='Kilométrage') : PM_TYPES;
@@ -2900,7 +2913,7 @@ function viewPMEdit(){
     </div>
     <p style="font-size:11px;color:var(--muted);margin:10px 0 0;">Un ordre de travail est généré automatiquement 2 jours avant l'échéance estimée. Le compteur se réinitialise tout seul dès que cet OT est clôturé.</p>
   </div>`; })() : ''}`;
-  return fullFormPageHtml(pmIsNew?'Nouveau plan préventif':'Modifier le plan préventif', 'Planification par date ou par compteur (heures/km) — appuyée sur une gamme opératoire réutilisable', body);
+  return fullFormPageHtml(pmIsNew?'Nouveau plan préventif':'Modifier le plan préventif', (scopeP==='Usine'?'Planification par date ou par heures de fonctionnement — appuyée sur une gamme opératoire usine réutilisable':'Planification par date ou par compteur (heures/km) — appuyée sur une gamme opératoire réutilisable'), body);
 }
 function wirePMEdit(){
   const p = pmDraft;
