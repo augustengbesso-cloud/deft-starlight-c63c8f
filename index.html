@@ -745,6 +745,11 @@ function drawDonut(canvas, segments){
   });
 }
 const DEFAULT_EQUIP_TYPES = ["Pelleteuse","Tombereau","Foreuse","Groupe électrogène","Ligne de production","Machine industrielle","Convoyeur","Emballeuse","Autre"];
+const DEFAULT_EQUIP_TYPE_ZONES = {"Pelleteuse":"Flotte","Tombereau":"Flotte","Foreuse":"Flotte","Groupe électrogène":"Flotte","Ligne de production":"Usine","Machine industrielle":"Usine","Convoyeur":"Usine","Emballeuse":"Usine","Autre":"Les deux"};
+function typeZone(t){ const z=(state.equipTypeZones||{})[t]; return z||'Les deux'; }
+function typesFor(zone){ return (state.equipTypes||[]).filter(t=>{ if(!zone||zone==='Tous'||zone==='Les deux') return true; const z=typeZone(t); return z==='Les deux'||z===zone; }); }
+function addEquipType(t,zone){ if(!t) return; if(!state.equipTypes.includes(t)) state.equipTypes.push(t); state.equipTypeZones=state.equipTypeZones||{}; if(!state.equipTypeZones[t]) state.equipTypeZones[t]=zone||'Les deux'; }
+let typesModalZone = null;
 const STATUTS = ["Opérationnel","En maintenance","En panne","À l'arrêt"];
 const WO_STATUTS = ["OT Créé","OT En cours","OT en reprise","OT Réalisé","OT Validé Atelier","Suspendu","OT Clôturé","Annulé"];
 const WO_STATUTS_ACTIFS = ["OT Créé","OT En cours","OT en reprise","OT Réalisé","OT Validé Atelier","Suspendu"]; // comptent comme "ouverts" dans les KPI
@@ -1490,7 +1495,7 @@ function viewFleet(){
     <div><h1>Flotte</h1><p class="subtitle" style="margin:0;">${state.fleet.length} engins enregistrés</p></div>
     <div class="row">
       <input id="fleet-search" placeholder="Rechercher…" style="width:180px;" value="${esc(fleetSearch)}"/>
-      <button class="btn btn-ghost" data-open-types="1">${ICONS.layers} Familles</button>
+      <button class="btn btn-ghost" data-open-types="Flotte">${ICONS.layers} Familles</button>
       <button class="btn btn-ghost" id="fleet-export-btn">${ICONS.receipt} Exporter Excel</button>
       <button class="btn btn-ghost" id="fleet-import-btn">${ICONS.plus} Importer Excel</button>
       <input type="file" id="fleet-import-file" accept=".xlsx,.xls,.csv" style="display:none;"/>
@@ -1525,7 +1530,7 @@ function fleetForm(e){
   return `
   <div class="formgrid">
     <label class="field"><span>Code</span><input data-f="code" value="${esc(e.code)}" placeholder="PEL-07"/></label>
-    <label class="field"><span>Famille d'équipement</span><select data-f="type">${state.equipTypes.map(t=>`<option ${e.type===t?'selected':''}>${t}</option>`).join('')}</select></label>
+    <label class="field"><span>Famille d'équipement</span><select data-f="type">${typesFor('Flotte').map(t=>`<option ${e.type===t?'selected':''}>${t}</option>`).join('')}</select></label>
     <label class="field span2"><span>Nom / désignation</span><input data-f="nom" value="${esc(e.nom)}"/></label>
     <label class="field"><span>Marque</span><input data-f="marque" value="${esc(e.marque)}" placeholder="Caterpillar"/></label>
     <label class="field"><span>Modèle</span><input data-f="modele" value="${esc(e.modele)}" placeholder="320D"/></label>
@@ -1598,7 +1603,7 @@ function importPlantRows(rows){
     if(!code) return;
     const nom = String(findCol(r,['Nom','Nom ou désignation','Désignation','Designation'])||code);
     const type = String(findCol(r,['Famille',"Famille d'équipement",'Type'])||state.equipTypes[0]);
-    if(!state.equipTypes.includes(type)) state.equipTypes.push(type);
+    addEquipType(type,'Flotte');
     const statut = String(findCol(r,['Statut'])||'Opérationnel');
     const crit = String(findCol(r,['Niveau criticité','Criticité'])||'');
     const hv = findCol(r,['Compteur heures','Heures','Heures compteur']);
@@ -1655,7 +1660,7 @@ function importFleetRows(rows){
     if(!code) return;
     const nom = String(findCol(r,['Nom','Désignation','Designation'])||code);
     const type = String(findCol(r,["Famille","Famille d'équipement",'Type'])||state.equipTypes[0]);
-    if(!state.equipTypes.includes(type)) state.equipTypes.push(type);
+    addEquipType(type,'Usine');
     const statut = String(findCol(r,['Statut'])||'Opérationnel');
     const marque = String(findCol(r,['Marque'])||'');
     const modele = String(findCol(r,['Modèle','Modele'])||'');
@@ -1815,16 +1820,20 @@ function openTypesModal(){
 }
 function renderTypesModal(){
   const root = document.getElementById('modal-root');
+  const zf = typesModalZone;
+  const list = state.equipTypes.map((t,i)=>({t,i})).filter(o=>!zf || typeZone(o.t)==='Les deux' || typeZone(o.t)===zf);
+  const zsel = (cur,id)=>`<select ${id} style="width:auto;font-size:12px;"><option ${cur==='Flotte'?'selected':''}>Flotte</option><option ${cur==='Usine'?'selected':''}>Usine</option><option ${cur==='Les deux'?'selected':''}>Les deux</option></select>`;
   root.innerHTML = `
   <div class="modal-overlay" id="types-overlay">
     <div class="modal">
-      <div class="modal-head"><h3>Familles d'équipement</h3><button class="icon-btn" id="types-close">${ICONS.close}</button></div>
+      <div class="modal-head"><h3>Familles d'équipement${zf?' — '+zf:''}</h3><button class="icon-btn" id="types-close">${ICONS.close}</button></div>
       <div class="modal-body">
         <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:12px;max-height:280px;overflow-y:auto;">
-          ${state.equipTypes.map((t,i)=>`<div class="between card-item" style="padding:6px 10px;"><span style="font-size:13px;">${esc(t)}</span><button class="icon-btn" data-type-del="${i}">${ICONS.trash}</button></div>`).join('')}
+          ${list.map(o=>`<div class="between card-item" style="padding:6px 10px;gap:8px;"><span style="font-size:13px;flex:1;">${esc(o.t)}</span>${zf?`<span class="badge" style="font-size:10px;">${typeZone(o.t)}</span>`:zsel(typeZone(o.t),`data-type-zone="${o.i}"`)}<button class="icon-btn" data-type-del="${o.i}">${ICONS.trash}</button></div>`).join('')||'<p class="subtitle">Aucune famille.</p>'}
         </div>
         <div class="row">
-          <input id="type-new-input" placeholder="Nouveau type (ex: Chariot élévateur)" style="flex:1;"/>
+          <input id="type-new-input" placeholder="${zf==='Usine'?'Nouvelle famille (ex: Séchoir)':'Nouveau type (ex: Chariot élévateur)'}" style="flex:1;"/>
+          ${zf?'':zsel('Les deux','id="type-new-zone"')}
           <button class="btn btn-ghost" id="type-add" type="button">${ICONS.plus} Ajouter</button>
         </div>
         <div class="modal-actions"><button class="btn btn-accent" id="types-done">Terminé</button></div>
@@ -1835,14 +1844,17 @@ function renderTypesModal(){
   document.getElementById('types-close').addEventListener('click', closeTypesModal);
   document.getElementById('types-done').addEventListener('click', closeTypesModal);
   document.getElementById('type-add').addEventListener('click', ()=>{
-    const input = document.getElementById('type-new-input');
-    const val = input.value.trim();
-    if(val && !state.equipTypes.includes(val)){ state.equipTypes.push(val); persist(); renderTypesModal(); }
+    const val = document.getElementById('type-new-input').value.trim();
+    const z = zf || (document.getElementById('type-new-zone')||{}).value || 'Les deux';
+    if(val && !state.equipTypes.includes(val)){ addEquipType(val,z); persist(); renderTypesModal(); }
   });
+  document.querySelectorAll('[data-type-zone]').forEach(sel=>sel.addEventListener('change',()=>{
+    const t=state.equipTypes[Number(sel.dataset.typeZone)]; state.equipTypeZones=state.equipTypeZones||{}; state.equipTypeZones[t]=sel.value; persist(); renderTypesModal();
+  }));
   document.querySelectorAll('[data-type-del]').forEach(b=>b.addEventListener('click',()=>{
     const i = Number(b.dataset.typeDel);
     const used = [...state.fleet, ...state.plantEquipment].some(e=>e.type===state.equipTypes[i]);
-    const doDelete = ()=>{ state.equipTypes.splice(i,1); persist(); renderTypesModal(); };
+    const doDelete = ()=>{ if(state.equipTypeZones) delete state.equipTypeZones[state.equipTypes[i]]; state.equipTypes.splice(i,1); persist(); renderTypesModal(); };
     if(used) confirmModal('Ce type est utilisé par au moins un équipement. Le supprimer quand même ?', doDelete, {danger:true, okLabel:'Supprimer quand même'});
     else doDelete();
   }));
@@ -1915,7 +1927,7 @@ function viewWO(){
       </select>
       <select id="wo-filter-famille" style="flex:1;min-width:140px;">
         <option value="Tous">Toutes familles</option>
-        ${state.equipTypes.map(t=>`<option value="${esc(t)}" ${woFilterFamille===t?'selected':''}>${esc(t)}</option>`).join('')}
+        ${typesFor(zoneFilter).map(t=>`<option value="${esc(t)}" ${woFilterFamille===t?'selected':''}>${esc(t)}</option>`).join('')}
       </select>
       <select id="wo-filter-equip" style="flex:1;min-width:150px;">
         <option value="Tous">Tous équipements</option>
@@ -2776,7 +2788,7 @@ function importGammesRows(rows){
     let cat = String(findCol(r,['Catégorie (Flotte / Usine / Flotte et Usine)','Catégorie','Categorie'])||'').trim();
     cat = /^flotte$/i.test(cat)?'Flotte' : /^usine$/i.test(cat)?'Usine' : '';
     const fam = String(findCol(r,['Famille d\'équipement','Famille'])||'').trim();
-    if(fam && !state.equipTypes.includes(fam)) state.equipTypes.push(fam);
+    if(fam) addEquipType(fam, cat||'Les deux');
     let norme = String(findCol(r,['Norme HSE','Norme'])||'Aucune').trim() || 'Aucune';
     if(!state.normesHSE.includes(norme)) state.normesHSE.push(norme);
     const patch = { nom, categorie:cat, familleEquipement:fam, dureeEstimee:Number(findCol(r,['Durée (min)','Durée','Duree']))||60,
@@ -2861,7 +2873,7 @@ function gammeForm(g){
   <div class="formgrid">
     <label class="field span2"><span>Intitulé</span><input data-f="nom" value="${esc(g.nom)}" placeholder="Vidange moteur + filtres"/></label>
     <label class="field"><span>Catégorie d'équipement</span><select data-f="categorie"><option value="" ${!g.categorie?'selected':''}>Flotte et Usine</option><option value="Flotte" ${g.categorie==='Flotte'?'selected':''}>Flotte uniquement</option><option value="Usine" ${g.categorie==='Usine'?'selected':''}>Usine uniquement</option></select></label>
-    <label class="field"><span>Famille d'équipement concernée</span><select data-f="familleEquipement"><option value="">Toutes familles</option>${state.equipTypes.map(t=>`<option ${g.familleEquipement===t?'selected':''}>${t}</option>`).join('')}</select></label>
+    <label class="field"><span>Famille d'équipement concernée</span><select data-f="familleEquipement"><option value="">Toutes familles</option>${typesFor(g.categorie||(userZones().length===1?userZones()[0]:'')).map(t=>`<option ${g.familleEquipement===t?'selected':''}>${t}</option>`).join('')}</select></label>
     <label class="field span2"><span>Durée estimée (minutes)</span><input type="number" data-f="dureeEstimee" value="${g.dureeEstimee||60}"/></label>
     <label class="field span2"><span>Description courte</span><input data-f="description" value="${esc(g.description||'')}"/></label>
     <label class="field span2"><span>Procédure détaillée</span><textarea data-f="procedure" rows="5" placeholder="1. Couper le moteur et laisser refroidir...">${esc(g.procedure||'')}</textarea></label>
@@ -3664,7 +3676,7 @@ function viewPlant(){
   <div class="headrow">
     <div><h1>Équipements usine</h1><p class="subtitle" style="margin:0;">${state.plantEquipment.length} machines enregistrées</p></div>
     <div class="row">
-      <button class="btn btn-ghost" data-open-types="1">${ICONS.layers} Familles</button>
+      <button class="btn btn-ghost" data-open-types="Usine">${ICONS.layers} Familles</button>
       <button class="btn btn-ghost" id="plant-export-btn">${ICONS.receipt} Exporter Excel</button>
       <button class="btn btn-ghost" id="plant-import-btn">${ICONS.plus} Importer Excel</button>
       <input type="file" id="plant-import-file" accept=".xlsx,.xls,.csv" style="display:none;"/>
@@ -3701,7 +3713,7 @@ function plantForm(e){
   return `
   <div class="formgrid">
     <label class="field"><span>Code</span><input data-f="code" value="${esc(e.code)}" placeholder="LIGNE-03"/></label>
-    <label class="field"><span>Famille d'équipement</span><select data-f="type">${state.equipTypes.map(t=>`<option ${e.type===t?'selected':''}>${t}</option>`).join('')}</select></label>
+    <label class="field"><span>Famille d'équipement</span><select data-f="type">${typesFor('Usine').map(t=>`<option ${e.type===t?'selected':''}>${t}</option>`).join('')}</select></label>
     <label class="field span2"><span>Nom</span><input data-f="nom" value="${esc(e.nom)}"/></label>
     <label class="field"><span>Marque</span><input data-f="marque" value="${esc(e.marque)}"/></label>
     <label class="field"><span>Modèle</span><input data-f="modele" value="${esc(e.modele)}"/></label>
@@ -5987,7 +5999,7 @@ function attachHandlers(){
   }
   const bo = document.querySelector('#fleet-new-btn');
   if(bo) bo.addEventListener('click', ()=>{
-    fleetDraft = {id:null, code:"", nom:"", type:state.equipTypes[0], statut:"Opérationnel", heures:0, dernierEntretien:"", prochainEntretien:"", conso100h:15, centreCoutId:""};
+    fleetDraft = {id:null, code:"", nom:"", type:typesFor('Flotte')[0]||state.equipTypes[0], statut:"Opérationnel", heures:0, dernierEntretien:"", prochainEntretien:"", conso100h:15, centreCoutId:""};
     fleetIsNew = true; currentView='fleet-edit'; render();
   });
   document.querySelectorAll('[data-edit-fleet]').forEach(b=>b.addEventListener('click',(e)=>{
@@ -6108,7 +6120,7 @@ function attachHandlers(){
   if(currentView==='pm-edit') wirePMEdit();
 
   // PM
-  document.querySelectorAll('[data-open-types]').forEach(b=>b.addEventListener('click', openTypesModal));
+  document.querySelectorAll('[data-open-types]').forEach(b=>b.addEventListener('click', ()=>{ const z=b.dataset.openTypes; typesModalZone=(z==='Flotte'||z==='Usine')?z:null; const uz=userZones(); if(!typesModalZone && uz.length===1) typesModalZone=uz[0]; openTypesModal(); }));
   document.querySelectorAll('[data-open-pm]').forEach(b=>b.addEventListener('click',(e)=>{
     e.stopPropagation();
     openPMEditor(b.dataset.openPm);
@@ -6499,7 +6511,7 @@ function attachHandlers(){
   }
   const plantn = document.querySelector('#plant-new-btn');
   if(plantn) plantn.addEventListener('click', ()=>{
-    plantDraft = {id:null, code:'', nom:'', type:state.equipTypes[0], statut:'Opérationnel', emplacementId:'', centreCoutId:'', dateMiseEnService:'', heures:0};
+    plantDraft = {id:null, code:'', nom:'', type:typesFor('Usine')[0]||state.equipTypes[0], statut:'Opérationnel', emplacementId:'', centreCoutId:'', dateMiseEnService:'', heures:0};
     plantIsNew = true; currentView='plant-edit'; render();
   });
   document.querySelectorAll('[data-edit-plant]').forEach(b=>b.addEventListener('click',(e)=>{
@@ -7420,7 +7432,7 @@ async function init(){
     const locs = seedLocations();
     data = { fleet: seedFleet(), workOrders: [], fuelLogs: [], parts: [], pmPlans: [],
       locations: locs, plantEquipment: seedPlantEquipment(locs), notifications: [], measuringPoints: [],
-      costCenters: seedCostCenters(), productionLogs: [], woCounter: 0, equipTypes: [...DEFAULT_EQUIP_TYPES], personnel: [], theme: { ...DEFAULT_THEME },
+      costCenters: seedCostCenters(), productionLogs: [], woCounter: 0, equipTypes: [...DEFAULT_EQUIP_TYPES], equipTypeZones: {...DEFAULT_EQUIP_TYPE_ZONES}, personnel: [], theme: { ...DEFAULT_THEME },
       purchaseRequests: [], purchaseOrders: [], daCounter: 0, bcCounter: 0, reservations: [], resaCounter: 0, postes: [...DEFAULT_POSTES], avisCounter: 0, stockMovements: [], auditLog: [],
       typesTravail: ["Inspection","Remplacement pièces","Intervention","Révision","Autre"], woTypes: ["Panne / Correctif","Préventif","Inspection","Amélioration"], woPriorites: ["Basse","Normale","Haute","Urgente"],
       categoriesArticle: ["Mécanique","Électrique","HSE","Consommable","Autre"],
@@ -7456,6 +7468,10 @@ async function init(){
     data.costCenters = (data.costCenters && data.costCenters.length) ? data.costCenters : seedCostCenters();
     data.productionLogs = data.productionLogs || [];
     data.equipTypes = (data.equipTypes && data.equipTypes.length) ? data.equipTypes : [...DEFAULT_EQUIP_TYPES];
+    data.equipTypeZones = data.equipTypeZones || {};
+    data.equipTypes.forEach(t=>{ if(!data.equipTypeZones[t]){
+      const inF=(data.fleet||[]).some(e=>e.type===t), inP=(data.plantEquipment||[]).some(e=>e.type===t);
+      data.equipTypeZones[t] = DEFAULT_EQUIP_TYPE_ZONES[t] || (inF&&!inP?'Flotte':(inP&&!inF?'Usine':'Les deux')); } });
     data.personnel = data.personnel || [];
     data.theme = data.theme || { ...DEFAULT_THEME };
     data.purchaseRequests = data.purchaseRequests || [];
