@@ -494,7 +494,22 @@ function loadLocalCache(){
 }
 function saveLocalCache(){ try{ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }catch(e){} }
 
+function daScopeOf(d){
+  if(!d) return '';
+  if(d.equipementId){ const c=eqScope(d.equipementId); if(c) return c; }
+  if(d.workOrderId){ const w=(state.workOrders||[]).find(x=>x.id===d.workOrderId); if(w){ const c=woScope(w); if(c) return c; } }
+  return d.categorie||'';
+}
+function bcScopeOf(b){ const d=(state.purchaseRequests||[]).find(x=>x.id===b.purchaseRequestId); return daScopeOf(d)||'Flotte'; }
+let achatScope = 'Tous';
+function achatScopeChips(){
+  return `<div class="row" style="background:var(--panelR);border-radius:8px;padding:2px;margin-bottom:12px;width:fit-content;">${['Tous','Flotte','Usine'].map(x=>`<button class="btn ${achatScope===x?'btn-accent':'btn-ghost'}" style="padding:6px 14px;font-size:12px;" data-achat-scope="${x}" type="button">${x==='Tous'?'Tout':x}</button>`).join('')}</div>`;
+}
+function entName(){ return (state.entreprise && state.entreprise.nom) ? String(state.entreprise.nom).trim() : ''; }
+let reportScope = 'Flotte';
 function normalizeState(){
+  if(!state.entreprise || typeof state.entreprise!=='object') state.entreprise = {nom:'', logo:'', logoW:0, logoH:0};
+  (state.purchaseRequests||[]).forEach(d=>{ if(!d.categorie) d.categorie = daScopeOf(d) || 'Flotte'; });
   if(!Array.isArray(state.typesTravail) || state.typesTravail.length===0) state.typesTravail = ["Inspection","Remplacement pièces","Intervention","Révision","Autre"];
   if(!Array.isArray(state.woTypes) || state.woTypes.length===0) state.woTypes = ["Panne / Correctif","Préventif","Inspection","Amélioration"];
   if(!Array.isArray(state.woPriorites) || state.woPriorites.length===0) state.woPriorites = ["Basse","Normale","Haute","Urgente"];
@@ -709,7 +724,7 @@ const STATUTS = ["Opérationnel","En maintenance","En panne","À l'arrêt"];
 const WO_STATUTS = ["OT Créé","OT En cours","OT en reprise","OT Réalisé","OT Validé Atelier","Suspendu","OT Clôturé","Annulé"];
 const WO_STATUTS_ACTIFS = ["OT Créé","OT En cours","OT en reprise","OT Réalisé","OT Validé Atelier","Suspendu"]; // comptent comme "ouverts" dans les KPI
 const WO_PRIORITES = ["Basse","Normale","Haute","Urgente"];
-const SITES = ["CIGRAC","Usine"];
+const SITES = ["Site principal","Usine"];
 const LOCATION_TYPES = ["Site","Atelier","Ligne","Machine"];
 const PM_TYPES = ["Date","Heures","Kilométrage"];
 const NOTIF_STATUTS = ["Nouvelle","Validée","Refusée","En traitement","Convertie en OT","Clôturée"];
@@ -738,7 +753,7 @@ const AFFECTATIONS = ["Flotte","Usine","Les deux"];
 const PERSONNEL_STATUTS = ["Actif","Congé","Inactif"];
 
 function seedLocations(){
-  const cigrac = { id: uid(), code:"CIGRAC", nom:"Site CIGRAC", type:"Site", parentId:null };
+  const cigrac = { id: uid(), code:"SITE", nom:"Site principal", type:"Site", parentId:null };
   const usine = { id: uid(), code:"USINE", nom:"Usine de production", type:"Site", parentId:null };
   const atelier = { id: uid(), code:"USINE-AT1", nom:"Atelier Production", type:"Atelier", parentId: usine.id };
   const ligne1 = { id: uid(), code:"USINE-L1", nom:"Ligne 1", type:"Ligne", parentId: atelier.id };
@@ -762,7 +777,7 @@ function seedPlantEquipment(locations){
 
 function seedCostCenters(){
   return [
-    { id:uid(), code:"MAINT-FLOTTE", nom:"Maintenance Flotte CIGRAC", budgetAnnuel:0 },
+    { id:uid(), code:"MAINT-FLOTTE", nom:"Maintenance Flotte", budgetAnnuel:0 },
     { id:uid(), code:"MAINT-USINE", nom:"Maintenance Usine Production", budgetAnnuel:0 },
   ];
 }
@@ -1234,8 +1249,8 @@ function computeScopeKpis(scope){
   const litres = state.fuelLogs.filter(f=>eqScope(f.equipementId)==='Flotte').reduce((a,f)=>a+Number(f.quantite||0),0);
   return { total, disponibilite, mttrH, ouverts, cout, notifOuvertes, pmEnRetard, pmProches, mesuresHors, oeeMoyen, arretH, litres,
     partsBas: state.parts.filter(p=>Number(p.quantite)<=Number(p.seuil)).length,
-    daOuvertes: state.purchaseRequests.filter(d=>d.statut==="Ouverte").length,
-    bcEnAttente: state.purchaseOrders.filter(b=>b.statut!=="Réceptionné").length };
+    daOuvertes: state.purchaseRequests.filter(d=>d.statut==="Ouverte" && (daScopeOf(d)||'Flotte')===scope).length,
+    bcEnAttente: state.purchaseOrders.filter(b=>b.statut!=="Réceptionné" && bcScopeOf(b)===scope).length };
 }
 function persScope(scope){ return state.personnel.filter(p=>p.statut!=='Inactif' && (p.affectation===scope || p.affectation==='Les deux')); }
 function persPresence(scope){
@@ -4551,6 +4566,19 @@ function viewSettings(){
 
   <div class="grid grid-settings" style="align-items:start;">
     <div class="plate p16">
+      <h3 class="oswald" style="text-transform:uppercase;font-size:14px;margin:0 0 12px;">Entreprise (rapports et documents)</h3>
+      <label class="field"><span>Nom de l'entreprise</span><input id="ent-nom" value="${esc((state.entreprise||{}).nom||'')}" placeholder="Nom affiché sur les rapports"/></label>
+      <div style="margin-top:12px;">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">Logo (affiché sur la page de garde des rapports PDF et Word)</div>
+        ${(state.entreprise&&state.entreprise.logo)?`<div style="margin-bottom:8px;background:#fff;border:1px solid var(--border);border-radius:8px;padding:10px;display:inline-block;"><img src="${state.entreprise.logo}" alt="Logo" style="max-height:70px;max-width:220px;display:block;"/></div><br/>`:''}
+        <div class="row wrapwrap" style="gap:8px;">
+          <button class="btn btn-ghost" id="ent-logo-btn" type="button">${ICONS.plus} ${(state.entreprise&&state.entreprise.logo)?'Remplacer le logo':'Ajouter un logo'}</button>
+          ${(state.entreprise&&state.entreprise.logo)?`<button class="btn btn-ghost" id="ent-logo-clear" type="button">${ICONS.trash} Retirer</button>`:''}
+          <input type="file" id="ent-logo-file" accept="image/png,image/jpeg" style="display:none;"/>
+        </div>
+      </div>
+    </div>
+    <div class="plate p16">
       <h3 class="oswald" style="text-transform:uppercase;font-size:14px;margin:0 0 12px;">Apparence / thème</h3>
       <div style="display:flex;flex-direction:column;gap:12px;">
         ${Object.keys(DEFAULT_THEME).map(k=>`
@@ -4696,12 +4724,13 @@ function viewResaNew(){
 function viewDA(){
   const em = equipMap();
   const ccm = Object.fromEntries(state.costCenters.map(c=>[c.id,c]));
-  const sorted = [...state.purchaseRequests].sort((a,b)=>(b.dateCreation||'').localeCompare(a.dateCreation||''));
+  const sorted = state.purchaseRequests.filter(d=>achatScope==='Tous' || (daScopeOf(d)||'Flotte')===achatScope).sort((a,b)=>(b.dateCreation||'').localeCompare(a.dateCreation||''));
   return `
   <div class="headrow">
     <div><h1>Demandes d'achat</h1><p class="subtitle" style="margin:0;">Sous-traitance et achats hors stock — circuit DA → BC → Réception</p></div>
     <button class="btn btn-accent" id="da-new-btn">${ICONS.plus} Nouvelle DA</button>
   </div>
+  ${achatScopeChips()}
   ${sorted.length===0?`<div class="plate p16"><div class="empty">${ICONS.cart}<span>Aucune demande d'achat.</span></div></div>`:
   `<div style="display:flex;flex-direction:column;gap:8px;">
   ${sorted.map(d=>`
@@ -4713,6 +4742,7 @@ function viewDA(){
           <span class="mono" style="font-size:11px;color:var(--muted);">${d.numero||'—'}</span>
           <span style="font-size:13px;font-weight:500;">${esc(d.description)}</span>
           <span class="badge">${d.type}</span>
+          <span class="badge" style="color:var(--steel);border-color:var(--steel);">${daScopeOf(d)||'Flotte'}</span>
         </div>
         <div style="font-size:12px;color:var(--muted);">
           ${d.equipementId?(em[d.equipementId]?.code||'—')+' · ':''}${d.costCenterId?(ccm[d.costCenterId]?.code||'—')+' · ':''}${d.fournisseur?esc(d.fournisseur)+' · ':''}${d.dateCreation||''}
@@ -4739,7 +4769,8 @@ function daForm(d){
     <label class="field span2"><span>Description</span><input data-f="description" value="${esc(d.description)}" placeholder="Réparation étanchéité toiture atelier"/></label>
     <label class="field"><span>Type</span><select data-f="type">${DA_TYPES.map(t=>`<option ${d.type===t?'selected':''}>${t}</option>`).join('')}</select></label>
     <label class="field"><span>Statut</span><select data-f="statut">${DA_STATUTS.map(s=>`<option ${d.statut===s?'selected':''}>${s}</option>`).join('')}</select></label>
-    <label class="field span2"><span>Équipement concerné (optionnel)</span><select data-f="equipementId"><option value="">—</option>${equipOpts}</select></label>
+    <label class="field span2"><span>Périmètre (Flotte ou Usine)</span><select data-f="categorie">${['Flotte','Usine'].map(c=>`<option ${(d.categorie||(achatScope!=='Tous'?achatScope:'Flotte'))===c?'selected':''}>${c}</option>`).join('')}</select></label>
+    <label class="field span2"><span>Équipement concerné (optionnel — le périmètre en est déduit)</span><select data-f="equipementId"><option value="">—</option>${equipOpts}</select></label>
     <label class="field span2"><span>Ordre de travail lié (optionnel)</span><select data-f="workOrderId"><option value="">—</option>${woOpts}</select></label>
     <label class="field span2"><span>Centre de coût</span><select data-f="costCenterId"><option value="">—</option>${ccOpts}</select></label>
     <label class="field"><span>Fournisseur pressenti</span><input data-f="fournisseur" value="${esc(d.fournisseur)}"/></label>
@@ -4757,11 +4788,12 @@ function viewDaEdit(){
 /* ============ BONS DE COMMANDE ============ */
 function viewBC(){
   const dam = Object.fromEntries(state.purchaseRequests.map(d=>[d.id,d]));
-  const sorted = [...state.purchaseOrders].sort((a,b)=>(b.dateCommande||'').localeCompare(a.dateCommande||''));
+  const sorted = state.purchaseOrders.filter(b=>achatScope==='Tous' || bcScopeOf(b)===achatScope).sort((a,b)=>(b.dateCommande||'').localeCompare(a.dateCommande||''));
   return `
   <div class="headrow">
     <div><h1>Bons de commande</h1><p class="subtitle" style="margin:0;">Suivi commande fournisseur et réception</p></div>
   </div>
+  ${achatScopeChips()}
   ${sorted.length===0?`<div class="plate p16"><div class="empty">${ICONS.receipt}<span>Aucun bon de commande. Convertis une demande d'achat pour en créer un.</span></div></div>`:
   `<div style="display:flex;flex-direction:column;gap:8px;">
   ${sorted.map(b=>{ const da = dam[b.purchaseRequestId];
@@ -4772,6 +4804,7 @@ function viewBC(){
         <div class="row" style="flex-wrap:wrap;">
           <span class="mono" style="font-size:11px;color:var(--muted);">${b.numero}</span>
           <span style="font-size:13px;font-weight:500;">${esc(b.fournisseur)}</span>
+          <span class="badge" style="color:var(--steel);border-color:var(--steel);">${bcScopeOf(b)}</span>
         </div>
         <div style="font-size:12px;color:var(--muted);">${da?esc(da.description):'—'} · Commandé le ${b.dateCommande||'—'} ${b.dateLivraisonPrevue?`· Livraison prévue ${b.dateLivraisonPrevue}`:''}</div>
       </div>
@@ -4866,7 +4899,8 @@ function computeReportData(){
   const inRange = d => { if(!from && !to) return true; if(!d) return false; if(from && d<from) return false; if(to && d>to) return false; return true; };
   const em = equipMap();
   const pm = Object.fromEntries(state.parts.map(p=>[p.id,p]));
-  const wos = state.workOrders.filter(w=>inRange(w.dateCreation));
+  const scope = reportScope;
+  const wos = state.workOrders.filter(w=>woScope(w)===scope && inRange(w.dateCreation));
 
   const coutTotal = wos.reduce((a,w)=>a+Number(w.cout||0),0);
   const coutParType = {};
@@ -4877,18 +4911,19 @@ function computeReportData(){
   wos.forEach(w=>{ const eq=em[w.equipementId]; const f=eq?eq.type:'Non affecté'; coutParFamille[f]=(coutParFamille[f]||0)+Number(w.cout||0); });
   const spentByCC = {};
   wos.forEach(w=>{ const eq=em[w.equipementId]; const cc=eq&&eq.centreCoutId?eq.centreCoutId:null; if(cc) spentByCC[cc]=(spentByCC[cc]||0)+Number(w.cout||0); });
-  const budgetVsReel = state.costCenters.map(c=>({code:c.code, nom:c.nom, budget:Number(c.budgetAnnuel||0), reel:spentByCC[c.id]||0}));
+  const budgetVsReel = state.costCenters.filter(c=>Object.keys(spentByCC).includes(c.id) || Number(c.budgetAnnuel||0)>0).map(c=>({code:c.code, nom:c.nom, budget:Number(c.budgetAnnuel||0), reel:spentByCC[c.id]||0}));
 
-  const fuelLogs = state.fuelLogs.filter(f=>inRange(f.date));
+  const fuelLogs = state.fuelLogs.filter(f=>eqScope(f.equipementId,'Flotte')===scope && inRange(f.date));
   const fuelParEquip = {};
   fuelLogs.forEach(f=>{ const o=fuelParEquip[f.equipementId]=fuelParEquip[f.equipementId]||{l:0,cout:0}; o.l+=Number(f.quantite||0); o.cout+=Number(f.cout||0); });
   const litresTotal = fuelLogs.reduce((a,f)=>a+Number(f.quantite||0),0);
   const coutCarburantTotal = fuelLogs.reduce((a,f)=>a+Number(f.cout||0),0);
 
-  const sortiesValidees = state.reservations.filter(r=>r.statut==='Sortie validée' && inRange(r.dateSortie||r.dateCreation));
+  const sortiesValidees = state.reservations.filter(r=>r.statut==='Sortie validée' && (eqScope(r.equipementId)||'Flotte')===scope && inRange(r.dateSortie||r.dateCreation));
   const valeurPiecesConsommees = sortiesValidees.reduce((a,r)=>{ const pt=pm[r.partId]; return a+(pt?Number(pt.coutUnitaire||0)*Number(r.quantite||0):0); },0);
   const qtePiecesConsommees = sortiesValidees.reduce((a,r)=>a+Number(r.quantite||0),0);
   const entreesStock = (state.stockMovements||[]).filter(m=>inRange(m.date));
+  const scopeEq = new Set(scopeEquip(scope).map(e=>e.id));
   const qteEntrees = entreesStock.reduce((a,m)=>a+Number(m.quantite||0),0);
   const piecesSousSeuil = state.parts.filter(p=>Number(p.quantite)<=Number(p.seuil));
   const piecesCritiques = state.parts.filter(p=>p.critique);
@@ -5008,15 +5043,16 @@ async function exportReportsToWord(){
       ...rows.map((r,ri)=>new TableRow({children:r.map((v,i)=>cell(String(v),{width:widths[i],shade:ri%2===1,align:i>0?AlignmentType.RIGHT:AlignmentType.LEFT}))})),
     ]}); }
   const paretoBytes = dataURLToUint8Array(getParetoChartDataURL());
-  const fleetRows = state.fleet.map(e=>({e,cout:d.coutParEquip[e.id]||0,fuel:d.fuelParEquip[e.id]||{l:0,cout:0}})).sort((a,b)=>(b.cout+b.fuel.cout)-(a.cout+a.fuel.cout));
+  const fleetRows = scopeEquip(reportScope).map(e=>({e,cout:d.coutParEquip[e.id]||0,fuel:d.fuelParEquip[e.id]||{l:0,cout:0}})).sort((a,b)=>(b.cout+b.fuel.cout)-(a.cout+a.fuel.cout));
 
   const doc = new Document({
     numbering:{config:[{reference:'bl',levels:[{level:0,format:LevelFormat.BULLET,text:'•',alignment:AlignmentType.LEFT,style:{paragraph:{indent:{left:420,hanging:260}}}}]}]},
     sections:[{
       properties:{page:{margin:{top:1000,bottom:1000,left:1100,right:1100}}},
       children:[
-        new Paragraph({spacing:{before:1600},alignment:AlignmentType.CENTER,children:[new TextRun({text:'CIGRAC',bold:true,size:32,color:'6B7280'})]}),
-        new Paragraph({spacing:{before:300,after:100},alignment:AlignmentType.CENTER,children:[new TextRun({text:'RAPPORT DE MAINTENANCE',bold:true,size:60,color:NAVY})]}),
+        ...((state.entreprise&&state.entreprise.logo) ? [new Paragraph({spacing:{before:1200},alignment:AlignmentType.CENTER,children:[new ImageRun({data:dataURLToUint8Array(state.entreprise.logo),type:'png',transformation:{width:Math.round((state.entreprise.logoW||200)*0.6),height:Math.round((state.entreprise.logoH||100)*0.6)}})]})] : []),
+        new Paragraph({spacing:{before:(state.entreprise&&state.entreprise.logo)?300:1600},alignment:AlignmentType.CENTER,children:[new TextRun({text:entName(),bold:true,size:32,color:'6B7280'})]}),
+        new Paragraph({spacing:{before:300,after:100},alignment:AlignmentType.CENTER,children:[new TextRun({text:'RAPPORT DE MAINTENANCE — '+reportScope.toUpperCase(),bold:true,size:52,color:NAVY})]}),
         new Paragraph({spacing:{after:500},alignment:AlignmentType.CENTER,children:[new TextRun({text:'Financier · Technique · Stratégique',size:26,color:ORANGE,italics:true})]}),
         new Paragraph({alignment:AlignmentType.CENTER,spacing:{after:40},children:[new TextRun({text:'Période couverte : '+periodeLabel,size:20})]}),
         new Paragraph({alignment:AlignmentType.CENTER,spacing:{after:40},children:[new TextRun({text:'Généré par : 2NA-MAINT-PROD — module Rapports',size:20})]}),
@@ -5024,7 +5060,7 @@ async function exportReportsToWord(){
         new Paragraph({children:[new PageBreak()]}),
 
         h1(1,'Introduction'),
-        p("Ce rapport présente la performance de la fonction maintenance CIGRAC sur la période indiquée, à partir des données consolidées de 2NA-MAINT-PROD (ordres de travail, carburant, pièces/stock, réservations, centres de coûts)."),
+        p("Ce rapport présente la performance de la fonction maintenance"+(entName()?" de "+entName():"")+" — périmètre "+reportScope+" — sur la période indiquée, à partir des données consolidées de 2NA-MAINT-PROD (ordres de travail, carburant, pièces/stock, réservations, centres de coûts)."),
         p('Synthèse : '+nar.finance),
         p(nar.budget),
 
@@ -5090,7 +5126,7 @@ async function exportReportsToWord(){
   });
   const blob = await Packer.toBlob(doc);
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href=url; a.download='2NA-MAINT-PROD_rapport_maintenance_'+new Date().toISOString().slice(0,10)+'.docx';
+  const a = document.createElement('a'); a.href=url; a.download='2NA-MAINT-PROD_rapport_maintenance_'+reportScope.toLowerCase()+'_'+new Date().toISOString().slice(0,10)+'.docx';
   document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
   toast('Rapport Word généré');
 }
@@ -5521,10 +5557,15 @@ function exportReportsToPDF(){
   }
 
   // Page de garde
+  const ent = state.entreprise||{};
+  if(ent.logo){
+    const lw = Math.min(60, (ent.logoW||200)*0.2), lh = lw*((ent.logoH||100)/(ent.logoW||200));
+    try{ doc.addImage(ent.logo,'PNG',(pageW-lw)/2,30,lw,lh); }catch(e){}
+  }
   doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(...GREY);
-  doc.text('CIGRAC', pageW/2, 60, {align:'center'});
-  doc.setFontSize(26); doc.setTextColor(...NAVY);
-  doc.text('RAPPORT DE MAINTENANCE', pageW/2, 75, {align:'center'});
+  if(entName()) doc.text(entName(), pageW/2, 62, {align:'center'});
+  doc.setFontSize(22); doc.setTextColor(...NAVY);
+  doc.text('RAPPORT DE MAINTENANCE — '+reportScope.toUpperCase(), pageW/2, 75, {align:'center'});
   doc.setFont('helvetica','italic'); doc.setFontSize(12); doc.setTextColor(...ORANGE);
   doc.text('Financier · Technique · Stratégique', pageW/2, 84, {align:'center'});
   doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(60,60,60);
@@ -5534,7 +5575,7 @@ function exportReportsToPDF(){
   doc.addPage(); y=20;
 
   title('1. Introduction');
-  paragraph("Ce rapport présente la performance de la fonction maintenance CIGRAC sur la période indiquée, à partir des données consolidées de 2NA-MAINT-PROD.");
+  paragraph("Ce rapport présente la performance de la fonction maintenance"+(entName()?" de "+entName():"")+" — périmètre "+reportScope+" — sur la période indiquée, à partir des données consolidées de 2NA-MAINT-PROD.");
   paragraph('Synthèse : '+nar.finance);
   paragraph(nar.budget);
 
@@ -5593,7 +5634,7 @@ function exportReportsToPDF(){
   for(let i=1;i<=pageCount;i++){ doc.setPage(i); doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(150,150,150);
     doc.text('2NA-MAINT-PROD — Rapport de maintenance', marginL, 292); doc.text(String(i)+' / '+pageCount, pageW-marginR, 292, {align:'right'}); }
 
-  doc.save('2NA-MAINT-PROD_rapport_maintenance_'+new Date().toISOString().slice(0,10)+'.pdf');
+  doc.save('2NA-MAINT-PROD_rapport_maintenance_'+reportScope.toLowerCase()+'_'+new Date().toISOString().slice(0,10)+'.pdf');
   toast('Rapport PDF généré');
 }
 function exportReportsToExcel(){
@@ -5643,17 +5684,18 @@ function exportReportsToExcel(){
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(paretoRows), 'Pareto equipements');
 
   const dateStr = new Date().toISOString().slice(0,10);
-  XLSX.writeFile(wb, '2NA-MAINT-PROD_rapport_maintenance_'+dateStr+'.xlsx');
+  XLSX.writeFile(wb, '2NA-MAINT-PROD_rapport_maintenance_'+reportScope.toLowerCase()+'_'+dateStr+'.xlsx');
 }
 function viewReports(){
-  const k = computeKpis();
+  const k = computeScopeKpis(reportScope);
   const d = computeReportData();
   const topPareto = d.paretoEquip.slice(0,8);
   let cum=0; const totalPareto = topPareto.reduce((a,x)=>a+x.cout,0)||1;
   const pannesRows = Object.entries(d.arretParEquip).map(([eid,h])=>({eq:d.em[eid], h, n:d.correctifs.filter(w=>w.equipementId===eid).length})).sort((a,b)=>b.h-a.h).slice(0,6);
   return `
-  <h1>Rapports</h1>
-  <p class="subtitle">Analyse consolidée maintenance — financier, technique, stratégique</p>
+  <h1>Rapports — ${reportScope}</h1>
+  <p class="subtitle">Analyse maintenance ${reportScope==='Usine'?"de l'usine":'de la flotte'} — financier, technique, stratégique</p>
+  <div class="row" style="background:var(--panelR);border-radius:8px;padding:2px;margin-bottom:12px;width:fit-content;">${['Flotte','Usine'].map(x=>`<button class="btn ${reportScope===x?'btn-accent':'btn-ghost'}" style="padding:6px 14px;font-size:12px;" data-report-scope="${x}" type="button">${x}</button>`).join('')}</div>
 
   <div class="plate p14" style="margin-bottom:16px;">
     <div class="row wrapwrap" style="gap:8px;align-items:center;">
@@ -5694,7 +5736,7 @@ function viewReports(){
 
   <h3 class="oswald" style="text-transform:uppercase;font-size:14px;color:var(--muted);margin:0 0 10px;">4 · Indicateurs de performance</h3>
   <div class="grid grid-kpi" style="margin-bottom:16px;">
-    ${kpiCard('Disponibilité flotte', k.disponibilite,'%','gauge', k.disponibilite>=80?'var(--success)':'var(--danger)')}
+    ${kpiCard(reportScope==='Usine'?'Disponibilité usine':'Disponibilité flotte', k.disponibilite,'%','gauge', k.disponibilite>=80?'var(--success)':'var(--danger)')}
     ${kpiCard('MTTR', d.mttrH.toFixed(1),'h','wrench','var(--steel)')}
     ${kpiCard('MTBF', d.mtbfH.toFixed(0),'h','activity','var(--steel)')}
     ${kpiCard('OT créés / clôturés', d.nbCrees+' / '+d.nbClotures,'','report','var(--text)')}
@@ -5722,9 +5764,9 @@ function viewReports(){
   </div>
 
   <div class="plate" style="overflow:hidden;">
-  <table><thead><tr><th>Engin</th><th>Famille</th><th class="right">Coût maintenance</th><th class="right">Carburant (L)</th><th class="right">Coût carburant</th><th class="right">Total</th></tr></thead>
+  <table><thead><tr><th>${reportScope==='Usine'?'Machine':'Engin'}</th><th>Famille</th><th class="right">Coût maintenance</th><th class="right">Carburant (L)</th><th class="right">Coût carburant</th><th class="right">Total</th></tr></thead>
   <tbody>
-  ${(()=>{ const rows = state.fleet.map(e=>({e, cout:d.coutParEquip[e.id]||0, fuel:d.fuelParEquip[e.id]||{l:0,cout:0}})).sort((a,b)=>(b.cout+b.fuel.cout)-(a.cout+a.fuel.cout));
+  ${(()=>{ const rows = scopeEquip(reportScope).map(e=>({e, cout:d.coutParEquip[e.id]||0, fuel:d.fuelParEquip[e.id]||{l:0,cout:0}})).sort((a,b)=>(b.cout+b.fuel.cout)-(a.cout+a.fuel.cout));
     return rows.map(({e,cout,fuel})=>`<tr>
     <td class="mono">${e.code}</td><td style="color:var(--muted)">${e.type}</td>
     <td class="right mono">${fmt(cout)}</td><td class="right mono" style="color:var(--muted)">${fmt(fuel.l)}</td>
@@ -5878,6 +5920,32 @@ function attachHandlers(){
   if(wReset) wReset.addEventListener('click', ()=>{ woFilter='Tous'; woSearch=''; woFilterFamille='Tous'; woFilterEquip='Tous'; woFilterType='Tous'; render(); });
   const wExport = document.getElementById('wo-export-excel');
   if(wExport) wExport.addEventListener('click', exportWOToExcel);
+  document.querySelectorAll('[data-report-scope]').forEach(b=>b.addEventListener('click',()=>{ reportScope=b.dataset.reportScope; render(); }));
+  const entNom = document.getElementById('ent-nom');
+  if(entNom) entNom.addEventListener('change', e=>{ state.entreprise = state.entreprise||{}; state.entreprise.nom = e.target.value.trim(); persist(); toast('Nom enregistré'); });
+  const entBtn = document.getElementById('ent-logo-btn'), entFile = document.getElementById('ent-logo-file');
+  if(entBtn && entFile){
+    entBtn.addEventListener('click', ()=>entFile.click());
+    entFile.addEventListener('change', e=>{
+      const f = e.target.files[0]; if(!f) return;
+      const fr = new FileReader();
+      fr.onload = ()=>{
+        const img = new Image();
+        img.onload = ()=>{
+          const maxW = 400, maxH = 200, r = Math.min(1, maxW/img.width, maxH/img.height);
+          const c = document.createElement('canvas'); c.width = Math.round(img.width*r); c.height = Math.round(img.height*r);
+          c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+          state.entreprise = state.entreprise||{};
+          state.entreprise.logo = c.toDataURL('image/png'); state.entreprise.logoW = c.width; state.entreprise.logoH = c.height;
+          persist(); toast('Logo enregistré'); render();
+        };
+        img.src = fr.result;
+      };
+      fr.readAsDataURL(f);
+    });
+  }
+  const entClear = document.getElementById('ent-logo-clear');
+  if(entClear) entClear.addEventListener('click', ()=>{ state.entreprise.logo=''; state.entreprise.logoW=0; state.entreprise.logoH=0; persist(); render(); });
   const rFrom = document.getElementById('report-from');
   if(rFrom) rFrom.addEventListener('change', e=>{ reportFrom=e.target.value; render(); });
   const rTo = document.getElementById('report-to');
@@ -6597,6 +6665,7 @@ function attachHandlers(){
     daIsNew = true; currentView='da-edit'; render();
   }));
 
+  document.querySelectorAll('[data-achat-scope]').forEach(b=>b.addEventListener('click',()=>{ achatScope=b.dataset.achatScope; render(); }));
   // Demandes d'achat
   const dan = document.querySelector('#da-new-btn');
   if(dan) dan.addEventListener('click', ()=>{
@@ -6620,6 +6689,7 @@ function attachHandlers(){
       const data = collectDataF();
       if(!data.description){ alert('Description requise'); return; }
       const patch = {...data, equipementId:data.equipementId||null, workOrderId:data.workOrderId||daDraft.workOrderId||null, costCenterId:data.costCenterId||null, montantEstime:Number(data.montantEstime)};
+      patch.categorie = daScopeOf(patch) || data.categorie || 'Flotte';
       if(daIsNew){
         state.daCounter = (state.daCounter||0)+1;
         const numero = 'DA-'+String(state.daCounter).padStart(4,'0');
