@@ -255,8 +255,8 @@ td{padding:9px 12px;border-bottom:1px solid var(--border);}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.js"></script>
 <script>
 /* ============ SUPABASE (multi-device sync) ============ */
-const SUPABASE_URL = "https://evfqdybotjkjnnwtzrgq.supabase.co";
-const SUPABASE_KEY = "sb_publishable_c_x0uRWIxCEbTcAeijFypA_FAOo2kFn";
+const SUPABASE_URL = "https://hfeggflrcbhzvyyejvqf.supabase.co";
+const SUPABASE_KEY = "sb_publishable_Dh4nBfDMJmnj9WN2KNvdOg_cVwN4vkl";
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
   global: {
     fetch: (url, options={}) => fetch(url, { ...options, cache: 'no-store' })
@@ -811,6 +811,26 @@ function statutColor(s){
   return "var(--muted)";
 }
 function fmt(n){ return Number(n||0).toLocaleString('fr-FR'); }
+function equipCategorie(id){ return state.plantEquipment.some(e=>e.id===id) ? 'Usine' : 'Flotte'; }
+function pmResumeEquip(eqId){
+  const em = equipMap();
+  const plans = state.pmPlans.filter(p=>p.equipementId===eqId);
+  if(plans.length===0) return null;
+  const order = {depasse:0, proche:1, ok:2};
+  let worst = 'ok';
+  plans.forEach(p=>{ const n = pmEstimation(p, em).niveau; if(order[n] < order[worst]) worst = n; });
+  return { count: plans.length, niveau: worst };
+}
+function gammesPourEquipement(eqId, gammeCouranteId){
+  const cat = equipCategorie(eqId);
+  const eq = equipMap()[eqId];
+  return state.gammesOperatoires.filter(g=>{
+    if(g.id===gammeCouranteId) return true;
+    const catOk = !g.categorie || g.categorie===cat;
+    const famOk = !g.familleEquipement || (eq && g.familleEquipement===eq.type);
+    return catOk && famOk;
+  });
+}
 function equipMap(){ return Object.fromEntries([...state.fleet, ...state.plantEquipment].map(e=>[e.id,e])); }
 function logAudit(action){
   state.auditLog = state.auditLog || [];
@@ -1411,6 +1431,51 @@ function findCol(row, names){
   }
   return '';
 }
+function exportPlantToExcel(){
+  if(state.plantEquipment.length===0){ alert("Aucune machine à exporter."); return; }
+  const ccMap = Object.fromEntries(state.costCenters.map(c=>[c.id,c.code]));
+  const rows = state.plantEquipment.map(e=>({
+    'Code': e.code||'', 'Nom ou désignation': e.nom||'', 'Famille': e.type||'', 'Marque': e.marque||'', 'Modèle': e.modele||'',
+    'Numéro de série': e.numeroSerie||'', 'Niveau criticité': e.niveauCriticite||'C', 'Statut': e.statut||'Opérationnel',
+    'Date mise en service': e.dateMiseEnService||'', 'Compteur heures': e.heures||0,
+    'Emplacement': e.emplacementId ? locPath(e.emplacementId) : '', 'Centre de coût': e.centreCoutId ? (ccMap[e.centreCoutId]||'') : ''
+  }));
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Usine');
+  XLSX.writeFile(wb, '2NA-MAINT-PROD_usine_'+new Date().toISOString().slice(0,10)+'.xlsx');
+  toast('Export généré — '+rows.length+' machine(s)');
+}
+function importPlantRows(rows){
+  let count=0;
+  rows.forEach(r=>{
+    const code = String(findCol(r,['Code'])||'').trim();
+    if(!code) return;
+    const nom = String(findCol(r,['Nom','Nom ou désignation','Désignation','Designation'])||code);
+    const type = String(findCol(r,['Famille',"Famille d'équipement",'Type'])||state.equipTypes[0]);
+    if(!state.equipTypes.includes(type)) state.equipTypes.push(type);
+    const statut = String(findCol(r,['Statut'])||'Opérationnel');
+    const crit = String(findCol(r,['Niveau criticité','Criticité'])||'');
+    const hv = findCol(r,['Compteur heures','Heures','Heures compteur']);
+    const empTxt = String(findCol(r,['Emplacement'])||'').trim().toLowerCase();
+    const loc = empTxt ? state.locations.find(l=>locPath(l.id).toLowerCase()===empTxt) : null;
+    const ccCode = String(findCol(r,['Centre de coût','Centre de cout'])||'').trim();
+    const cc = state.costCenters.find(x=>x.code.toLowerCase()===ccCode.toLowerCase());
+    const ex = state.plantEquipment.find(e=>e.code.toLowerCase()===code.toLowerCase());
+    const obj = { code, nom, type, statut: STATUTS.includes(statut)?statut:'Opérationnel',
+      marque: String(findCol(r,['Marque'])||'') || (ex?ex.marque:''),
+      modele: String(findCol(r,['Modèle','Modele'])||'') || (ex?ex.modele:''),
+      numeroSerie: String(findCol(r,['Numéro de série','Numero de serie'])||'') || (ex?ex.numeroSerie:''),
+      niveauCriticite: state.niveauxCriticite.includes(crit)?crit:(ex?ex.niveauCriticite:'C'),
+      dateMiseEnService: String(findCol(r,['Date mise en service'])||'') || (ex?ex.dateMiseEnService:''),
+      heures: (hv!==undefined && hv!=='') ? (Number(hv)||0) : (ex?ex.heures||0:0),
+      emplacementId: loc?loc.id:(ex?ex.emplacementId:null), centreCoutId: cc?cc.id:(ex?ex.centreCoutId:null) };
+    if(ex) Object.assign(ex, obj); else state.plantEquipment.push({...obj, id:uid()});
+    count++;
+  });
+  if(count===0 && rows.length>0){ alert("Aucune ligne importée sur "+rows.length+" lues.\n\nColonnes détectées : "+Object.keys(rows[0]).join(', ')+"\n\nVérifie qu'une colonne \"Code\" est présente."); return; }
+  persist(); render(); toast(count+' machine(s) importée(s)/mise(s) à jour');
+}
 function exportFleetToExcel(){
   if(state.fleet.length===0){ alert("Aucun engin à exporter."); return; }
   const ccMap = Object.fromEntries(state.costCenters.map(c=>[c.id,c.code]));
@@ -1746,7 +1811,7 @@ function viewWO(){
       <div class="row">
         <span style="font-size:12px;color:${woStatutColor(w.statut)}">${w.statut}</span>
         ${w.cout>0?`<span class="mono" style="font-size:12px;color:var(--muted);">${fmt(w.cout)} FCFA</span>`:''}
-        ${!isTech && hasCapacite('cloturer_ot', currentUser&&currentUser.role==='planificateur') && w.statut==='OT Validé Atelier' ? `<button class="btn btn-ghost" style="font-size:11px;padding:3px 8px;color:var(--success);" data-close-wo="${w.id}">${ICONS.check} Clôturer</button>`:''}
+        ${!isTech && hasCapacite('cloturer_ot', currentUser&&currentUser.role==='planificateur') && w.statut==='OT Validé Atelier' && w.heuresConfirmees ? `<button class="btn btn-ghost" style="font-size:11px;padding:3px 8px;color:var(--success);" data-close-wo="${w.id}">${ICONS.check} Clôturer</button>`:''}
         <button class="icon-btn" data-open-wo="${w.id}">${ICONS.edit}</button>
         ${isTech?'':`<button class="icon-btn" data-del-wo="${w.id}">${ICONS.trash}</button>`}
       </div>
@@ -1783,7 +1848,7 @@ function fmtDuree(mins){
 function blankWO(){
   return { id:null, numero:null, categorieEquipement:'', equipementId:'', type:'Panne / Correctif',
     typeTravail: state.typesTravail[0], poste: state.postes[0], titre:'', description:'', priorite:'Normale', statut:'OT Créé',
-    dateCreation:new Date().toISOString().slice(0,10), dateDebut:new Date().toISOString().slice(0,10), dateFin:'', heureDebut:'', heureFin:'',
+    dateCreation:new Date().toISOString().slice(0,10), dateDebut:new Date().toISOString().slice(0,10), dateFin:'', heureDebut:'', heureFin:'', heuresConfirmees:false, heuresConfirmeesPar:'', dateConfirmationHeures:'',
     technicien:'', cout:0, operations:[], piecesUtilisees:[],
     permisTravail:false, consignation:'', budgetApprouve:false, approbateurBudget:'', clotureFinanciere:false, clotureFinancierePar:'', documents:[],
     statutAvantSuspension:null, archive:false, motifAnnulation:'' };
@@ -1844,7 +1909,9 @@ function viewWOEdit(){
     ${!woIsNew && canExecute && s==='OT en reprise' ? `<button class="btn btn-ghost" style="color:var(--accent);border-color:var(--accent);" id="wo-resume">${ICONS.activity} Relancer l'exécution</button>` : ''}
     ${!woIsNew && canControlerQualiteOT && s==='OT Réalisé' ? `<button class="btn btn-ghost" style="color:var(--success);border-color:var(--success);" id="wo-quality-ok">${ICONS.check} Valider la qualité</button>` : ''}
     ${!woIsNew && canControlerQualiteOT && (s==='OT Réalisé'||s==='OT Validé Atelier') ? `<button class="btn btn-ghost" style="color:var(--danger);border-color:var(--danger);" id="wo-quality-rework">${ICONS.close} Demander une reprise</button>` : ''}
-    ${!woIsNew && canCloseOT && s==='OT Validé Atelier' ? `<button class="btn btn-ghost" style="color:var(--success);border-color:var(--success);" id="wo-close-toolbar">${ICONS.check} Clôturer technique</button>` : ''}
+    ${!woIsNew && canCloseOT && ['OT Réalisé','OT Validé Atelier'].includes(s) && !w.heuresConfirmees ? `<button class="btn btn-ghost" style="color:var(--accent);border-color:var(--accent);" id="wo-confirm-hours">${ICONS.activity} Confirmer les heures</button>` : ''}
+    ${!woIsNew && canCloseOT && ['OT Réalisé','OT Validé Atelier'].includes(s) && w.heuresConfirmees ? `<button class="btn btn-ghost" style="color:var(--muted);border-color:var(--borderL);" id="wo-confirm-hours">${ICONS.check} Heures confirmées</button>` : ''}
+    ${!woIsNew && canCloseOT && s==='OT Validé Atelier' && w.heuresConfirmees ? `<button class="btn btn-ghost" style="color:var(--success);border-color:var(--success);" id="wo-close-toolbar">${ICONS.check} Clôturer technique</button>` : ''}
     ${!woIsNew && canCloseOT && ['OT Réalisé','OT Validé Atelier'].includes(s) ? `<button class="btn btn-ghost" style="color:var(--muted);border-color:var(--borderL);" id="wo-deconfirm">${ICONS.close} Déconfirmer</button>` : ''}
     ${!woIsNew && canControlOT && !finalStates.includes(s) && s!=='Suspendu' ? `<button class="btn btn-ghost" style="color:var(--muted);border-color:var(--borderL);" id="wo-suspend">${ICONS.close} Suspendre</button>` : ''}
     ${!woIsNew && canControlOT && s==='Suspendu' ? `<button class="btn btn-ghost" style="color:var(--accent);border-color:var(--accent);" id="wo-reopen">${ICONS.activity} Réouvrir</button>` : ''}
@@ -2139,8 +2206,11 @@ function wireWOEditor(){
       quickTransition('OT en reprise', { motifReprise: motif });
     }, {textarea:true});
   });
+  const confirmHoursBtn = document.getElementById('wo-confirm-hours');
+  if(confirmHoursBtn) confirmHoursBtn.addEventListener('click', ()=>{ syncGeneralFieldsFromDOM(); openHeuresPanel(w); });
   const closeBtn = document.getElementById('wo-close-toolbar');
-  if(closeBtn) closeBtn.addEventListener('click', ()=>{ confirmModal('Clôturer techniquement '+w.numero+' ? Vérifie que temps, coûts et pièces sont bien saisis.', ()=>quickTransition('OT Clôturé')); });
+  if(closeBtn) closeBtn.addEventListener('click', ()=>{
+    if(!w.heuresConfirmees){ alert("Impossible de clôturer : les heures n'ont pas encore été confirmées par le planificateur."); return; } confirmModal('Clôturer techniquement '+w.numero+' ? Vérifie que temps, coûts et pièces sont bien saisis.', ()=>quickTransition('OT Clôturé')); });
   const suspendBtn = document.getElementById('wo-suspend');
   if(suspendBtn) suspendBtn.addEventListener('click', ()=>{
     promptModal('Suspendre '+w.numero, 'Motif de suspension (pièces manquantes, ressources...)', (motif)=>{
@@ -2592,8 +2662,9 @@ function gammeForm(g){
   return `
   <div class="formgrid">
     <label class="field span2"><span>Intitulé</span><input data-f="nom" value="${esc(g.nom)}" placeholder="Vidange moteur + filtres"/></label>
+    <label class="field"><span>Catégorie d'équipement</span><select data-f="categorie"><option value="" ${!g.categorie?'selected':''}>Flotte et Usine</option><option value="Flotte" ${g.categorie==='Flotte'?'selected':''}>Flotte uniquement</option><option value="Usine" ${g.categorie==='Usine'?'selected':''}>Usine uniquement</option></select></label>
     <label class="field"><span>Famille d'équipement concernée</span><select data-f="familleEquipement"><option value="">Toutes familles</option>${state.equipTypes.map(t=>`<option ${g.familleEquipement===t?'selected':''}>${t}</option>`).join('')}</select></label>
-    <label class="field"><span>Durée estimée (minutes)</span><input type="number" data-f="dureeEstimee" value="${g.dureeEstimee||60}"/></label>
+    <label class="field span2"><span>Durée estimée (minutes)</span><input type="number" data-f="dureeEstimee" value="${g.dureeEstimee||60}"/></label>
     <label class="field span2"><span>Description courte</span><input data-f="description" value="${esc(g.description||'')}"/></label>
     <label class="field span2"><span>Procédure détaillée</span><textarea data-f="procedure" rows="5" placeholder="1. Couper le moteur et laisser refroidir...">${esc(g.procedure||'')}</textarea></label>
     <label class="field"><span>Outils requis</span><textarea data-f="outilsRequis" rows="2">${esc(g.outilsRequis||'')}</textarea></label>
@@ -2620,6 +2691,7 @@ function viewGammes(){
     <div>
       <div class="row" style="flex-wrap:wrap;">
         <span style="font-size:13px;font-weight:500;">${esc(g.nom)}</span>
+        ${g.categorie?`<span class="badge" style="color:var(--steel);border-color:var(--steel);">${esc(g.categorie)}</span>`:''}
         ${g.familleEquipement?`<span class="badge">${esc(g.familleEquipement)}</span>`:`<span class="badge" style="color:var(--muted);">Toutes familles</span>`}
         ${g.normeHSE && g.normeHSE!=='Aucune'?`<span class="badge" style="color:var(--danger);border-color:var(--danger);">${esc(g.normeHSE)}</span>`:''}
       </div>
@@ -2707,7 +2779,8 @@ function viewPMEdit(){
   const p = pmDraft;
   const allEquip = [...state.fleet.map(e=>({...e,grp:'Flotte'})), ...state.plantEquipment.map(e=>({...e,grp:'Usine'}))];
   const equipOpts = allEquip.map(e=>`<option value="${e.id}" ${p.equipementId===e.id?'selected':''}>[${e.grp}] ${e.code} — ${e.nom}</option>`).join('');
-  const gammeOpts = state.gammesOperatoires.map(g=>`<option value="${g.id}" ${p.gammeId===g.id?'selected':''}>${esc(g.nom)}${g.familleEquipement?' ('+esc(g.familleEquipement)+')':''}</option>`).join('');
+  const gammeOpts = gammesPourEquipement(p.equipementId, p.gammeId).map(g=>`<option value="${g.id}" ${p.gammeId===g.id?'selected':''}>${esc(g.nom)}${g.familleEquipement?' ('+esc(g.familleEquipement)+')':''}</option>`).join('');
+  const typesDispo = equipCategorie(p.equipementId)==='Usine' ? PM_TYPES.filter(t=>t!=='Kilométrage') : PM_TYPES;
   const isCounter = p.type==='Heures' || p.type==='Kilométrage';
   const unite = p.type==='Heures' ? 'h' : 'km';
   const body = `
@@ -2717,7 +2790,7 @@ function viewPMEdit(){
     <label class="field span2"><span>Tâche</span><input id="pm-f-tache" value="${esc(p.tache)}" placeholder="Vidange moteur + filtres"/></label>
     <label class="field"><span>Type de stratégie</span><select id="pm-f-strategie">${state.typesStrategieMaintenance.map(t=>`<option ${p.typeStrategie===t?'selected':''}>${t}</option>`).join('')}</select></label>
     <label class="field"><span>Objectif</span><select id="pm-f-objectif">${state.objectifsMaintenance.map(o=>`<option ${p.objectif===o?'selected':''}>${o}</option>`).join('')}</select></label>
-    <label class="field span2"><span>Type de déclenchement</span><select id="pm-f-type">${PM_TYPES.map(t=>`<option ${p.type===t?'selected':''}>${t}</option>`).join('')}</select></label>
+    <label class="field span2"><span>Type de déclenchement</span><select id="pm-f-type">${typesDispo.map(t=>`<option ${p.type===t?'selected':''}>${t}</option>`).join('')}</select></label>
     ${!isCounter ? `
     <label class="field"><span>Fréquence (jours)</span><input type="number" id="pm-f-freq" value="${p.frequenceJours||90}"/></label>
     <label class="field"><span>Dernière réalisation</span><input type="date" id="pm-f-derniere" value="${p.derniere||''}"/></label>
@@ -2742,7 +2815,27 @@ function viewPMEdit(){
 }
 function wirePMEdit(){
   const p = pmDraft;
-  document.getElementById('pm-f-type').addEventListener('change', (e)=>{ p.type = e.target.value; render(); });
+  const syncPMDraft = ()=>{
+    const g = (id)=>{ const el=document.getElementById(id); return el?el.value:undefined; };
+    if(g('pm-f-equip')!==undefined) p.equipementId = g('pm-f-equip');
+    if(g('pm-f-gamme')!==undefined) p.gammeId = g('pm-f-gamme')||'';
+    if(g('pm-f-tache')!==undefined) p.tache = g('pm-f-tache');
+    if(g('pm-f-strategie')!==undefined) p.typeStrategie = g('pm-f-strategie');
+    if(g('pm-f-objectif')!==undefined) p.objectif = g('pm-f-objectif');
+    if(g('pm-f-intervalle')!==undefined) p.intervalle = Number(g('pm-f-intervalle'))||0;
+    if(g('pm-f-derniereValeur')!==undefined) p.derniereValeur = Number(g('pm-f-derniereValeur'))||0;
+    if(g('pm-f-freq')!==undefined) p.frequenceJours = Number(g('pm-f-freq'))||0;
+    if(g('pm-f-derniere')!==undefined) p.derniere = g('pm-f-derniere');
+  };
+  document.getElementById('pm-f-type').addEventListener('change', (e)=>{ syncPMDraft(); p.type = e.target.value; render(); });
+  const equipSel = document.getElementById('pm-f-equip');
+  if(equipSel) equipSel.addEventListener('change', ()=>{
+    syncPMDraft();
+    if(equipCategorie(p.equipementId)==='Usine' && p.type==='Kilométrage') p.type = 'Heures';
+    const ok = gammesPourEquipement(p.equipementId, '').some(g=>g.id===p.gammeId);
+    if(p.gammeId && !ok) p.gammeId = '';
+    render();
+  });
   const gammeSel = document.getElementById('pm-f-gamme');
   if(gammeSel) gammeSel.addEventListener('change', (e)=>{
     const g = state.gammesOperatoires.find(x=>x.id===e.target.value);
@@ -3361,6 +3454,9 @@ function viewPlant(){
     <div><h1>Équipements usine</h1><p class="subtitle" style="margin:0;">${state.plantEquipment.length} machines enregistrées</p></div>
     <div class="row">
       <button class="btn btn-ghost" data-open-types="1">${ICONS.layers} Familles</button>
+      <button class="btn btn-ghost" id="plant-export-btn">${ICONS.receipt} Exporter Excel</button>
+      <button class="btn btn-ghost" id="plant-import-btn">${ICONS.plus} Importer Excel</button>
+      <input type="file" id="plant-import-file" accept=".xlsx,.xls,.csv" style="display:none;"/>
       <button class="btn btn-accent" id="plant-new-btn">${ICONS.plus} Nouvelle machine</button>
     </div>
   </div>
@@ -3382,6 +3478,8 @@ function viewPlant(){
     <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">${esc(e.emplacementId?locPath(e.emplacementId):'—')}</div>
     <div class="between" style="font-size:12px;color:var(--muted);border-top:1px solid var(--border);padding-top:8px;">
       <span style="color:${statutColor(e.statut)}">${e.statut}</span>
+      <span class="mono">${fmt(e.heures||0)} h</span>
+      ${(()=>{ const r = pmResumeEquip(e.id); return r ? `<span style="color:${pmNiveauColor(r.niveau)};" title="Plans préventifs : ${r.count}">${pmNiveauIcon(r.niveau)} Préventif (${r.count})</span>` : `<span style="color:var(--muted);">Aucun préventif</span>`; })()}
     </div>
   </div>`).join('')}
   </div>`}`;
@@ -3400,6 +3498,7 @@ function plantForm(e){
     <label class="field"><span>Niveau de criticité</span><select data-f="niveauCriticite">${state.niveauxCriticite.map(n=>`<option ${(e.niveauCriticite||'C')===n?'selected':''}>${n}</option>`).join('')}</select></label>
     <label class="field"><span>Statut</span><select data-f="statut">${STATUTS.map(s=>`<option ${e.statut===s?'selected':''}>${s}</option>`).join('')}</select></label>
     <label class="field"><span>Date mise en service</span><input type="date" data-f="dateMiseEnService" value="${e.dateMiseEnService||''}"/></label>
+    <label class="field"><span>Compteur heures de fonctionnement (h)</span><input type="number" data-f="heures" value="${e.heures||0}"/></label>
     <label class="field span2"><span>Emplacement</span><select data-f="emplacementId"><option value="">—</option>${locOpts}</select></label>
     <label class="field span2"><span>Centre de coût</span><select data-f="centreCoutId"><option value="">—</option>${ccOpts}</select></label>
   </div>`;
@@ -4961,6 +5060,79 @@ function openConfirmationPanel(wId){
   </div>`;
   wireWorkflowPanels(w, 'confirm');
 }
+function totalMinutesOT(w){
+  let t = 0;
+  (w.operations||[]).forEach(op=>(op.affectations||[]).forEach(af=>{ t += (af.dureeMin!=null ? af.dureeMin : dureeAffectation(af)) || 0; }));
+  return t;
+}
+function openHeuresPanel(w){
+  const root = document.getElementById('modal-root');
+  const ops = w.operations||[];
+  const deja = !!w.heuresConfirmees;
+  root.innerHTML = `
+  <div class="modal-overlay" id="wo-panel-overlay">
+    <div class="modal" style="max-width:780px;">
+      <div class="modal-head"><h3>Confirmation des heures — ${w.numero||''}</h3><button class="icon-btn" id="wo-panel-close">${ICONS.close}</button></div>
+      <div class="modal-body">
+        <p style="font-size:12px;color:var(--muted);margin:0 0 10px;">Vérifie les heures réellement effectuées par chaque intervenant, corrige-les si besoin, puis confirme. <strong>Tant que les heures ne sont pas confirmées, l'ordre ne peut pas être clôturé.</strong></p>
+        <div class="between" style="background:var(--panel);border-radius:6px;padding:8px 12px;margin-bottom:14px;">
+          <span style="font-size:12px;color:var(--muted);">Total des heures de l'OT</span>
+          <strong id="heures-total" style="font-size:14px;color:var(--accent);">${fmtDuree(totalMinutesOT(w))}</strong>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px;max-height:50vh;overflow-y:auto;">
+          ${ops.length===0?`<div class="empty">${ICONS.wrench}<span>Aucune opération sur cet OT.</span></div>`:ops.map((op,oi)=>`
+          <div class="card-item" style="padding:12px;">
+            <div style="font-size:13px;font-weight:500;margin-bottom:8px;">${op.confirme?ICONS.check+' ':''}${esc(op.description)}</div>
+            ${(op.affectations||[]).length===0?`<span style="font-size:11px;color:var(--muted);">Aucun intervenant affecté sur cette tâche.</span>`:
+            `<div style="display:flex;flex-direction:column;gap:6px;">${op.affectations.map((af,ai)=>`
+              <div class="row wrapwrap" style="gap:8px;font-size:12px;background:var(--panel);border-radius:5px;padding:6px 8px;align-items:center;">
+                <span class="badge">${esc(af.poste)}</span><span style="min-width:90px;">${esc(af.technicien)||'—'}</span>
+                <input type="time" value="${af.heureDebut||''}" data-hp-debut="${oi}:${ai}" ${deja?'disabled':''} style="width:92px;"/>
+                <span style="color:var(--muted);">→</span>
+                <input type="time" value="${af.heureFin||''}" data-hp-fin="${oi}:${ai}" ${deja?'disabled':''} style="width:92px;"/>
+                <strong style="color:var(--accent);margin-left:auto;" data-hp-duree="${oi}:${ai}">${fmtDuree(af.dureeMin!=null?af.dureeMin:dureeAffectation(af))}</strong>
+              </div>`).join('')}</div>`}
+          </div>`).join('')}
+        </div>
+        ${deja?`<p style="font-size:11px;color:var(--success);margin:12px 0 0;">Heures confirmées par ${esc(w.heuresConfirmeesPar||'—')}${w.dateConfirmationHeures?' le '+esc(w.dateConfirmationHeures):''}.</p>`:''}
+        <div class="modal-actions">
+          <button class="btn btn-ghost" type="button" id="hp-close">${ICONS.close} Fermer</button>
+          ${deja?`<button class="btn btn-ghost" type="button" id="hp-unconfirm" style="color:var(--danger);border-color:var(--danger);">Annuler la confirmation</button>`
+                :`<button class="btn btn-accent" type="button" id="hp-confirm">${ICONS.check} Confirmer les heures</button>`}
+        </div>
+      </div>
+    </div>
+  </div>`;
+  const closePanel = ()=>{ document.getElementById('modal-root').innerHTML=''; render(); };
+  document.getElementById('wo-panel-overlay').addEventListener('click', e=>{ if(e.target.id==='wo-panel-overlay') closePanel(); });
+  document.getElementById('wo-panel-close').addEventListener('click', closePanel);
+  document.getElementById('hp-close').addEventListener('click', closePanel);
+  const refreshAff = (key, field, val)=>{
+    const [oi,ai] = key.split(':').map(Number);
+    const af = w.operations[oi].affectations[ai];
+    af[field] = val; af.dureeMin = dureeAffectation(af);
+    const lbl = document.querySelector(`[data-hp-duree="${key}"]`); if(lbl) lbl.textContent = fmtDuree(af.dureeMin);
+    const tot = document.getElementById('heures-total'); if(tot) tot.textContent = fmtDuree(totalMinutesOT(w));
+  };
+  document.querySelectorAll('[data-hp-debut]').forEach(i=>i.addEventListener('change', ()=>refreshAff(i.dataset.hpDebut,'heureDebut',i.value)));
+  document.querySelectorAll('[data-hp-fin]').forEach(i=>i.addEventListener('change', ()=>refreshAff(i.dataset.hpFin,'heureFin',i.value)));
+  const okBtn = document.getElementById('hp-confirm');
+  if(okBtn) okBtn.addEventListener('click', ()=>{
+    w.heuresConfirmees = true;
+    w.heuresConfirmeesPar = currentUser ? currentUser.nomComplet : '';
+    w.dateConfirmationHeures = new Date().toISOString().slice(0,10);
+    syncWOToState(w);
+    logAudit('OT '+w.numero+' — heures confirmées par '+w.heuresConfirmeesPar+' ('+fmtDuree(totalMinutesOT(w))+')');
+    persist(); toast('Heures confirmées — l\'OT peut maintenant être clôturé'); closePanel();
+  });
+  const unBtn = document.getElementById('hp-unconfirm');
+  if(unBtn) unBtn.addEventListener('click', ()=>{
+    w.heuresConfirmees = false; w.heuresConfirmeesPar = ''; w.dateConfirmationHeures = '';
+    syncWOToState(w);
+    logAudit('OT '+w.numero+' — confirmation des heures annulée par '+(currentUser?currentUser.nomComplet:''));
+    persist(); toast('Confirmation annulée'); closePanel();
+  });
+}
 function openDeconfirmPanel(wId){
   const w = typeof wId==='string' ? state.workOrders.find(x=>x.id===wId) : wId;
   if(!w){ alert('Ordre de travail introuvable — réessaie depuis la liste des OT.'); return; }
@@ -5077,7 +5249,7 @@ function openWorkflowPanel(w){
       info: w.controleQualitePar ? 'Validé par '+w.controleQualitePar+' le '+(w.dateControleQualite||'') : (isNow('OT Réalisé')?'En attente de contrôle qualité':'—'),
       pending: isNow('OT Réalisé') },
     { key:'OT Clôturé', label:'5. Clôture technique (Planificateur) puis financière (Directeur d\'exploitation)', done: isNow('OT Clôturé'),
-      info: isNow('OT Clôturé') ? ('Clôturé le '+(w.dateFin||'—')+(w.clotureFinanciere?' · clôture financière validée par '+(w.clotureFinancierePar||''):' · clôture financière en attente (Directeur d\'exploitation)')) : (isNow('OT Validé Atelier') ? 'Prêt pour clôture technique' : '—'),
+      info: isNow('OT Clôturé') ? ('Clôturé le '+(w.dateFin||'—')+(w.clotureFinanciere?' · clôture financière validée par '+(w.clotureFinancierePar||''):' · clôture financière en attente (Directeur d\'exploitation)')) : (isNow('OT Validé Atelier') ? (w.heuresConfirmees ? 'Heures confirmées par '+(w.heuresConfirmeesPar||'')+' — prêt pour clôture technique' : 'En attente de confirmation des heures par le planificateur') : '—'),
       pending: isNow('OT Validé Atelier') },
   ];
   const root = document.getElementById('modal-root');
@@ -5678,7 +5850,7 @@ function attachHandlers(){
   // Gammes opératoires
   const gamn = document.querySelector('#gamme-new-btn');
   if(gamn) gamn.addEventListener('click', ()=>{
-    gammeDraft = {id:null, nom:'', familleEquipement:'', dureeEstimee:60, description:'', procedure:'', outilsRequis:'', epiRequis:'', normeHSE:state.normesHSE[0]};
+    gammeDraft = {id:null, nom:'', categorie:'', familleEquipement:'', dureeEstimee:60, description:'', procedure:'', outilsRequis:'', epiRequis:'', normeHSE:state.normesHSE[0]};
     gammeIsNew = true; currentView='gamme-edit'; render();
   });
   document.querySelectorAll('[data-edit-gamme]').forEach(b=>b.addEventListener('click',(e)=>{
@@ -6021,9 +6193,17 @@ function attachHandlers(){
   }));
 
   // Équipements usine
+  const plantExportBtn = document.getElementById('plant-export-btn');
+  if(plantExportBtn) plantExportBtn.addEventListener('click', exportPlantToExcel);
+  const plantImportBtn = document.getElementById('plant-import-btn');
+  const plantImportFile = document.getElementById('plant-import-file');
+  if(plantImportBtn && plantImportFile){
+    plantImportBtn.addEventListener('click', ()=>plantImportFile.click());
+    plantImportFile.addEventListener('change', (e)=>{ if(e.target.files[0]) readExcelFile(e.target.files[0], importPlantRows); });
+  }
   const plantn = document.querySelector('#plant-new-btn');
   if(plantn) plantn.addEventListener('click', ()=>{
-    plantDraft = {id:null, code:'', nom:'', type:state.equipTypes[0], statut:'Opérationnel', emplacementId:'', centreCoutId:'', dateMiseEnService:''};
+    plantDraft = {id:null, code:'', nom:'', type:state.equipTypes[0], statut:'Opérationnel', emplacementId:'', centreCoutId:'', dateMiseEnService:'', heures:0};
     plantIsNew = true; currentView='plant-edit'; render();
   });
   document.querySelectorAll('[data-edit-plant]').forEach(b=>b.addEventListener('click',(e)=>{
@@ -6042,7 +6222,7 @@ function attachHandlers(){
     if(ffpSubmit) ffpSubmit.addEventListener('click', ()=>{
       const data = collectDataF();
       if(!data.code||!data.nom){ alert('Code et nom requis'); return; }
-      const patch = {...data, emplacementId:data.emplacementId||null, centreCoutId:data.centreCoutId||null};
+      const patch = {...data, heures:Number(data.heures)||0, emplacementId:data.emplacementId||null, centreCoutId:data.centreCoutId||null};
       if(plantIsNew){ state.plantEquipment.push({...patch, id:uid()}); persist(); toast('Machine ajoutée'); }
       else { const e = state.plantEquipment.find(x=>x.id===plantDraft.id); Object.assign(e, patch); persist(); toast('Machine mise à jour'); }
       currentView='plant'; plantDraft=null; render();
