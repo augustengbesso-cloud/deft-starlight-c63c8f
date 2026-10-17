@@ -277,6 +277,7 @@ const CAPACITES = [
   {id:'lancer_ot', label:"Lancer un OT", full:"Fait passer un OT créé en exécution (OT Créé → OT En cours) — Planificateur ou Chef d'atelier"},
   {id:'controler_qualite_ot', label:"Contrôler la qualité d'un OT", full:"Vérifie la conformité des travaux exécutés, valide ou demande une reprise — étape 6 du circuit (Chef d'atelier)"},
   {id:'cloturer_ot', label:"Clôturer techniquement un OT", full:"Vérifie que toutes les données sont saisies et clôture techniquement l'OT — étape 7 du circuit (Planificateur), + déconfirmer/déclôturer en cas d'erreur"},
+  {id:'reception_production', label:"Réceptionner la machine (remise en production)", full:"Usine : confirme que la machine est remise en service après intervention (essais OK, consignation levée) — avant la clôture technique"},
   {id:'controler_ot', label:"Suspendre / annuler / transférer", full:"Suspendre, réouvrir, annuler ou transférer un ordre de travail, à toute étape du circuit"},
   {id:'budget_ot', label:"Approuver budget / clôture financière", full:"Approuver le budget et clôturer financièrement un ordre de travail — indépendant du circuit technique"},
   {id:'archiver_ot', label:"Archiver les OT clôturés", full:"Archiver les ordres de travail clôturés financièrement"},
@@ -297,6 +298,7 @@ function defaultCapaciteChecked(role, capId){
   if(capId==='controler_qualite_ot') return admins.includes(role) || role==='chef-atelier';
   if(capId==='cloturer_ot') return admins.includes(role);
   if(capId==='controler_ot') return admins.includes(role);
+  if(capId==='reception_production') return role==='admin' || role==='directeur-exploitation';
   if(capId==='budget_ot') return role==='admin' || role==='directeur-exploitation';
   if(capId==='archiver_ot') return role==='admin' || role==='planificateur';
   if(capId==='valider_conges') return role==='admin' || role==='rh';
@@ -501,13 +503,21 @@ function daScopeOf(d){
   return d.categorie||'';
 }
 function bcScopeOf(b){ const d=(state.purchaseRequests||[]).find(x=>x.id===b.purchaseRequestId); return daScopeOf(d)||'Flotte'; }
-let achatScope = 'Tous';
-function achatScopeChips(){
-  return `<div class="row" style="background:var(--panelR);border-radius:8px;padding:2px;margin-bottom:12px;width:fit-content;">${['Tous','Flotte','Usine'].map(x=>`<button class="btn ${achatScope===x?'btn-accent':'btn-ghost'}" style="padding:6px 14px;font-size:12px;" data-achat-scope="${x}" type="button">${x==='Tous'?'Tout':x}</button>`).join('')}</div>`;
+let zoneFilter = 'Tous';
+let zoneInit = false;
+function zoneChips(){
+  return `<div class="row" style="background:var(--panelR);border-radius:8px;padding:2px;margin-bottom:12px;width:fit-content;">${['Tous','Flotte','Usine'].map(x=>`<button class="btn ${zoneFilter===x?'btn-accent':'btn-ghost'}" style="padding:6px 14px;font-size:12px;" data-zone="${x}" type="button">${x==='Tous'?'Tout':x}</button>`).join('')}</div>`;
 }
+function inZone(eqId, fb){ return zoneFilter==='Tous' || (eqScope(eqId,fb)||'')===zoneFilter; }
+function persInZone(p){ return zoneFilter==='Tous' || p.affectation===zoneFilter || p.affectation==='Les deux'; }
+function zoneFilterChips(){ return zoneChips(); }
 function entName(){ return (state.entreprise && state.entreprise.nom) ? String(state.entreprise.nom).trim() : ''; }
 let reportScope = 'Flotte';
+const WF_DEFAULT = { Flotte:{consignationAvantLancement:false, receptionProduction:false}, Usine:{consignationAvantLancement:true, receptionProduction:true} };
+function woCfg(w){ const z = woScope(w)||'Flotte'; return (state.workflowZone && state.workflowZone[z]) || WF_DEFAULT[z]; }
 function normalizeState(){
+  if(!state.workflowZone || typeof state.workflowZone!=='object') state.workflowZone = JSON.parse(JSON.stringify(WF_DEFAULT));
+  ['Flotte','Usine'].forEach(z=>{ state.workflowZone[z] = {...WF_DEFAULT[z], ...(state.workflowZone[z]||{})}; });
   if(!state.entreprise || typeof state.entreprise!=='object') state.entreprise = {nom:'', logo:'', logoW:0, logoH:0};
   (state.purchaseRequests||[]).forEach(d=>{ if(!d.categorie) d.categorie = daScopeOf(d) || 'Flotte'; });
   if(!Array.isArray(state.typesTravail) || state.typesTravail.length===0) state.typesTravail = ["Inspection","Remplacement pièces","Intervention","Révision","Autre"];
@@ -1008,7 +1018,10 @@ function renderNav(){
     </button>`).join('')}
   `;}).join('');
   nav.querySelectorAll('[data-nav]').forEach(b=>b.addEventListener('click',()=>{ currentView=b.dataset.nav; resaValidatingId=null; closeMobileMenu(); render(); }));
-  document.getElementById('fleet-count').textContent = `${state.fleet.length} engins · ${state.plantEquipment.length} machines`;
+  (function(){
+    const nF = state.fleet.length, nP = state.plantEquipment.length;
+    document.getElementById('fleet-count').textContent = zoneFilter==='Usine' ? `${nP} machines` : zoneFilter==='Flotte' ? `${nF} engins` : `${nF} engins · ${nP} machines`;
+  })();
   const uiTop = document.getElementById('user-info-top');
   if(uiTop && currentUser){
     uiTop.innerHTML = `<b>${esc(currentUser.nomComplet)}</b> · ${roleLabel(currentUser.role)}`;
@@ -1080,7 +1093,13 @@ function promoteTitle(){
   }
   bar.style.display = 'none';
 }
+const ZONE_USINE_VIEWS = ['dashboard-usine','pm-usine','gammes-usine','plant','plant-edit','floc','floc-edit','production','prod-edit'];
+const ZONE_FLOTTE_VIEWS = ['dashboard','pm','gammes','fleet','fleet-edit','fuel','fuel-edit','fuel-validation','cuves','cuve-edit','pompes','pompe-edit','ravitaillement','ravitaillement-new'];
 function render(){
+  if(currentUser && !zoneInit){ zoneInit = true; if(currentUser.affectation==='Flotte'||currentUser.affectation==='Usine') zoneFilter = currentUser.affectation; }
+  if(ZONE_USINE_VIEWS.includes(currentView)) zoneFilter='Usine';
+  else if(ZONE_FLOTTE_VIEWS.includes(currentView)) zoneFilter='Flotte';
+  if(currentView==='reports' && zoneFilter!=='Tous') reportScope = zoneFilter;
   if(!dashLandingDone && currentUser){
     dashLandingDone = true;
     if(currentView==='dashboard' && currentUser.affectation==='Usine' && canSee('dashboard-usine')) currentView = 'dashboard-usine';
@@ -1852,23 +1871,25 @@ function viewWO(){
     const linkedNotif = state.notifications.find(n=>n.workOrderId===w.id);
     return !!(linkedNotif && linkedNotif.declarant===currentUser.nomComplet);
   }) : state.workOrders;
-  let visible = woFilter==='Tous' ? base : base.filter(w=>w.statut===woFilter);
+  const baseZ = base.filter(w=>zoneFilter==='Tous' || woScope(w)===zoneFilter);
+  let visible = woFilter==='Tous' ? baseZ : baseZ.filter(w=>w.statut===woFilter);
   if(woFilterFamille!=='Tous') visible = visible.filter(w=>(em[w.equipementId]?.type)===woFilterFamille);
   if(woFilterEquip!=='Tous') visible = visible.filter(w=>w.equipementId===woFilterEquip);
   if(woFilterType!=='Tous') visible = visible.filter(w=>w.type===woFilterType);
   const q = woSearch.trim().toLowerCase();
   if(q) visible = visible.filter(w=>`${w.numero||''} ${w.titre||''} ${w.description||''} ${em[w.equipementId]?.code||''} ${em[w.equipementId]?.nom||''} ${w.technicien||''}`.toLowerCase().includes(q));
   const sorted = [...visible].sort((a,b)=>(b.dateCreation||'').localeCompare(a.dateCreation||''));
-  const equipOptions = [...state.fleet, ...state.plantEquipment].sort((a,b)=>a.code.localeCompare(b.code));
+  const equipOptions = [...state.fleet, ...state.plantEquipment].filter(e=>inZone(e.id)).sort((a,b)=>a.code.localeCompare(b.code));
   const typesOT = [...new Set(state.workOrders.map(w=>w.type).filter(Boolean))];
   return `
   <div class="headrow">
-    <div><h1>${isTech?'Mes ordres de travail':'Ordres de travail'}</h1><p class="subtitle" style="margin:0;">${isTech?'Ordres qui te sont assignés, et ceux issus de tes demandes d\'intervention':'Maintenance corrective et préventive'}</p></div>
+    <div><h1>${isTech?'Mes ordres de travail':'Ordres de travail'}${zoneFilter!=='Tous'?' — '+zoneFilter:''}</h1><p class="subtitle" style="margin:0;">${isTech?'Ordres qui te sont assignés, et ceux issus de tes demandes d\'intervention':'Maintenance corrective et préventive'}</p></div>
     <div class="row">
       ${isTech?'':`<button class="btn btn-ghost" id="wo-export-excel">${ICONS.receipt} Exporter Excel</button>`}
       ${isTech?'':`<button class="btn btn-accent" data-open-wo="new">${ICONS.plus} Nouvel OT</button>`}
     </div>
   </div>
+  ${zoneChips()}
   <div class="plate p14" style="margin-bottom:12px;">
     <div class="row wrapwrap" style="gap:8px;">
       <input id="wo-search" placeholder="Rechercher : N° OT, libellé, équipement, technicien..." value="${esc(woSearch)}" style="flex:2;min-width:200px;"/>
@@ -1890,7 +1911,7 @@ function viewWO(){
       </select>
       ${(woSearch||woFilter!=='Tous'||woFilterFamille!=='Tous'||woFilterEquip!=='Tous'||woFilterType!=='Tous')?`<button class="btn btn-ghost" id="wo-filter-reset" type="button">${ICONS.close} Réinitialiser</button>`:''}
     </div>
-    <div style="font-size:11px;color:var(--muted);margin-top:8px;">${sorted.length} ordre(s) affiché(s) sur ${base.length}</div>
+    <div style="font-size:11px;color:var(--muted);margin-top:8px;">${sorted.length} ordre(s) affiché(s) sur ${baseZ.length}</div>
   </div>
   ${sorted.length===0?`<div class="plate p16"><div class="empty">${ICONS.wrench}<span>Aucun ordre de travail.</span></div></div>`:
   `<div style="display:flex;flex-direction:column;gap:8px;">
@@ -1921,7 +1942,7 @@ function viewWO(){
       <div class="row">
         <span style="font-size:12px;color:${woStatutColor(w.statut)}">${w.statut}</span>
         ${w.cout>0?`<span class="mono" style="font-size:12px;color:var(--muted);">${fmt(w.cout)} FCFA</span>`:''}
-        ${!isTech && hasCapacite('cloturer_ot', currentUser&&currentUser.role==='planificateur') && w.statut==='OT Validé Atelier' && w.heuresConfirmees ? `<button class="btn btn-ghost" style="font-size:11px;padding:3px 8px;color:var(--success);" data-close-wo="${w.id}">${ICONS.check} Clôturer</button>`:''}
+        ${!isTech && hasCapacite('cloturer_ot', currentUser&&currentUser.role==='planificateur') && w.statut==='OT Validé Atelier' && w.heuresConfirmees && (!woCfg(w).receptionProduction || w.receptionProd) ? `<button class="btn btn-ghost" style="font-size:11px;padding:3px 8px;color:var(--success);" data-close-wo="${w.id}">${ICONS.check} Clôturer</button>`:''}
         <button class="icon-btn" data-open-wo="${w.id}">${ICONS.edit}</button>
         ${isTech?'':`<button class="icon-btn" data-del-wo="${w.id}">${ICONS.trash}</button>`}
       </div>
@@ -1956,9 +1977,9 @@ function fmtDuree(mins){
   return (h>0 ? h+'h' : '') + String(m).padStart(2,'0');
 }
 function blankWO(){
-  return { id:null, numero:null, categorieEquipement:'', equipementId:'', type:'Panne / Correctif',
+  return { id:null, numero:null, categorieEquipement:(zoneFilter!=='Tous'?zoneFilter:''), equipementId:'', type:'Panne / Correctif',
     typeTravail: state.typesTravail[0], poste: state.postes[0], titre:'', description:'', priorite:'Normale', statut:'OT Créé',
-    dateCreation:new Date().toISOString().slice(0,10), dateDebut:new Date().toISOString().slice(0,10), dateFin:'', heureDebut:'', heureFin:'', heuresConfirmees:false, heuresConfirmeesPar:'', dateConfirmationHeures:'',
+    dateCreation:new Date().toISOString().slice(0,10), dateDebut:new Date().toISOString().slice(0,10), dateFin:'', heureDebut:'', heureFin:'', heuresConfirmees:false, heuresConfirmeesPar:'', dateConfirmationHeures:'', receptionProd:false, receptionProdPar:'', dateReceptionProd:'',
     technicien:'', cout:0, operations:[], piecesUtilisees:[],
     permisTravail:false, consignation:'', budgetApprouve:false, approbateurBudget:'', clotureFinanciere:false, clotureFinancierePar:'', documents:[],
     statutAvantSuspension:null, archive:false, motifAnnulation:'' };
@@ -1993,6 +2014,9 @@ function viewWOEdit(){
   const canControlerQualiteOT = currentUser && hasCapacite('controler_qualite_ot', currentUser.role==='chef-atelier');
   const canControlOT = currentUser && hasCapacite('controler_ot', currentUser.role==='planificateur');
   const canCloseOT = currentUser && hasCapacite('cloturer_ot', currentUser.role==='planificateur');
+  const needReception = woCfg(w).receptionProduction;
+  const canReceptionProd = currentUser && hasCapacite('reception_production', currentUser.role==='directeur-exploitation');
+  const receptionOk = !needReception || !!w.receptionProd;
   const canBudgetOT = currentUser && hasCapacite('budget_ot', false);
   // Conservé pour compat : utilisé pour le calcul global de canExecute
   const canSuperviseEdit = canLancerOT || canControlerQualiteOT || canControlOT || canCloseOT;
@@ -2021,7 +2045,10 @@ function viewWOEdit(){
     ${!woIsNew && canControlerQualiteOT && (s==='OT Réalisé'||s==='OT Validé Atelier') ? `<button class="btn btn-ghost" style="color:var(--danger);border-color:var(--danger);" id="wo-quality-rework">${ICONS.close} Demander une reprise</button>` : ''}
     ${!woIsNew && canCloseOT && ['OT Réalisé','OT Validé Atelier'].includes(s) && !w.heuresConfirmees ? `<button class="btn btn-ghost" style="color:var(--accent);border-color:var(--accent);" id="wo-confirm-hours">${ICONS.activity} Confirmer les heures</button>` : ''}
     ${!woIsNew && canCloseOT && ['OT Réalisé','OT Validé Atelier'].includes(s) && w.heuresConfirmees ? `<button class="btn btn-ghost" style="color:var(--muted);border-color:var(--borderL);" id="wo-confirm-hours">${ICONS.check} Heures confirmées</button>` : ''}
-    ${!woIsNew && canCloseOT && s==='OT Validé Atelier' && w.heuresConfirmees ? `<button class="btn btn-ghost" style="color:var(--success);border-color:var(--success);" id="wo-close-toolbar">${ICONS.check} Clôturer technique</button>` : ''}
+    ${!woIsNew && needReception && s==='OT Validé Atelier' && !w.receptionProd && canReceptionProd ? `<button class="btn btn-ghost" style="color:var(--accent);border-color:var(--accent);" id="wo-reception-prod">${ICONS.factory} Réceptionner (remise en production)</button>` : ''}
+    ${!woIsNew && needReception && s==='OT Validé Atelier' && !w.receptionProd && !canReceptionProd ? `<span style="font-size:12px;color:var(--muted);align-self:center;">En attente de réception par la production</span>` : ''}
+    ${!woIsNew && needReception && w.receptionProd ? `<span style="font-size:12px;color:var(--success);align-self:center;">${ICONS.check} Réceptionné par ${esc(w.receptionProdPar||'—')}${w.dateReceptionProd?' le '+esc(w.dateReceptionProd):''}</span>` : ''}
+    ${!woIsNew && canCloseOT && s==='OT Validé Atelier' && w.heuresConfirmees && receptionOk ? `<button class="btn btn-ghost" style="color:var(--success);border-color:var(--success);" id="wo-close-toolbar">${ICONS.check} Clôturer technique</button>` : ''}
     ${!woIsNew && canCloseOT && ['OT Réalisé','OT Validé Atelier'].includes(s) ? `<button class="btn btn-ghost" style="color:var(--muted);border-color:var(--borderL);" id="wo-deconfirm">${ICONS.close} Déconfirmer</button>` : ''}
     ${!woIsNew && canControlOT && !finalStates.includes(s) && s!=='Suspendu' ? `<button class="btn btn-ghost" style="color:var(--muted);border-color:var(--borderL);" id="wo-suspend">${ICONS.close} Suspendre</button>` : ''}
     ${!woIsNew && canControlOT && s==='Suspendu' ? `<button class="btn btn-ghost" style="color:var(--accent);border-color:var(--accent);" id="wo-reopen">${ICONS.activity} Réouvrir</button>` : ''}
@@ -2289,7 +2316,9 @@ function wireWOEditor(){
   if(printPdfBtn) printPdfBtn.addEventListener('click', ()=>exportSingleWOToPDF(w));
   const launchBtn = document.getElementById('wo-launch');
   if(launchBtn) launchBtn.addEventListener('click', ()=>{
+    syncGeneralFieldsFromDOM();
     if(!w.technicien){ alert("Affecte un responsable (onglet Données générales) avant de lancer l'OT."); return; }
+    if(woCfg(w).consignationAvantLancement && !String(w.consignation||'').trim()){ alert("Usine : renseigne la consignation / autorisation de travail (onglet Sécurité / HSE) avant de lancer l'OT — la machine doit être consignée avant toute intervention."); return; }
     confirmModal('Lancer '+w.numero+' ? Il passera immédiatement chez le technicien pour exécution.', ()=>quickTransition('OT En cours'));
   });
   const resumeBtn = document.getElementById('wo-resume');
@@ -2313,14 +2342,25 @@ function wireWOEditor(){
   const qualityReworkBtn = document.getElementById('wo-quality-rework');
   if(qualityReworkBtn) qualityReworkBtn.addEventListener('click', ()=>{
     promptModal('Demander une reprise sur '+w.numero, 'Motif de la reprise (ce qui doit être corrigé)', (motif)=>{
-      quickTransition('OT en reprise', { motifReprise: motif });
+      quickTransition('OT en reprise', { motifReprise: motif, receptionProd:false, receptionProdPar:'', dateReceptionProd:'' });
     }, {textarea:true});
+  });
+  const recProdBtn = document.getElementById('wo-reception-prod');
+  if(recProdBtn) recProdBtn.addEventListener('click', ()=>{
+    confirmModal('Réceptionner '+w.numero+' ? Confirme que la machine est remise en production : essais réalisés, consignation levée, zone dégagée.', ()=>{
+      syncGeneralFieldsFromDOM();
+      w.receptionProd = true; w.receptionProdPar = currentUser?currentUser.nomComplet:''; w.dateReceptionProd = new Date().toISOString().slice(0,10);
+      const idx = state.workOrders.findIndex(x=>x.id===w.id); if(idx>-1) state.workOrders[idx] = {...w};
+      logAudit('OT '+w.numero+' — réception production par '+w.receptionProdPar);
+      persist(); toast('Réception production enregistrée'); render();
+    });
   });
   const confirmHoursBtn = document.getElementById('wo-confirm-hours');
   if(confirmHoursBtn) confirmHoursBtn.addEventListener('click', ()=>{ syncGeneralFieldsFromDOM(); openHeuresPanel(w); });
   const closeBtn = document.getElementById('wo-close-toolbar');
   if(closeBtn) closeBtn.addEventListener('click', ()=>{
-    if(!w.heuresConfirmees){ alert("Impossible de clôturer : les heures n'ont pas encore été confirmées par le planificateur."); return; } confirmModal('Clôturer techniquement '+w.numero+' ? Vérifie que temps, coûts et pièces sont bien saisis.', ()=>quickTransition('OT Clôturé')); });
+    if(!w.heuresConfirmees){ alert("Impossible de clôturer : les heures n'ont pas encore été confirmées par le planificateur."); return; }
+    if(woCfg(w).receptionProduction && !w.receptionProd){ alert("Impossible de clôturer : la machine n'a pas encore été réceptionnée (remise en production) par la production."); return; } confirmModal('Clôturer techniquement '+w.numero+' ? Vérifie que temps, coûts et pièces sont bien saisis.', ()=>quickTransition('OT Clôturé')); });
   const suspendBtn = document.getElementById('wo-suspend');
   if(suspendBtn) suspendBtn.addEventListener('click', ()=>{
     promptModal('Suspendre '+w.numero, 'Motif de suspension (pièces manquantes, ressources...)', (motif)=>{
@@ -2700,6 +2740,38 @@ function pmSuiviStatut(p){
 function pmSuiviColor(s){
   return { 'À venir':'var(--muted)', 'Généré':'var(--steel)', 'En cours':'var(--accent)', 'Clôturé':'var(--success)' }[s] || 'var(--muted)';
 }
+function exportGammesToExcel(){
+  const rows = state.gammesOperatoires.map(g=>({
+    'Intitulé': g.nom||'', 'Catégorie (Flotte / Usine / Flotte et Usine)': g.categorie||'Flotte et Usine', 'Famille d\'équipement': g.familleEquipement||'',
+    'Durée (min)': g.dureeEstimee||60, 'Description': g.description||'', 'Procédure (une tâche par ligne)': g.procedure||'',
+    'Outils requis': g.outilsRequis||'', 'EPI requis': g.epiRequis||'', 'Norme HSE': g.normeHSE||'Aucune' }));
+  if(rows.length===0) rows.push({'Intitulé':'','Catégorie (Flotte / Usine / Flotte et Usine)':'','Famille d\'équipement':'','Durée (min)':'','Description':'','Procédure (une tâche par ligne)':'','Outils requis':'','EPI requis':'','Norme HSE':''});
+  const ws = XLSX.utils.json_to_sheet(rows);
+  ws['!cols'] = [{wch:34},{wch:22},{wch:22},{wch:12},{wch:40},{wch:70},{wch:34},{wch:34},{wch:22}];
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Gammes');
+  XLSX.writeFile(wb, '2NA-MAINT-PROD_gammes_operatoires_'+new Date().toISOString().slice(0,10)+'.xlsx');
+  toast('Export généré — '+state.gammesOperatoires.length+' gamme(s)');
+}
+function importGammesRows(rows){
+  let created=0, updated=0;
+  rows.forEach(r=>{
+    const nom = String(findCol(r,['Intitulé','Intitule','Nom','Gamme'])||'').trim();
+    if(!nom) return;
+    let cat = String(findCol(r,['Catégorie (Flotte / Usine / Flotte et Usine)','Catégorie','Categorie'])||'').trim();
+    cat = /^flotte$/i.test(cat)?'Flotte' : /^usine$/i.test(cat)?'Usine' : '';
+    const fam = String(findCol(r,['Famille d\'équipement','Famille'])||'').trim();
+    if(fam && !state.equipTypes.includes(fam)) state.equipTypes.push(fam);
+    let norme = String(findCol(r,['Norme HSE','Norme'])||'Aucune').trim() || 'Aucune';
+    if(!state.normesHSE.includes(norme)) state.normesHSE.push(norme);
+    const patch = { nom, categorie:cat, familleEquipement:fam, dureeEstimee:Number(findCol(r,['Durée (min)','Durée','Duree']))||60,
+      description:String(findCol(r,['Description'])||''), procedure:String(findCol(r,['Procédure (une tâche par ligne)','Procédure','Procedure'])||''),
+      outilsRequis:String(findCol(r,['Outils requis','Outils'])||''), epiRequis:String(findCol(r,['EPI requis','EPI'])||''), normeHSE:norme };
+    const ex = state.gammesOperatoires.find(g=>(g.nom||'').trim().toLowerCase()===nom.toLowerCase());
+    if(ex){ Object.assign(ex, patch); updated++; } else { state.gammesOperatoires.push({...patch, id:uid()}); created++; }
+  });
+  persist(); render();
+  toast(created+' gamme(s) créée(s), '+updated+' mise(s) à jour');
+}
 function gammeTaches(gamme){
   if(!gamme || !gamme.procedure) return [];
   return gamme.procedure.split('\n')
@@ -2797,8 +2869,14 @@ function viewGammes(scope){
   return `
   <div class="headrow">
     <div><h1>Gammes opératoires — ${scope==='Usine'?'Usine':'Flotte'}</h1><p class="subtitle" style="margin:0;">Catalogue de procédures standardisées pour ${scope==='Usine'?'les équipements de l\'usine':'les engins de la flotte'}, réutilisables dans le préventif et les OT</p></div>
-    <button class="btn btn-accent" id="gamme-new-btn">${ICONS.plus} Nouvelle gamme</button>
+    <div class="row wrapwrap">
+      <button class="btn btn-ghost" id="gamme-export-btn">${ICONS.receipt} Exporter Excel</button>
+      <button class="btn btn-ghost" id="gamme-import-btn">${ICONS.plus} Importer Excel</button>
+      <input type="file" id="gamme-import-file" accept=".xlsx,.xls" style="display:none;"/>
+      <button class="btn btn-accent" id="gamme-new-btn">${ICONS.plus} Nouvelle gamme</button>
+    </div>
   </div>
+  <p style="font-size:11px;color:var(--muted);margin:-4px 0 16px;">L'export/import Excel permet de créer ou mettre à jour plusieurs gammes d'un coup : une gamme existante (même intitulé) est mise à jour, sinon elle est créée. Dans la colonne « Procédure », une tâche par ligne (Alt+Entrée dans Excel) — ces lignes deviennent les tâches à cocher sur l'OT préventif.</p>
   ${list.length===0?`<div class="plate p16"><div class="empty">${ICONS.wrench}<span>${scope==='Usine'?"Aucune gamme opératoire usine définie — crée des procédures types (graissage convoyeur, contrôle brûleur, vérification roulements, contrôle électrique...) pour les réutiliser dans le préventif.":"Aucune gamme opératoire flotte définie — crée des procédures types (vidange, graissage, contrôle hydraulique...) pour les réutiliser dans le préventif."}</span></div></div>`:
   `<div style="display:flex;flex-direction:column;gap:8px;">
   ${list.map(g=>`
@@ -3677,12 +3755,13 @@ function viewNotif(){
   const canSupervise = currentUser && hasCapacite('valider_avis', currentUser.role==='chef-atelier');
   const canGenererOT = currentUser && hasCapacite('planifier_ot', currentUser.role==='planificateur');
   const allEquip = [...state.fleet, ...state.plantEquipment];
-  const sorted = [...state.notifications].sort((a,b)=>(b.dateCreation||'').localeCompare(a.dateCreation||''));
+  const sorted = state.notifications.filter(n=>inZone(n.equipementId)).sort((a,b)=>(b.dateCreation||'').localeCompare(a.dateCreation||''));
   return `
   <div class="headrow">
-    <div><h1>Demandes d'intervention</h1><p class="subtitle" style="margin:0;">Détection (technicien) → Validation (superviseur) → Ordre de travail (planificateur)</p></div>
+    <div><h1>Demandes d'intervention${zoneFilter!=='Tous'?' — '+zoneFilter:''}</h1><p class="subtitle" style="margin:0;">Détection (technicien) → Validation (superviseur) → Ordre de travail (planificateur)</p></div>
     <button class="btn btn-accent" id="notif-new-btn">${ICONS.plus} Nouvelle demande</button>
   </div>
+  ${zoneChips()}
   ${sorted.length===0?`<div class="plate p16"><div class="empty">${ICONS.bell}<span>Aucune demande.</span></div></div>`:
   `<div style="display:flex;flex-direction:column;gap:8px;">
   ${sorted.map(n=>{
@@ -3823,16 +3902,18 @@ function importPMRows(rows){
 }
 function viewMeasures(){
   const em = equipMap();
+  const mps = state.measuringPoints.filter(m=>inZone(m.equipementId));
   return `
   <div class="headrow">
     <div><h1>Compteurs / points de mesure</h1><p class="subtitle" style="margin:0;">Relevés et seuils d'alerte</p></div>
     <button class="btn btn-accent" id="measure-new-btn">${ICONS.plus} Nouveau point de mesure</button>
   </div>
-  ${state.measuringPoints.length===0?`<div class="plate p16"><div class="empty">${ICONS.ruler}<span>Aucun point de mesure défini.</span></div></div>`:
+  ${zoneChips()}
+  ${mps.length===0?`<div class="plate p16"><div class="empty">${ICONS.ruler}<span>Aucun point de mesure défini.</span></div></div>`:
   `<div class="plate" style="overflow:hidden;">
   <table><thead><tr><th>Équipement</th><th>Point de mesure</th><th class="right">Dernier relevé</th><th class="right">Seuil min</th><th class="right">Seuil max</th><th>Date</th><th></th></tr></thead>
   <tbody>
-  ${state.measuringPoints.map(m=>{
+  ${mps.map(m=>{
     const val = Number(m.dernierReleve); const outOfRange = (m.seuilMin!=='' && val<Number(m.seuilMin)) || (m.seuilMax!=='' && val>Number(m.seuilMax));
     return `<tr class="legend-clickable" data-edit-measure-row="${m.id}">
     <td class="mono">${em[m.equipementId]?.code||'—'}</td><td>${esc(m.nom)} <span style="color:var(--muted);font-size:11px;">(${m.unite||''})</span></td>
@@ -3918,16 +3999,17 @@ function viewCcEdit(){
 function viewPersonnel(){
   const woCount = {};
   state.workOrders.forEach(w=>{ if(w.technicien) woCount[w.technicien]=(woCount[w.technicien]||0)+1; });
-  const sorted = [...state.personnel].sort((a,b)=>(a.nom||'').localeCompare(b.nom||''));
+  const sorted = state.personnel.filter(persInZone).sort((a,b)=>(a.nom||'').localeCompare(b.nom||''));
   return `
   <div class="headrow">
-    <div><h1>Personnel</h1><p class="subtitle" style="margin:0;">${state.personnel.length} personnes · par métier et affectation</p></div>
+    <div><h1>Personnel</h1><p class="subtitle" style="margin:0;">${sorted.length} personnes · par métier et affectation</p></div>
     <div class="row">
       <button class="btn btn-ghost" id="personnel-import-btn">${ICONS.plus} Importer Excel</button>
       <input type="file" id="personnel-import-file" accept=".xlsx,.xls,.csv" style="display:none;"/>
       <button class="btn btn-accent" id="personnel-new-btn">${ICONS.plus} Nouvelle personne</button>
     </div>
   </div>
+  ${zoneChips()}
   ${sorted.length===0?`<div class="plate p16"><div class="empty">${ICONS.users}<span>Aucun personnel enregistré.</span></div></div>`:
   `<div class="grid grid-fleet">
   ${sorted.map(p=>`
@@ -4579,6 +4661,16 @@ function viewSettings(){
       </div>
     </div>
     <div class="plate p16">
+      <h3 class="oswald" style="text-transform:uppercase;font-size:14px;margin:0 0 6px;">Workflow des OT par zone</h3>
+      <p style="font-size:11px;color:var(--muted);margin:0 0 10px;">Le circuit peut être différent entre la flotte et l'usine (correctif comme préventif). Coche les étapes obligatoires pour chaque zone.</p>
+      ${['Flotte','Usine'].map(z=>{ const c=(state.workflowZone||WF_DEFAULT)[z]||WF_DEFAULT[z]; return `
+      <div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:10px;">
+        <div style="font-weight:600;font-size:13px;margin-bottom:6px;">${z}</div>
+        <label style="display:flex;gap:8px;align-items:flex-start;font-size:12.5px;margin-bottom:6px;cursor:pointer;"><input type="checkbox" data-wf-zone="${z}" data-wf-key="consignationAvantLancement" ${c.consignationAvantLancement?'checked':''} style="width:auto;margin-top:2px;"/> Consignation / autorisation obligatoire avant de lancer l'OT</label>
+        <label style="display:flex;gap:8px;align-items:flex-start;font-size:12.5px;cursor:pointer;"><input type="checkbox" data-wf-zone="${z}" data-wf-key="receptionProduction" ${c.receptionProduction?'checked':''} style="width:auto;margin-top:2px;"/> Réception production (remise en service) obligatoire avant la clôture technique</label>
+      </div>`; }).join('')}
+    </div>
+    <div class="plate p16">
       <h3 class="oswald" style="text-transform:uppercase;font-size:14px;margin:0 0 12px;">Apparence / thème</h3>
       <div style="display:flex;flex-direction:column;gap:12px;">
         ${Object.keys(DEFAULT_THEME).map(k=>`
@@ -4664,12 +4756,13 @@ function viewResa(){
   const ccm = Object.fromEntries(state.costCenters.map(c=>[c.id,c]));
   const pm = Object.fromEntries(state.parts.map(p=>[p.id,p]));
   const wom = Object.fromEntries(state.workOrders.map(w=>[w.id,w]));
-  const sorted = [...state.reservations].sort((a,b)=>(b.dateCreation||'').localeCompare(a.dateCreation||''));
+  const sorted = state.reservations.filter(r=>zoneFilter==='Tous' || (eqScope(r.equipementId)||'Flotte')===zoneFilter).sort((a,b)=>(b.dateCreation||'').localeCompare(a.dateCreation||''));
   return `
   <div class="headrow">
     <div><h1>Réservations</h1><p class="subtitle" style="margin:0;">Consommables réservés (OT ou directes) — en attente de sortie magasin</p></div>
     <button class="btn btn-accent" id="resa-new-btn">${ICONS.plus} Nouvelle réservation</button>
   </div>
+  ${zoneChips()}
   ${sorted.length===0?`<div class="plate p16"><div class="empty">${ICONS.layers}<span>Aucune réservation.</span></div></div>`:
   `<div class="plate" style="overflow:hidden;">
   <table><thead><tr><th>N°</th><th>Type</th><th>Article</th><th class="right">Qté demandée</th><th>Affectation</th><th>Statut</th><th>Date</th><th></th></tr></thead>
@@ -4724,13 +4817,13 @@ function viewResaNew(){
 function viewDA(){
   const em = equipMap();
   const ccm = Object.fromEntries(state.costCenters.map(c=>[c.id,c]));
-  const sorted = state.purchaseRequests.filter(d=>achatScope==='Tous' || (daScopeOf(d)||'Flotte')===achatScope).sort((a,b)=>(b.dateCreation||'').localeCompare(a.dateCreation||''));
+  const sorted = state.purchaseRequests.filter(d=>zoneFilter==='Tous' || (daScopeOf(d)||'Flotte')===zoneFilter).sort((a,b)=>(b.dateCreation||'').localeCompare(a.dateCreation||''));
   return `
   <div class="headrow">
     <div><h1>Demandes d'achat</h1><p class="subtitle" style="margin:0;">Sous-traitance et achats hors stock — circuit DA → BC → Réception</p></div>
     <button class="btn btn-accent" id="da-new-btn">${ICONS.plus} Nouvelle DA</button>
   </div>
-  ${achatScopeChips()}
+  ${zoneFilterChips()}
   ${sorted.length===0?`<div class="plate p16"><div class="empty">${ICONS.cart}<span>Aucune demande d'achat.</span></div></div>`:
   `<div style="display:flex;flex-direction:column;gap:8px;">
   ${sorted.map(d=>`
@@ -4769,7 +4862,7 @@ function daForm(d){
     <label class="field span2"><span>Description</span><input data-f="description" value="${esc(d.description)}" placeholder="Réparation étanchéité toiture atelier"/></label>
     <label class="field"><span>Type</span><select data-f="type">${DA_TYPES.map(t=>`<option ${d.type===t?'selected':''}>${t}</option>`).join('')}</select></label>
     <label class="field"><span>Statut</span><select data-f="statut">${DA_STATUTS.map(s=>`<option ${d.statut===s?'selected':''}>${s}</option>`).join('')}</select></label>
-    <label class="field span2"><span>Périmètre (Flotte ou Usine)</span><select data-f="categorie">${['Flotte','Usine'].map(c=>`<option ${(d.categorie||(achatScope!=='Tous'?achatScope:'Flotte'))===c?'selected':''}>${c}</option>`).join('')}</select></label>
+    <label class="field span2"><span>Périmètre (Flotte ou Usine)</span><select data-f="categorie">${['Flotte','Usine'].map(c=>`<option ${(d.categorie||(zoneFilter!=='Tous'?zoneFilter:'Flotte'))===c?'selected':''}>${c}</option>`).join('')}</select></label>
     <label class="field span2"><span>Équipement concerné (optionnel — le périmètre en est déduit)</span><select data-f="equipementId"><option value="">—</option>${equipOpts}</select></label>
     <label class="field span2"><span>Ordre de travail lié (optionnel)</span><select data-f="workOrderId"><option value="">—</option>${woOpts}</select></label>
     <label class="field span2"><span>Centre de coût</span><select data-f="costCenterId"><option value="">—</option>${ccOpts}</select></label>
@@ -4788,12 +4881,12 @@ function viewDaEdit(){
 /* ============ BONS DE COMMANDE ============ */
 function viewBC(){
   const dam = Object.fromEntries(state.purchaseRequests.map(d=>[d.id,d]));
-  const sorted = state.purchaseOrders.filter(b=>achatScope==='Tous' || bcScopeOf(b)===achatScope).sort((a,b)=>(b.dateCommande||'').localeCompare(a.dateCommande||''));
+  const sorted = state.purchaseOrders.filter(b=>zoneFilter==='Tous' || bcScopeOf(b)===zoneFilter).sort((a,b)=>(b.dateCommande||'').localeCompare(a.dateCommande||''));
   return `
   <div class="headrow">
     <div><h1>Bons de commande</h1><p class="subtitle" style="margin:0;">Suivi commande fournisseur et réception</p></div>
   </div>
-  ${achatScopeChips()}
+  ${zoneFilterChips()}
   ${sorted.length===0?`<div class="plate p16"><div class="empty">${ICONS.receipt}<span>Aucun bon de commande. Convertis une demande d'achat pour en créer un.</span></div></div>`:
   `<div style="display:flex;flex-direction:column;gap:8px;">
   ${sorted.map(b=>{ const da = dam[b.purchaseRequestId];
@@ -5378,7 +5471,7 @@ function openWorkflowPanel(w){
   const stages = [
     { key:'OT Créé', label:'1. Création (Technicien / Planificateur)', done: idxActuel>=0,
       info: linkedNotif ? 'Avis '+(linkedNotif.numero||'')+' déclaré par le technicien' : 'OT créé directement' },
-    { key:'OT En cours', label:'2. Lancement (Planificateur ou Chef d\'atelier) puis exécution (Technicien)', done: passed('OT En cours')||['OT En cours','OT Réalisé','OT Validé Atelier','OT Clôturé'].includes(s),
+    { key:'OT En cours', label:'2. '+(woCfg(w).consignationAvantLancement?'Consignation obligatoire, lancement (Planificateur ou Chef d\'atelier) puis exécution (Technicien)':'Lancement (Planificateur ou Chef d\'atelier) puis exécution (Technicien)'), done: passed('OT En cours')||['OT En cours','OT Réalisé','OT Validé Atelier','OT Clôturé'].includes(s),
       info: isNow('OT Créé') ? 'En attente de lancement' : (totalOps===0 ? (isNow('OT en reprise')?'Reprise demandée : '+(w.motifReprise||''):'Aucune opération saisie') : `${confirmedOps} / ${totalOps} tâche(s) cochée(s)`),
       pending: isNow('OT Créé') || isNow('OT En cours') || isNow('OT en reprise') },
     { key:'OT Réalisé', label:'3. Travaux validés (Technicien)', done: ['OT Réalisé','OT Validé Atelier','OT Clôturé'].includes(s),
@@ -5386,7 +5479,10 @@ function openWorkflowPanel(w){
     { key:'OT Validé Atelier', label:'4. Contrôle qualité (Chef d\'atelier)', done: isNow('OT Validé Atelier')||isNow('OT Clôturé'),
       info: w.controleQualitePar ? 'Validé par '+w.controleQualitePar+' le '+(w.dateControleQualite||'') : (isNow('OT Réalisé')?'En attente de contrôle qualité':'—'),
       pending: isNow('OT Réalisé') },
-    { key:'OT Clôturé', label:'5. Clôture technique (Planificateur) puis financière (Directeur d\'exploitation)', done: isNow('OT Clôturé'),
+    ...(woCfg(w).receptionProduction ? [{ key:'OT Validé Atelier', label:'5. Réception production — remise en service machine (Production / Exploitation)', done: !!w.receptionProd || isNow('OT Clôturé'),
+      info: w.receptionProd ? 'Réceptionné par '+(w.receptionProdPar||'—')+(w.dateReceptionProd?' le '+w.dateReceptionProd:'') : (isNow('OT Validé Atelier')?'En attente de réception par la production':'—'),
+      pending: isNow('OT Validé Atelier') && !w.receptionProd }] : []),
+    { key:'OT Clôturé', label:(woCfg(w).receptionProduction?'6':'5')+'. Clôture technique (Planificateur) puis financière (Directeur d\'exploitation)', done: isNow('OT Clôturé'),
       info: isNow('OT Clôturé') ? ('Clôturé le '+(w.dateFin||'—')+(w.clotureFinanciere?' · clôture financière validée par '+(w.clotureFinancierePar||''):' · clôture financière en attente (Directeur d\'exploitation)')) : (isNow('OT Validé Atelier') ? (w.heuresConfirmees ? 'Heures confirmées par '+(w.heuresConfirmeesPar||'')+' — prêt pour clôture technique' : 'En attente de confirmation des heures par le planificateur') : '—'),
       pending: isNow('OT Validé Atelier') },
   ];
@@ -5766,12 +5862,13 @@ function viewReports(){
   <div class="plate" style="overflow:hidden;">
   <table><thead><tr><th>${reportScope==='Usine'?'Machine':'Engin'}</th><th>Famille</th><th class="right">Coût maintenance</th><th class="right">Carburant (L)</th><th class="right">Coût carburant</th><th class="right">Total</th></tr></thead>
   <tbody>
-  ${(()=>{ const rows = scopeEquip(reportScope).map(e=>({e, cout:d.coutParEquip[e.id]||0, fuel:d.fuelParEquip[e.id]||{l:0,cout:0}})).sort((a,b)=>(b.cout+b.fuel.cout)-(a.cout+a.fuel.cout));
-    return rows.map(({e,cout,fuel})=>`<tr>
+  ${(()=>{ const all = scopeEquip(reportScope).map(e=>({e, cout:d.coutParEquip[e.id]||0, fuel:d.fuelParEquip[e.id]||{l:0,cout:0}})).sort((a,b)=>(b.cout+b.fuel.cout)-(a.cout+a.fuel.cout));
+    const rows = all.filter(r=>r.cout+r.fuel.cout>0); const masques = all.length-rows.length;
+    return (rows.length===0?`<tr><td colspan="6" style="color:var(--muted);text-align:center;padding:18px;">Aucun coût enregistré sur la période pour ${reportScope==='Usine'?"l'usine":'la flotte'}.</td></tr>`:'') + rows.map(({e,cout,fuel})=>`<tr>
     <td class="mono">${e.code}</td><td style="color:var(--muted)">${e.type}</td>
     <td class="right mono">${fmt(cout)}</td><td class="right mono" style="color:var(--muted)">${fmt(fuel.l)}</td>
     <td class="right mono">${fmt(fuel.cout)}</td><td class="right mono" style="color:var(--accent)">${fmt(cout+fuel.cout)}</td>
-  </tr>`).join(''); })()}
+  </tr>`).join('') + (masques>0?`<tr><td colspan="6" style="color:var(--muted);font-size:11px;">${masques} ${reportScope==='Usine'?'machine(s)':'engin(s)'} sans coût sur la période non affiché(s).</td></tr>`:''); })()}
   </tbody></table></div>`;
 }
 
@@ -5920,7 +6017,12 @@ function attachHandlers(){
   if(wReset) wReset.addEventListener('click', ()=>{ woFilter='Tous'; woSearch=''; woFilterFamille='Tous'; woFilterEquip='Tous'; woFilterType='Tous'; render(); });
   const wExport = document.getElementById('wo-export-excel');
   if(wExport) wExport.addEventListener('click', exportWOToExcel);
-  document.querySelectorAll('[data-report-scope]').forEach(b=>b.addEventListener('click',()=>{ reportScope=b.dataset.reportScope; render(); }));
+  document.querySelectorAll('[data-report-scope]').forEach(b=>b.addEventListener('click',()=>{ reportScope=b.dataset.reportScope; zoneFilter=reportScope; render(); }));
+  document.querySelectorAll('[data-wf-zone]').forEach(cb=>cb.addEventListener('change',()=>{
+    state.workflowZone = state.workflowZone||JSON.parse(JSON.stringify(WF_DEFAULT));
+    state.workflowZone[cb.dataset.wfZone] = {...WF_DEFAULT[cb.dataset.wfZone], ...(state.workflowZone[cb.dataset.wfZone]||{}), [cb.dataset.wfKey]: cb.checked};
+    persist(); toast('Workflow '+cb.dataset.wfZone+' mis à jour');
+  }));
   const entNom = document.getElementById('ent-nom');
   if(entNom) entNom.addEventListener('change', e=>{ state.entreprise = state.entreprise||{}; state.entreprise.nom = e.target.value.trim(); persist(); toast('Nom enregistré'); });
   const entBtn = document.getElementById('ent-logo-btn'), entFile = document.getElementById('ent-logo-file');
@@ -6018,6 +6120,13 @@ function attachHandlers(){
   }));
 
   // Gammes opératoires
+  const gExp = document.getElementById('gamme-export-btn');
+  if(gExp) gExp.addEventListener('click', exportGammesToExcel);
+  const gImpB = document.getElementById('gamme-import-btn'), gImpF = document.getElementById('gamme-import-file');
+  if(gImpB && gImpF){
+    gImpB.addEventListener('click', ()=>gImpF.click());
+    gImpF.addEventListener('change', e=>{ if(e.target.files[0]) readExcelFile(e.target.files[0], importGammesRows); });
+  }
   const gamn = document.querySelector('#gamme-new-btn');
   if(gamn) gamn.addEventListener('click', ()=>{
     gammeDraft = {id:null, nom:'', categorie:gammeScope, familleEquipement:'', dureeEstimee:60, description:'', procedure:'', outilsRequis:'', epiRequis:'', normeHSE:state.normesHSE[0]};
@@ -6449,7 +6558,7 @@ function attachHandlers(){
     let allEquip;
     if(affectation==='Flotte') allEquip = state.fleet;
     else if(affectation==='Usine') allEquip = state.plantEquipment;
-    else allEquip = [...state.fleet, ...state.plantEquipment];
+    else allEquip = zoneFilter==='Usine' ? state.plantEquipment : zoneFilter==='Flotte' ? state.fleet : [...state.fleet, ...state.plantEquipment];
     notifDraft = {id:null, equipementId: allEquip[0]?.id||'', type:'Panne', priorite:'Normale', description:'', declarant:'', statut:'Nouvelle', dateCreation:new Date().toISOString().slice(0,10), workOrderId:null};
     notifIsNew = true; currentView='notif-edit'; render();
   });
@@ -6665,7 +6774,7 @@ function attachHandlers(){
     daIsNew = true; currentView='da-edit'; render();
   }));
 
-  document.querySelectorAll('[data-achat-scope]').forEach(b=>b.addEventListener('click',()=>{ achatScope=b.dataset.achatScope; render(); }));
+  document.querySelectorAll('[data-zone]').forEach(b=>b.addEventListener('click',()=>{ zoneFilter=b.dataset.zone; if(zoneFilter!=='Tous') reportScope=zoneFilter; render(); }));
   // Demandes d'achat
   const dan = document.querySelector('#da-new-btn');
   if(dan) dan.addEventListener('click', ()=>{
